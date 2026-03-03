@@ -507,24 +507,26 @@ pub fn supersearch(
         };
         let file_rel = file.path.to_string_lossy().into_owned();
 
-        let use_ast = context_norm != "all" || pattern_norm != "all";
         let mut used_ast = false;
-        if use_ast {
-            if let Some(analyzer) = crate::lang::find_analyzer(lang) {
-                if analyzer.supports_ast_search() {
-                    for m in analyzer.ast_search(&content, &q, &context_norm, &pattern_norm) {
-                        matches.push(SupersearchMatch {
-                            file: file_rel.clone(),
-                            line: m.line,
-                            snippet: m.snippet,
-                        });
-                    }
-                    used_ast = true;
+        if let Some(analyzer) = crate::lang::find_analyzer(lang) {
+            if analyzer.supports_ast_search() {
+                let mut file_matches =
+                    analyzer.ast_search(&content, &q, &context_norm, &pattern_norm);
+                // Deduplicate by line — the AST walk can emit multiple nodes per line.
+                file_matches.sort_by_key(|m| m.line);
+                file_matches.dedup_by_key(|m| m.line);
+                for m in file_matches {
+                    matches.push(SupersearchMatch {
+                        file: file_rel.clone(),
+                        line: m.line,
+                        snippet: m.snippet,
+                    });
                 }
+                used_ast = true;
             }
         }
         if !used_ast {
-            // Fallback: line-oriented text search.
+            // Fallback: line-oriented text search for unsupported languages (html, yaml, etc.).
             for (idx, line) in content.lines().enumerate() {
                 if line.to_lowercase().contains(&q) {
                     matches.push(SupersearchMatch {

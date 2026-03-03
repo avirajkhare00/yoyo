@@ -373,7 +373,7 @@ fn list_tools() -> Value {
             },
             {
                 "name": "supersearch",
-                "description": "Text-based search over TS/JS source files.",
+                "description": "AST-aware search over TypeScript, Rust, and Python source files.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -387,11 +387,11 @@ fn list_tools() -> Value {
                         },
                         "context": {
                             "type": "string",
-                            "description": "Search context: all | strings | comments | identifiers (currently best-effort)"
+                            "description": "Search context: all | strings | comments | identifiers"
                         },
                         "pattern": {
                             "type": "string",
-                            "description": "Pattern: all | call | assign | return (currently best-effort)"
+                            "description": "Pattern: all | call | assign | return"
                         },
                         "exclude_tests": {
                             "type": "boolean",
