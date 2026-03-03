@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
-use tree_sitter::{Node, Parser};
-use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
 
 /// Public entrypoint for the `llm_instructions` CLI/MCP tool.
 pub fn llm_instructions(path: Option<String>) -> Result<String> {
@@ -33,7 +31,7 @@ pub fn shake(path: Option<String>) -> Result<String> {
     if let Some(bake) = load_bake_index(&root)? {
         // Use rich data from the bake index when available.
         let mut top_functions: Vec<ShakeFunctionSummary> = bake
-            .ts_functions
+            .functions
             .iter()
             .map(|f| ShakeFunctionSummary {
                 name: f.name.clone(),
@@ -48,7 +46,7 @@ pub fn shake(path: Option<String>) -> Result<String> {
         top_functions.truncate(10);
 
         let express_endpoints: Vec<ShakeEndpointSummary> = bake
-            .express_endpoints
+            .endpoints
             .iter()
             .take(20)
             .map(|e| ShakeEndpointSummary {
@@ -132,7 +130,7 @@ pub fn search(path: Option<String>, query: String, limit: Option<usize>) -> Resu
     let q = query.to_lowercase();
 
     let mut function_hits: Vec<SearchFunctionHit> = bake
-        .ts_functions
+        .functions
         .iter()
         .filter_map(|f| {
             let name = f.name.to_lowercase();
@@ -232,7 +230,7 @@ pub fn symbol(path: Option<String>, name: String) -> Result<String> {
     let needle = name.to_lowercase();
 
     let mut matches: Vec<SymbolMatch> = bake
-        .ts_functions
+        .functions
         .iter()
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
@@ -279,7 +277,7 @@ pub fn all_endpoints(path: Option<String>) -> Result<String> {
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
 
     let endpoints: Vec<AllEndpointSummary> = bake
-        .express_endpoints
+        .endpoints
         .iter()
         .map(|e| AllEndpointSummary {
             method: e.method.clone(),
@@ -375,7 +373,7 @@ pub fn api_surface(
     use std::collections::BTreeMap;
     let mut modules: BTreeMap<String, Vec<ApiSurfaceFunction>> = BTreeMap::new();
 
-    for f in &bake.ts_functions {
+    for f in &bake.functions {
         let module = module_from_path(&f.file);
         if let Some(ref pf) = package_filter {
             if !module.to_lowercase().contains(pf) && !f.file.to_lowercase().contains(pf) {
@@ -432,7 +430,7 @@ pub fn file_functions(
     let rel_file = file.clone();
 
     let mut funcs: Vec<FileFunctionSummary> = bake
-        .ts_functions
+        .functions
         .iter()
         .filter(|f| f.file == rel_file)
         .map(|f| FileFunctionSummary {
@@ -493,7 +491,7 @@ pub fn supersearch(
 
     for file in &bake.files {
         let lang = file.language.as_str();
-        if lang != "typescript" && lang != "javascript" {
+        if !matches!(lang, "typescript" | "javascript" | "rust" | "python") {
             continue;
         }
 
@@ -509,18 +507,24 @@ pub fn supersearch(
         };
         let file_rel = file.path.to_string_lossy().into_owned();
 
-        if lang == "typescript" && (context_norm != "all" || pattern_norm != "all") {
-            // AST-aware search for TypeScript when context/pattern filters are used.
-            ast_supersearch_typescript(
-                &content,
-                &q,
-                &context_norm,
-                &pattern_norm,
-                &file_rel,
-                &mut matches,
-            );
-        } else {
-            // Fallback: line-oriented text search (JS, or TS without extra filters).
+        let use_ast = context_norm != "all" || pattern_norm != "all";
+        let mut used_ast = false;
+        if use_ast {
+            if let Some(analyzer) = crate::lang::find_analyzer(lang) {
+                if analyzer.supports_ast_search() {
+                    for m in analyzer.ast_search(&content, &q, &context_norm, &pattern_norm) {
+                        matches.push(SupersearchMatch {
+                            file: file_rel.clone(),
+                            line: m.line,
+                            snippet: m.snippet,
+                        });
+                    }
+                    used_ast = true;
+                }
+            }
+        }
+        if !used_ast {
+            // Fallback: line-oriented text search.
             for (idx, line) in content.lines().enumerate() {
                 if line.to_lowercase().contains(&q) {
                     matches.push(SupersearchMatch {
@@ -548,132 +552,6 @@ pub fn supersearch(
     Ok(json)
 }
 
-fn ast_supersearch_typescript(
-    source: &str,
-    query_lc: &str,
-    context: &str,
-    pattern: &str,
-    file: &str,
-    matches: &mut Vec<SupersearchMatch>,
-) {
-    let mut parser = Parser::new();
-    if parser
-        .set_language(&LANGUAGE_TYPESCRIPT.into())
-        .is_err()
-    {
-        return;
-    }
-
-    let tree = match parser.parse(source, None) {
-        Some(t) => t,
-        None => return,
-    };
-
-    let root_node = tree.root_node();
-    let lines: Vec<&str> = source.lines().collect();
-
-    walk_ts_supersearch(
-        root_node,
-        source,
-        &lines,
-        query_lc,
-        context,
-        pattern,
-        false,
-        false,
-        false,
-        file,
-        matches,
-    );
-}
-
-fn walk_ts_supersearch(
-    node: Node,
-    source: &str,
-    lines: &[&str],
-    query_lc: &str,
-    context: &str,
-    pattern: &str,
-    in_call: bool,
-    in_assign: bool,
-    in_return: bool,
-    file: &str,
-    matches: &mut Vec<SupersearchMatch>,
-) {
-    let kind = node.kind();
-
-    let is_call = kind == "call_expression";
-    let is_assign = kind == "assignment_expression" || kind == "variable_declarator";
-    let is_return = kind == "return_statement";
-
-    let in_call = in_call || is_call;
-    let in_assign = in_assign || is_assign;
-    let in_return = in_return || is_return;
-
-    let is_identifier = matches!(
-        kind,
-        "identifier" | "property_identifier" | "shorthand_property_identifier"
-    );
-    let is_string = kind == "string";
-    let is_comment = kind == "comment";
-
-    let is_leaf_of_interest = is_identifier || is_string || is_comment;
-
-    if is_leaf_of_interest {
-        if let Ok(text) = node.utf8_text(source.as_bytes()) {
-            if text.to_lowercase().contains(query_lc) {
-                let context_ok = match context {
-                    "all" => true,
-                    "strings" => is_string,
-                    "comments" => is_comment,
-                    "identifiers" => is_identifier,
-                    _ => true,
-                };
-
-                let pattern_ok = match pattern {
-                    "all" => true,
-                    "call" => in_call,
-                    "assign" => in_assign,
-                    "return" => in_return,
-                    _ => true,
-                };
-
-                if context_ok && pattern_ok {
-                    let row = node.start_position().row as usize;
-                    let line_num = (row + 1) as u32;
-                    let snippet = lines
-                        .get(row)
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_else(|| text.trim().to_string());
-
-                    matches.push(SupersearchMatch {
-                        file: file.to_string(),
-                        line: line_num,
-                        snippet,
-                    });
-                }
-            }
-        }
-    }
-
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        walk_ts_supersearch(
-            child,
-            source,
-            lines,
-            query_lc,
-            context,
-            pattern,
-            in_call,
-            in_assign,
-            in_return,
-            file,
-            matches,
-        );
-    }
-}
-
 /// Public entrypoint for the `package_summary` tool: summarize a module/directory.
 pub fn package_summary(path: Option<String>, package: String) -> Result<String> {
     let root = resolve_project_root(path)?;
@@ -697,7 +575,7 @@ pub fn package_summary(path: Option<String>, package: String) -> Result<String> 
         }
     }
 
-    for f in &bake.ts_functions {
+    for f in &bake.functions {
         if f.file.to_lowercase().contains(&package_lc) {
             functions.push(PackageFunctionSummary {
                 name: f.name.clone(),
@@ -709,7 +587,7 @@ pub fn package_summary(path: Option<String>, package: String) -> Result<String> 
         }
     }
 
-    for e in &bake.express_endpoints {
+    for e in &bake.endpoints {
         if e.file.to_lowercase().contains(&package_lc) || e.path.to_lowercase().contains(&package_lc) {
             endpoints.push(PackageEndpointSummary {
                 method: e.method.clone(),
@@ -922,7 +800,7 @@ pub fn crud_operations(path: Option<String>, entity: Option<String>) -> Result<S
     let entity_filter = entity.clone().map(|e| e.to_lowercase());
     let mut entities: BTreeMap<String, CrudEntitySummary> = BTreeMap::new();
 
-    for e in &bake.express_endpoints {
+    for e in &bake.endpoints {
         let path_seg = infer_entity_from_path(&e.path);
         if path_seg.is_empty() {
             continue;
@@ -984,7 +862,7 @@ pub fn api_trace(
 
     let mut traces = Vec::new();
 
-    for e in &bake.express_endpoints {
+    for e in &bake.endpoints {
         if !e.path.to_lowercase().contains(&endpoint_lc) {
             continue;
         }
@@ -1181,9 +1059,9 @@ struct BakeIndex {
     languages: BTreeSet<String>,
     files: Vec<BakeFile>,
     #[serde(default)]
-    ts_functions: Vec<crate::ts_index::TsFunction>,
+    functions: Vec<crate::lang::IndexedFunction>,
     #[serde(default)]
-    express_endpoints: Vec<crate::ts_index::ExpressEndpoint>,
+    endpoints: Vec<crate::lang::IndexedEndpoint>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1554,16 +1432,16 @@ fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
 fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     let mut languages = BTreeSet::new();
     let mut files = Vec::new();
-    let mut ts_functions = Vec::new();
-    let mut express_endpoints = Vec::new();
+    let mut functions = Vec::new();
+    let mut endpoints = Vec::new();
 
     fn walk(
         dir: &Path,
         root: &Path,
         languages: &mut BTreeSet<String>,
         files: &mut Vec<BakeFile>,
-        ts_functions: &mut Vec<crate::ts_index::TsFunction>,
-        express_endpoints: &mut Vec<crate::ts_index::ExpressEndpoint>,
+        functions: &mut Vec<crate::lang::IndexedFunction>,
+        endpoints: &mut Vec<crate::lang::IndexedEndpoint>,
     ) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -1577,7 +1455,7 @@ fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                         continue;
                     }
                 }
-                walk(&path, root, languages, files, ts_functions, express_endpoints)?;
+                walk(&path, root, languages, files, functions, endpoints)?;
             } else if path.is_file() {
                 let meta = entry.metadata()?;
                 let bytes = meta.len();
@@ -1592,12 +1470,10 @@ fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                     bytes,
                 });
 
-                // If this is a TypeScript file, run a deeper AST-based analysis.
-                if lang == "typescript" {
-                    let (funcs, endpoints) =
-                        crate::ts_index::analyze_typescript_file(root, &path)?;
-                    ts_functions.extend(funcs);
-                    express_endpoints.extend(endpoints);
+                if let Some(analyzer) = crate::lang::find_analyzer(lang) {
+                    let (funcs, eps) = analyzer.analyze_file(root, &path)?;
+                    functions.extend(funcs);
+                    endpoints.extend(eps);
                 }
             }
         }
@@ -1609,8 +1485,8 @@ fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         root.as_path(),
         &mut languages,
         &mut files,
-        &mut ts_functions,
-        &mut express_endpoints,
+        &mut functions,
+        &mut endpoints,
     )?;
 
     Ok(BakeIndex {
@@ -1618,8 +1494,8 @@ fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         project_root: root.clone(),
         languages,
         files,
-        ts_functions,
-        express_endpoints,
+        functions,
+        endpoints,
     })
 }
 

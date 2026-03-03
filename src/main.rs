@@ -1,7 +1,7 @@
 mod cli;
 mod engine;
+mod lang;
 mod mcp;
-mod ts_index;
 
 use clap::Parser;
 
