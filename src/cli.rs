@@ -152,11 +152,11 @@ pub struct SupersearchArgs {
     #[arg(long)]
     pub query: String,
 
-    /// Search context: all | strings | comments | identifiers (currently best-effort).
+    /// Search context: all | strings | comments | identifiers.
     #[arg(long, default_value = "all")]
     pub context: String,
 
-    /// Pattern: all | call | assign | return (currently best-effort).
+    /// Pattern: all | call | assign | return.
     #[arg(long, default_value = "all")]
     pub pattern: String,
 
