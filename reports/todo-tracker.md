@@ -1,6 +1,8 @@
 # TODO Tracker
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-04
 **Sources:** README.md roadmap + live code analysis of `src/`
+
+> Items marked ✅ were resolved in v0.2.0.
 
 Items are tagged with source:
 - `[README]` — listed in README TODO/Roadmap section
@@ -109,11 +111,8 @@ Both tools return zero results on non-Express projects (CLI tools, ML libraries,
 
 ---
 
-### 9. No language support beyond TypeScript/JavaScript
-**Source:** `[README]`
-Python, Go, Rust, Ruby files are counted in `bake` but not indexed. `symbol`, `file_functions`, `supersearch` return nothing for them.
-
-**Fix:** Add Tree-sitter grammars for Python and Go first (highest demand). Store in a language-keyed section of `BakeIndex`.
+### ✅ 9. No language support beyond TypeScript/JavaScript *(resolved in v0.2.0)*
+Rust and Python support added via `LanguageAnalyzer` trait. `symbol`, `file_functions`, `supersearch` now work for `.rs` and `.py` files.
 
 ---
 
@@ -180,9 +179,8 @@ Zero unit tests in `src/`. No CI pipeline.
 
 ---
 
-### 18. License not set
-**Source:** `[README]`
-`readme.md` says "TBD – add your preferred license here."
+### ✅ 18. License not set *(resolved in v0.2.0)*
+MIT license added (`LICENSE` file, README updated).
 
 ---
 

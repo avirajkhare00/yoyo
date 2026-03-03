@@ -1,6 +1,6 @@
 # yoyo – Local Code Intelligence Engine
 
-**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript/JavaScript project with Tree-sitter and exposes 17 LLM-ready tools over CLI and stdio.
+**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, and Python projects with Tree-sitter and exposes 17 LLM-ready tools over CLI and stdio.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
@@ -122,7 +122,7 @@ All commands accept `--path /path/to/project` (defaults to current directory).
 | Search | `yoyo search --q <term>` | Fuzzy search over function names and file paths |
 | Symbol | `yoyo symbol --name <fn>` | Find a function by name → file + line range |
 | Slice | `yoyo slice --file <f> --start <n> --end <n>` | Read an exact line range |
-| Supersearch | `yoyo supersearch --query <term>` | Text search across all TS/JS files |
+| Supersearch | `yoyo supersearch --query <term>` | AST-aware search across TypeScript, Rust, and Python files |
 | File functions | `yoyo file-functions --file <f>` | List functions in a file with complexity |
 | API surface | `yoyo api-surface [--package <pkg>]` | Exported functions grouped by module |
 | Package summary | `yoyo package-summary --package <pkg>` | Deep-dive a module: files, functions, endpoints |
@@ -162,12 +162,10 @@ Full benchmark report: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports
 
 ## Known limitations (current version)
 
-- **TypeScript/JavaScript only** — Python, Go, Rust, and other languages are counted in `bake` but not indexed for `symbol`, `file_functions`, or `supersearch`.
-- **Express routes only** — `api_trace` and `crud_operations` only detect static Express routes. NestJS decorators, Fastify, and dynamic routers are not supported.
+- **Express/Actix/Flask routes only** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), and Flask/FastAPI (Python) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
+- **Class methods and arrow functions** — TypeScript indexing captures `function_declaration` nodes. Class methods and arrow functions are not yet indexed.
 - **Large project output** — `find_docs` and `api_surface` on 300+ file projects can exceed LLM context limits. Use `--package` or `--limit` to filter.
-- **Class methods and arrow functions** — `ts_index.rs` currently only captures `function_declaration` nodes. Class methods and arrow functions are not indexed yet.
-
-Full TODO tracker: [`reports/todo-tracker.md`](./reports/todo-tracker.md)
+- **No call graph** — `api_trace` cannot follow call chains deeper than the route handler itself.
 
 ---
 
@@ -175,15 +173,19 @@ Full TODO tracker: [`reports/todo-tracker.md`](./reports/todo-tracker.md)
 
 ```
 src/
-  main.rs        binary entrypoint, CLI vs MCP switch
-  cli.rs         human-facing CLI (clap)
-  engine.rs      core query functions backing all tools
-  mcp.rs         MCP JSON-RPC server over stdio
-  ts_index.rs    TypeScript/Express indexing via Tree-sitter
+  main.rs           binary entrypoint, CLI vs MCP switch
+  cli.rs            human-facing CLI (clap)
+  engine.rs         core query functions backing all tools
+  mcp.rs            MCP JSON-RPC server over stdio
+  lang/
+    mod.rs          LanguageAnalyzer trait, shared AST helpers
+    typescript.rs   TypeScript/Express indexing
+    rust.rs         Rust/Actix/Rocket indexing
+    python.rs       Python/Flask/FastAPI indexing
 ```
 
 ---
 
 ## License
 
-TBD — add your preferred license (e.g. MIT, Apache-2.0) before publishing publicly.
+MIT — see [LICENSE](./LICENSE).
