@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2] - 2026-03-04
+
+### Fixed
+- **CI race condition** — macOS binary was missing from releases because both matrix jobs
+  raced to finalize the same GitHub release. Release creation is now a separate job that
+  runs first; build jobs only upload assets.
+
+---
+
 ## [0.2.1] - 2026-03-04
 
 ### Fixed
