@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2026-03-04
+
+### Fixed
+- **`supersearch` always uses AST walk** — previously the default (`context=all, pattern=all`)
+  bypassed the AST walker entirely and fell through to plain `line.contains()`, making it
+  equivalent to grep. Now the AST walker runs for all supported languages regardless of flags.
+- **Deduplicated results by line** — the AST walk emitted one match per AST node, causing
+  duplicate line entries when multiple identifiers on the same line matched the query.
+- **Removed "currently best-effort" framing** from `context` and `pattern` flags in CLI help
+  and MCP schema — filters are now reliable and enforced.
+
+---
+
 ## [0.2.0] - 2026-03-04
 
 ### Added
