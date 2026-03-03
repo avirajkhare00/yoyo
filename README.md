@@ -525,7 +525,7 @@ Each tool accepts a JSON arguments object mirroring the CLI flags and returns JS
 ### Project layout
 
 - `yoyo/src/main.rs` – binary entrypoint, CLI vs MCP switch.
-- `cartogopher-rs/src/cli.rs` – human‑facing CLI (clap).
+- `yoyo/src/cli.rs` – human‑facing CLI (clap).
 - `yoyo/src/engine.rs` – core “query” functions backing all tools.
 - `yoyo/src/mcp.rs` – minimal MCP JSON‑RPC server.
 - `yoyo/src/ts_index.rs` – TypeScript/Express indexing using Tree‑sitter.
