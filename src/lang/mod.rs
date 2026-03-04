@@ -19,6 +19,10 @@ pub struct IndexedFunction {
     pub complexity: u32,
     #[serde(default)]
     pub calls: Vec<String>,
+    #[serde(default)]
+    pub byte_start: usize,
+    #[serde(default)]
+    pub byte_end: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +91,10 @@ pub fn line_range(node: &Node) -> (u32, u32) {
     let start = (node.start_position().row + 1) as u32;
     let end = (node.end_position().row + 1) as u32;
     (start, end)
+}
+
+pub fn byte_range(node: &Node) -> (usize, usize) {
+    (node.start_byte(), node.end_byte())
 }
 
 pub fn relative(root: &Path, file: &Path) -> String {

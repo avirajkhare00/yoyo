@@ -542,6 +542,64 @@ fn list_tools() -> Value {
                 }
             },
             {
+                "name": "patch_bytes",
+                "description": "Splice at exact byte offsets in a file. Use byte_start/byte_end from the bake index (IndexedFunction.byte_start / byte_end) for precise single-node replacement.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["file", "byte_start", "byte_end", "new_content"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "File path relative to project root"
+                        },
+                        "byte_start": {
+                            "type": "integer",
+                            "description": "Inclusive start byte offset"
+                        },
+                        "byte_end": {
+                            "type": "integer",
+                            "description": "Exclusive end byte offset"
+                        },
+                        "new_content": {
+                            "type": "string",
+                            "description": "Replacement text"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "multi_patch",
+                "description": "Apply N byte-level edits across M files atomically. Edits are applied bottom-up per file so offsets remain valid. Each file is written exactly once. Use for graph-level mutations such as renaming a symbol across all call sites.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["edits"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "edits": {
+                            "type": "array",
+                            "description": "Array of edit operations",
+                            "items": {
+                                "type": "object",
+                                "required": ["file", "byte_start", "byte_end", "new_content"],
+                                "properties": {
+                                    "file": { "type": "string" },
+                                    "byte_start": { "type": "integer" },
+                                    "byte_end": { "type": "integer" },
+                                    "new_content": { "type": "string" }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
                 "name": "blast_radius",
                 "description": "Analyse the blast radius of a symbol: find all functions that (transitively) call it, and the set of affected files. Requires a prior bake.",
                 "inputSchema": {
@@ -1009,6 +1067,83 @@ async fn call_tool(params: Value) -> Result<Value> {
                         "text": json
                     }
                 ],
+                "isError": false
+            }))
+        }
+        "patch_bytes" => {
+            let path = p
+                .arguments
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let file = p
+                .arguments
+                .get("file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for patch_bytes"))?;
+            let byte_start = p
+                .arguments
+                .get("byte_start")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'byte_start' argument for patch_bytes"))?
+                as usize;
+            let byte_end = p
+                .arguments
+                .get("byte_end")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'byte_end' argument for patch_bytes"))?
+                as usize;
+            let new_content = p
+                .arguments
+                .get("new_content")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'new_content' argument for patch_bytes"))?;
+            let json = crate::engine::patch_bytes(path, file, byte_start, byte_end, new_content)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
+                "isError": false
+            }))
+        }
+        "multi_patch" => {
+            let path = p
+                .arguments
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let edits_val = p
+                .arguments
+                .get("edits")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for multi_patch"))?;
+            let mut edits = Vec::new();
+            for item in edits_val {
+                let file = item
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?
+                    .to_string();
+                let byte_start = item
+                    .get("byte_start")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))?
+                    as usize;
+                let byte_end = item
+                    .get("byte_end")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))?
+                    as usize;
+                let new_content = item
+                    .get("new_content")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?
+                    .to_string();
+                edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
+            }
+            let json = crate::engine::multi_patch(path, edits)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
                 "isError": false
             }))
         }

@@ -6,7 +6,7 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_rust::LANGUAGE;
 
 use super::{
-    line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
+    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
     IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
@@ -109,6 +109,7 @@ fn scan_children(
                 if let Some(name_node) = child.child_by_field_name("name") {
                     if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
                         let (start_line, end_line) = line_range(&child);
+                        let (byte_start, byte_end) = byte_range(&child);
                         functions.push(IndexedFunction {
                             name: name.to_string(),
                             file: relative(root_path, file),
@@ -117,6 +118,8 @@ fn scan_children(
                             end_line,
                             complexity: estimate_complexity(child, source),
                             calls: collect_calls(child, source),
+                            byte_start,
+                            byte_end,
                         });
                         if let Some((method, path)) = pending_http.take() {
                             endpoints.push(IndexedEndpoint {

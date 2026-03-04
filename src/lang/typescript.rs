@@ -6,7 +6,7 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
 
 use super::{
-    line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
+    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
     IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
@@ -103,6 +103,7 @@ fn walk_ts(
                         let name = name_from_declarator(name_node, source);
                         if !name.is_empty() {
                             let (start_line, end_line) = line_range(&value);
+                            let (byte_start, byte_end) = byte_range(&value);
                             functions.push(IndexedFunction {
                                 name,
                                 file: relative(root, file),
@@ -111,6 +112,8 @@ fn walk_ts(
                                 end_line,
                                 complexity: estimate_complexity(value, source),
                                 calls: collect_calls(value, source),
+                                byte_start,
+                                byte_end,
                             });
                         }
                     }
@@ -124,6 +127,7 @@ fn walk_ts(
                         let name = left.utf8_text(source.as_bytes()).unwrap_or("").trim().to_string();
                         if !name.is_empty() {
                             let (start_line, end_line) = line_range(&right);
+                            let (byte_start, byte_end) = byte_range(&right);
                             functions.push(IndexedFunction {
                                 name,
                                 file: relative(root, file),
@@ -132,6 +136,8 @@ fn walk_ts(
                                 end_line,
                                 complexity: estimate_complexity(right, source),
                                 calls: collect_calls(right, source),
+                                byte_start,
+                                byte_end,
                             });
                         }
                     }
@@ -226,6 +232,7 @@ fn push_function(
         return;
     }
     let (start_line, end_line) = line_range(&node);
+    let (byte_start, byte_end) = byte_range(&node);
     functions.push(IndexedFunction {
         name,
         file: relative(root, file),
@@ -234,6 +241,8 @@ fn push_function(
         end_line,
         complexity: estimate_complexity(node, source),
         calls: collect_calls(node, source),
+        byte_start,
+        byte_end,
     });
 }
 
