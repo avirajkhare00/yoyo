@@ -35,7 +35,7 @@ pub enum Command {
     ApiTrace(ApiTraceArgs),
     /// Find documentation/config files.
     FindDocs(FindDocsArgs),
-    /// Apply a line-range patch to a file.
+    /// Apply a patch by symbol name or by file/line range.
     Patch(PatchArgs),
 }
 
@@ -249,23 +249,31 @@ pub struct FindDocsArgs {
 
 #[derive(Args, Debug)]
 pub struct PatchArgs {
-    /// Optional path to the project directory to analyze.
+    /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
 
-    /// File path relative to the project root.
+    /// Patch by symbol name (resolves file and line range from bake index).
     #[arg(long)]
-    pub file: String,
+    pub symbol: Option<String>,
 
-    /// 1-based start line (inclusive).
+    /// When multiple symbols match --symbol, use this 0-based index (default 0).
     #[arg(long)]
-    pub start: u32,
+    pub match_index: Option<usize>,
 
-    /// 1-based end line (inclusive).
+    /// File path relative to the project root (for range-based patch; use with --start, --end).
     #[arg(long)]
-    pub end: u32,
+    pub file: Option<String>,
 
-    /// Replacement content for the specified line range.
+    /// 1-based start line (inclusive). Required for range-based patch.
+    #[arg(long)]
+    pub start: Option<u32>,
+
+    /// 1-based end line (inclusive). Required for range-based patch.
+    #[arg(long)]
+    pub end: Option<u32>,
+
+    /// Replacement content for the patched range.
     #[arg(long)]
     pub new_content: String,
 }
@@ -408,7 +416,15 @@ async fn run_find_docs(args: FindDocsArgs) -> anyhow::Result<()> {
 }
 
 async fn run_patch(args: PatchArgs) -> anyhow::Result<()> {
-    let json = crate::engine::patch(args.path, args.file, args.start, args.end, args.new_content)?;
+    let json = if let Some(name) = args.symbol {
+        crate::engine::patch_by_symbol(args.path, name, args.new_content, args.match_index)?
+    } else if let (Some(file), Some(start), Some(end)) = (args.file, args.start, args.end) {
+        crate::engine::patch(args.path, file, start, end, args.new_content)?
+    } else {
+        anyhow::bail!(
+            "Patch requires either --symbol (patch by symbol name) or --file, --start, and --end (patch by range). See `yoyo patch --help`."
+        )
+    };
     println!("{json}");
     Ok(())
 }

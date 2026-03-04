@@ -520,7 +520,7 @@ fn list_tools() -> Value {
             },
             {
                 "name": "patch",
-                "description": "Apply a line-range patch to a file.",
+                "description": "Apply a patch to a file. Either by symbol name (resolves file and line range from bake index) or by explicit file and line range. Requires new_content.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -528,21 +528,29 @@ fn list_tools() -> Value {
                             "type": "string",
                             "description": "Optional path to project directory"
                         },
+                        "name": {
+                            "type": "string",
+                            "description": "Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."
+                        },
+                        "match_index": {
+                            "type": "integer",
+                            "description": "0-based index when multiple symbols match name (default 0)"
+                        },
                         "file": {
                             "type": "string",
-                            "description": "File path relative to the project root"
+                            "description": "File path relative to project root (for range-based patch)"
                         },
                         "start": {
                             "type": "integer",
-                            "description": "1-based start line (inclusive)"
+                            "description": "1-based start line (inclusive), for range-based patch"
                         },
                         "end": {
                             "type": "integer",
-                            "description": "1-based end line (inclusive)"
+                            "description": "1-based end line (inclusive), for range-based patch"
                         },
                         "new_content": {
                             "type": "string",
-                            "description": "Replacement content for the specified line range"
+                            "description": "Replacement content for the patched range"
                         }
                     }
                 }
@@ -975,31 +983,45 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for patch"))?;
-            let start = p
-                .arguments
-                .get("start")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'start' argument for patch"))?
-                as u32;
-            let end = p
-                .arguments
-                .get("end")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'end' argument for patch"))?
-                as u32;
             let new_content = p
                 .arguments
                 .get("new_content")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .ok_or_else(|| anyhow::anyhow!("Missing required 'new_content' argument for patch"))?;
-            let json = crate::engine::patch(path, file, start, end, new_content)?;
+            let json = if let Some(name) = p
+                .arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                let match_index = p
+                    .arguments
+                    .get("match_index")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize);
+                crate::engine::patch_by_symbol(path, name, new_content, match_index)?
+            } else {
+                let file = p
+                    .arguments
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| anyhow::anyhow!("Patch requires either 'name' (patch by symbol) or 'file', 'start', 'end' (patch by range)"))?;
+                let start = p
+                    .arguments
+                    .get("start")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'start' for range-based patch"))?
+                    as u32;
+                let end = p
+                    .arguments
+                    .get("end")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Missing 'end' for range-based patch"))?
+                    as u32;
+                crate::engine::patch(path, file, start, end, new_content)?
+            };
             Ok(serde_json::json!({
                 "content": [
                     {

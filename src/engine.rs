@@ -970,15 +970,14 @@ pub fn find_docs(path: Option<String>, doc_type: String) -> Result<String> {
     Ok(json)
 }
 
-/// Public entrypoint for the `patch` tool.
-pub fn patch(
-    path: Option<String>,
-    file: String,
+/// Apply a line-range replacement in a file. Returns (file, start, end, total_lines) for the payload.
+fn apply_patch_to_range(
+    root: &PathBuf,
+    file: &str,
     start: u32,
     end: u32,
-    new_content: String,
-) -> Result<String> {
-    let root = resolve_project_root(path)?;
+    new_content: &str,
+) -> Result<(String, u32, u32, u32)> {
     if start == 0 || end == 0 || end < start {
         return Err(anyhow!(
             "Invalid range: start and end must be >= 1 and end >= start (got start={}, end={})",
@@ -987,7 +986,7 @@ pub fn patch(
         ));
     }
 
-    let full_path = root.join(&file);
+    let full_path = root.join(file);
     let content = fs::read_to_string(&full_path).with_context(|| {
         format!(
             "Failed to read file {} (resolved to {})",
@@ -1011,7 +1010,6 @@ pub fn patch(
     }
 
     let replacement_lines: Vec<String> = new_content.lines().map(|s| s.to_string()).collect();
-
     lines.splice(s..=e, replacement_lines.into_iter());
 
     let new_text = lines.join("\n");
@@ -1023,6 +1021,20 @@ pub fn patch(
         )
     })?;
 
+    Ok((file.to_string(), start, end, total_lines))
+}
+
+/// Public entrypoint for the `patch` tool (by file and line range).
+pub fn patch(
+    path: Option<String>,
+    file: String,
+    start: u32,
+    end: u32,
+    new_content: String,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let (file, start, end, total_lines) =
+        apply_patch_to_range(&root, &file, start, end, &new_content)?;
     let payload = PatchPayload {
         tool: "patch",
         version: env!("CARGO_PKG_VERSION"),
@@ -1032,7 +1044,75 @@ pub fn patch(
         end,
         total_lines,
     };
+    let json = serde_json::to_string_pretty(&payload)?;
+    Ok(json)
+}
 
+/// Public entrypoint for the `patch` tool (by symbol name). Resolves the symbol from the bake
+/// index, then replaces its line range with `new_content`. Use `match_index` (0-based) when
+/// multiple symbols match the name; default 0.
+pub fn patch_by_symbol(
+    path: Option<String>,
+    name: String,
+    new_content: String,
+    match_index: Option<usize>,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let bake = load_bake_index(&root)?
+        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+
+    let needle = name.to_lowercase();
+    let mut matches: Vec<(String, u32, u32)> = bake
+        .functions
+        .iter()
+        .filter_map(|f| {
+            let fname = f.name.to_lowercase();
+            if fname == needle || fname.contains(&needle) {
+                Some((f.file.clone(), f.start_line, f.end_line))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Same order as symbol: exact match first, then higher complexity, then file path.
+    matches.sort_by(|a, b| {
+        let fa = bake.functions.iter().find(|f| f.file == a.0 && f.start_line == a.1).unwrap();
+        let fb = bake.functions.iter().find(|f| f.file == b.0 && f.start_line == b.1).unwrap();
+        let a_exact = (fa.name.to_lowercase() == needle) as i32;
+        let b_exact = (fb.name.to_lowercase() == needle) as i32;
+        b_exact
+            .cmp(&a_exact)
+            .then_with(|| fb.complexity.cmp(&fa.complexity))
+            .then(a.0.cmp(&b.0))
+    });
+
+    if matches.is_empty() {
+        return Err(anyhow!("No symbol match for name {:?}. Run `bake` and ensure the symbol exists.", name));
+    }
+
+    let idx = match_index.unwrap_or(0);
+    if idx >= matches.len() {
+        return Err(anyhow!(
+            "match_index {} out of range ({} match(es) for {:?})",
+            idx,
+            matches.len(),
+            name
+        ));
+    }
+
+    let (file, start, end) = &matches[idx];
+    let (file, start, end, total_lines) =
+        apply_patch_to_range(&root, file.as_str(), *start, *end, &new_content)?;
+    let payload = PatchPayload {
+        tool: "patch",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        file,
+        start,
+        end,
+        total_lines,
+    };
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
 }
