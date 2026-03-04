@@ -275,6 +275,26 @@ pub(crate) struct PatchPayload {
 }
 
 #[derive(Serialize)]
+pub(crate) struct PatchBytesPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) file: String,
+    pub(crate) byte_start: usize,
+    pub(crate) byte_end: usize,
+    pub(crate) new_bytes: usize,
+}
+
+#[derive(Serialize)]
+pub(crate) struct MultiPatchPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) files_written: usize,
+    pub(crate) edits_applied: usize,
+}
+
+#[derive(Serialize)]
 pub(crate) struct SlicePayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,

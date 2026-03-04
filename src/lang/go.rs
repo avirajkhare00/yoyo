@@ -6,7 +6,7 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_go::LANGUAGE;
 
 use super::{
-    line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
+    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
     IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
@@ -117,6 +117,7 @@ fn walk_go(
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let (start_line, end_line) = line_range(&node);
+                let (byte_start, byte_end) = byte_range(&node);
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -125,6 +126,8 @@ fn walk_go(
                     end_line,
                     complexity: estimate_complexity(node, source),
                     calls: collect_calls(node, source),
+                    byte_start,
+                    byte_end,
                 });
             }
         }
@@ -132,6 +135,7 @@ fn walk_go(
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let (start_line, end_line) = line_range(&node);
+                let (byte_start, byte_end) = byte_range(&node);
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -140,6 +144,8 @@ fn walk_go(
                     end_line,
                     complexity: estimate_complexity(node, source),
                     calls: collect_calls(node, source),
+                    byte_start,
+                    byte_end,
                 });
             }
         }

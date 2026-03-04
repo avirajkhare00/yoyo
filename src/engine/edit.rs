@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
 
-use super::types::{PatchPayload, SlicePayload};
+use std::collections::HashMap;
+
+use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload};
 use super::util::{load_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `slice` tool: read a specific line range of a file.
@@ -154,6 +156,129 @@ pub fn patch_by_symbol(
     };
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
+}
+
+// ── Byte-level patch ─────────────────────────────────────────────────────────
+
+/// Public entrypoint for `patch_bytes`: splice at exact byte offsets.
+pub fn patch_bytes(
+    path: Option<String>,
+    file: String,
+    byte_start: usize,
+    byte_end: usize,
+    new_content: String,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let full_path = root.join(&file);
+    let mut bytes = fs::read(&full_path).with_context(|| {
+        format!("Failed to read file {} (resolved to {})", file, full_path.display())
+    })?;
+    let file_len = bytes.len();
+    if byte_start > byte_end || byte_end > file_len {
+        return Err(anyhow!(
+            "Invalid byte range: byte_start={} byte_end={} file_len={}",
+            byte_start,
+            byte_end,
+            file_len
+        ));
+    }
+    let new_bytes = new_content.as_bytes();
+    let new_byte_count = new_bytes.len();
+    bytes.splice(byte_start..byte_end, new_bytes.iter().copied());
+    fs::write(&full_path, &bytes).with_context(|| {
+        format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
+    })?;
+    let payload = PatchBytesPayload {
+        tool: "patch_bytes",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        file,
+        byte_start,
+        byte_end,
+        new_bytes: new_byte_count,
+    };
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+// ── Multi-patch ───────────────────────────────────────────────────────────────
+
+pub struct PatchEdit {
+    pub file: String,
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub new_content: String,
+}
+
+/// Public entrypoint for `multi_patch`: apply N byte-level edits across M files atomically.
+/// Edits within each file are applied bottom-up (descending byte_start) so earlier offsets
+/// are not shifted by later replacements. Each file is written exactly once.
+pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String> {
+    let root = resolve_project_root(path)?;
+
+    // Group edits by file.
+    let mut by_file: HashMap<String, Vec<PatchEdit>> = HashMap::new();
+    let total_edits = edits.len();
+    for edit in edits {
+        by_file.entry(edit.file.clone()).or_default().push(edit);
+    }
+
+    let files_written = by_file.len();
+
+    for (file, mut file_edits) in by_file {
+        let full_path = root.join(&file);
+        let mut bytes = fs::read(&full_path).with_context(|| {
+            format!("Failed to read file {} (resolved to {})", file, full_path.display())
+        })?;
+        let file_len = bytes.len();
+
+        // Validate ranges.
+        for e in &file_edits {
+            if e.byte_start > e.byte_end || e.byte_end > file_len {
+                return Err(anyhow!(
+                    "Invalid byte range in {}: byte_start={} byte_end={} file_len={}",
+                    file,
+                    e.byte_start,
+                    e.byte_end,
+                    file_len
+                ));
+            }
+        }
+
+        // Sort descending by byte_start (bottom-up) to preserve offsets.
+        file_edits.sort_by(|a, b| b.byte_start.cmp(&a.byte_start));
+
+        // Check for overlaps (after sorting).
+        for i in 1..file_edits.len() {
+            if file_edits[i - 1].byte_start < file_edits[i].byte_end {
+                return Err(anyhow!(
+                    "Overlapping edits in {}: [{}, {}) overlaps [{}, {})",
+                    file,
+                    file_edits[i].byte_start,
+                    file_edits[i].byte_end,
+                    file_edits[i - 1].byte_start,
+                    file_edits[i - 1].byte_end
+                ));
+            }
+        }
+
+        // Apply edits bottom-up.
+        for edit in &file_edits {
+            bytes.splice(edit.byte_start..edit.byte_end, edit.new_content.as_bytes().iter().copied());
+        }
+
+        fs::write(&full_path, &bytes).with_context(|| {
+            format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
+        })?;
+    }
+
+    let payload = MultiPatchPayload {
+        tool: "multi_patch",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        files_written,
+        edits_applied: total_edits,
+    };
+    Ok(serde_json::to_string_pretty(&payload)?)
 }
 
 /// Apply a line-range replacement in a file. Returns (file, start, end, total_lines) for the payload.

@@ -47,6 +47,8 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "find_docs",        description: "Find README, .env, config, or Docker files in the project.", requires_bake: false },
         ToolDescription { name: "patch",            description: "Replace a line range in a file with new content.", requires_bake: false },
         ToolDescription { name: "patch_by_symbol",  description: "Replace a function body by symbol name. Resolves location from the bake index.", requires_bake: true },
+        ToolDescription { name: "patch_bytes",      description: "Splice at exact byte offsets. Use byte_start/byte_end from the bake index for sub-line precision (e.g. rename an identifier without touching the rest of the line).", requires_bake: true },
+        ToolDescription { name: "multi_patch",      description: "Apply N byte-level edits across M files in one call. Edits are applied bottom-up per file so offsets stay valid. Each file is written exactly once. Ideal for graph-level mutations like renaming a symbol at every call site.", requires_bake: true },
     ]
 }
 
@@ -139,6 +141,26 @@ fn workflow_catalog() -> Vec<Workflow> {
             steps: vec![
                 WorkflowStep { tool: "find_docs", hint: "Use doc_type: readme | env | config | docker | all" },
                 WorkflowStep { tool: "slice",     hint: "Read the first N lines of any matched file" },
+            ],
+        },
+        Workflow {
+            name: "Graph-level rename",
+            description: "Rename a symbol at its definition and every call site using byte-precise edits. Each file is written exactly once.",
+            steps: vec![
+                WorkflowStep { tool: "bake",         hint: "Ensure the index is fresh so byte_start/byte_end are accurate" },
+                WorkflowStep { tool: "symbol",        hint: "Confirm the definition: note file, byte_start, byte_end" },
+                WorkflowStep { tool: "blast_radius",  hint: "Find all callers and affected files" },
+                WorkflowStep { tool: "supersearch",   hint: "Search for the old name (context=identifiers) to collect call-site offsets" },
+                WorkflowStep { tool: "multi_patch",   hint: "Pass all edits (definition + call sites) in one call; bottom-up order is handled automatically" },
+            ],
+        },
+        Workflow {
+            name: "Precise in-line edit",
+            description: "Replace a single identifier or expression at exact byte position without touching surrounding code.",
+            steps: vec![
+                WorkflowStep { tool: "symbol",      hint: "Look up the function; note byte_start/byte_end from the index" },
+                WorkflowStep { tool: "slice",       hint: "Read the relevant lines to confirm the target byte range" },
+                WorkflowStep { tool: "patch_bytes", hint: "Splice new_content at byte_start..byte_end; only those bytes change" },
             ],
         },
     ]
