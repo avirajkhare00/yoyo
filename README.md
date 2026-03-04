@@ -108,7 +108,29 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
-The AI assistant can then call all 17 tools — `bake`, `symbol`, `supersearch`, `api_trace`, `suggest_placement`, and more — grounding its answers in your actual code.
+Once configured, your AI assistant can call **all 17 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
+
+| MCP tool | Typical call | What it does |
+|---|---|---|
+| `bake` | `bake(path)` | Build the Tree-sitter index for the project. Must run before most other tools. |
+| `shake` | `shake(path)` | High-level repo overview: languages, file counts, top-complex functions, endpoints. |
+| `search` | `search(path, q)` | Fuzzy search over function names and file paths. Great for “where is X defined?”. |
+| `symbol` | `symbol(path, name, include_source)` | Find a function by name, returning file, line range, and optionally the full body inline. |
+| `slice` | `slice(path, file, start, end)` | Read an exact line range from a file for precise code inspection. |
+| `supersearch` | `supersearch(path, query)` | AST-aware search across TypeScript, Rust, and Python source files. |
+| `file_functions` | `file_functions(path, file)` | List all functions in a file with complexity scores. |
+| `api_surface` | `api_surface(path, package)` | Exported/public API grouped by module; omit `package` for a project-wide view. |
+| `package_summary` | `package_summary(path, package)` | Deep-dive a module: files, functions, endpoints, and complexity. |
+| `architecture_map` | `architecture_map(path, intent)` | Directory tree with role hints based on file names and an optional intent string. |
+| `suggest_placement` | `suggest_placement(path, function_name, function_type, related_to)` | Scored candidates for where new code should live, given a name/type and an optional related symbol. |
+| `all_endpoints` | `all_endpoints(path)` | List all detected HTTP endpoints (Express/Actix/Flask/FastAPI). |
+| `api_trace` | `api_trace(path, endpoint, method)` | Trace a single route through its handler for a given path + HTTP method. |
+| `crud_operations` | `crud_operations(path, entity)` | Inferred CRUD matrix from routes, optionally filtered to a specific entity. |
+| `find_docs` | `find_docs(path, doc_type)` | Locate READMEs, `.env`, Dockerfiles, and other config/docs (`doc_type` can be `readme`, `env`, `config`, `docker`, or `all`). |
+| `patch` | `patch(path, ...)` | Apply structured edits by symbol (`symbol` + `new_content`) or by file + line range. |
+| `llm_instructions` | `llm_instructions(path)` | Return a compact JSON “prime directive” with guidance on how assistants should use yoyo. |
+
+In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
 
 ---
 
