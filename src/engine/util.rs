@@ -114,6 +114,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     let mut files = Vec::new();
     let mut functions = Vec::new();
     let mut endpoints = Vec::new();
+    let mut types = Vec::new();
 
     fn walk(
         dir: &Path,
@@ -122,6 +123,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         files: &mut Vec<BakeFile>,
         functions: &mut Vec<crate::lang::IndexedFunction>,
         endpoints: &mut Vec<crate::lang::IndexedEndpoint>,
+        types: &mut Vec<crate::lang::IndexedType>,
     ) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -135,7 +137,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                         continue;
                     }
                 }
-                walk(&path, root, languages, files, functions, endpoints)?;
+                walk(&path, root, languages, files, functions, endpoints, types)?;
             } else if path.is_file() {
                 let meta = entry.metadata()?;
                 let bytes = meta.len();
@@ -152,9 +154,10 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
 
                 if let Some(analyzer) = crate::lang::find_analyzer(lang) {
                     match analyzer.analyze_file(root, &path) {
-                        Ok((funcs, eps)) => {
+                        Ok((funcs, eps, typs)) => {
                             functions.extend(funcs);
                             endpoints.extend(eps);
+                            types.extend(typs);
                         }
                         Err(_) => {} // skip files that fail to parse
                     }
@@ -171,6 +174,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         &mut files,
         &mut functions,
         &mut endpoints,
+        &mut types,
     )?;
 
     Ok(BakeIndex {
@@ -180,6 +184,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         files,
         functions,
         endpoints,
+        types,
     })
 }
 

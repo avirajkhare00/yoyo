@@ -7,7 +7,7 @@ use tree_sitter_go::LANGUAGE;
 
 use super::{
     line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    LanguageAnalyzer, NodeKinds,
+    IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
 pub struct GoAnalyzer;
@@ -34,7 +34,7 @@ impl LanguageAnalyzer for GoAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -46,8 +46,9 @@ impl LanguageAnalyzer for GoAnalyzer {
 
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
-        walk_go(&source, root, file, tree.root_node(), &mut functions, &mut endpoints);
-        Ok((functions, endpoints))
+        let mut types = Vec::new();
+        walk_go(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        Ok((functions, endpoints, types))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -80,8 +81,38 @@ fn walk_go(
     node: Node,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
+    types: &mut Vec<IndexedType>,
 ) {
     match node.kind() {
+        "type_declaration" => {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "type_spec" {
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                        if !name.is_empty() {
+                            let kind = child
+                                .child_by_field_name("type")
+                                .map(|t| match t.kind() {
+                                    "struct_type" => "struct",
+                                    "interface_type" => "interface",
+                                    _ => "type",
+                                })
+                                .unwrap_or("type");
+                            let (start_line, end_line) = line_range(&child);
+                            types.push(IndexedType {
+                                name,
+                                file: relative(root, file),
+                                language: "go".to_string(),
+                                start_line,
+                                end_line,
+                                kind: kind.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
         "function_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
@@ -123,7 +154,7 @@ fn walk_go(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_go(source, root, file, child, functions, endpoints);
+        walk_go(source, root, file, child, functions, endpoints, types);
     }
 }
 

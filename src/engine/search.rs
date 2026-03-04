@@ -46,8 +46,37 @@ pub fn search(path: Option<String>, query: String, limit: Option<usize>) -> Resu
                 end_line: f.end_line,
                 complexity: f.complexity,
                 score,
+                kind: None,
             })
         })
+        .chain(bake.types.iter().filter_map(|t| {
+            let name = t.name.to_lowercase();
+            let file = t.file.to_lowercase();
+
+            let score = if name == q {
+                3.0
+            } else if name.contains(&q) {
+                2.0
+            } else if file.contains(&q) {
+                1.0
+            } else {
+                0.0
+            };
+
+            if score <= 0.0 {
+                return None;
+            }
+
+            Some(SearchFunctionHit {
+                name: t.name.clone(),
+                file: t.file.clone(),
+                start_line: t.start_line,
+                end_line: t.end_line,
+                complexity: 0,
+                score,
+                kind: Some(t.kind.clone()),
+            })
+        }))
         .collect();
 
     function_hits.sort_by(|a, b| {
@@ -131,12 +160,29 @@ pub fn symbol(path: Option<String>, name: String, include_source: bool) -> Resul
                     start_line: f.start_line,
                     end_line: f.end_line,
                     complexity: f.complexity,
+                    kind: None,
                     source: None,
                 })
             } else {
                 None
             }
         })
+        .chain(bake.types.iter().filter_map(|t| {
+            let tname = t.name.to_lowercase();
+            if tname == needle || tname.contains(&needle) {
+                Some(SymbolMatch {
+                    name: t.name.clone(),
+                    file: t.file.clone(),
+                    start_line: t.start_line,
+                    end_line: t.end_line,
+                    complexity: 0,
+                    kind: Some(t.kind.clone()),
+                    source: None,
+                })
+            } else {
+                None
+            }
+        }))
         .collect();
 
     matches.sort_by(|a, b| {

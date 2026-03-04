@@ -7,7 +7,7 @@ use tree_sitter_python::LANGUAGE;
 
 use super::{
     line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    LanguageAnalyzer, NodeKinds,
+    IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
 pub struct PythonAnalyzer;
@@ -34,7 +34,7 @@ impl LanguageAnalyzer for PythonAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -46,8 +46,9 @@ impl LanguageAnalyzer for PythonAnalyzer {
 
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
-        walk_py(&source, root, file, tree.root_node(), &mut functions, &mut endpoints);
-        Ok((functions, endpoints))
+        let mut types = Vec::new();
+        walk_py(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        Ok((functions, endpoints, types))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -80,8 +81,25 @@ fn walk_py(
     node: Node,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
+    types: &mut Vec<IndexedType>,
 ) {
     match node.kind() {
+        "class_definition" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    let (start_line, end_line) = line_range(&node);
+                    types.push(IndexedType {
+                        name,
+                        file: relative(root, file),
+                        language: "python".to_string(),
+                        start_line,
+                        end_line,
+                        kind: "class".to_string(),
+                    });
+                }
+            }
+        }
         "function_definition" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
@@ -136,7 +154,7 @@ fn walk_py(
                     }
                 } else {
                     // Could be a class — recurse into it.
-                    walk_py(source, root, file, def, functions, endpoints);
+                    walk_py(source, root, file, def, functions, endpoints, types);
                 }
                 return; // children already handled
             }
@@ -146,7 +164,7 @@ fn walk_py(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_py(source, root, file, child, functions, endpoints);
+        walk_py(source, root, file, child, functions, endpoints, types);
     }
 }
 

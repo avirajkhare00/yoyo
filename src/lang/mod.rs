@@ -31,6 +31,16 @@ pub struct IndexedEndpoint {
     pub framework: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexedType {
+    pub name: String,
+    pub file: String,
+    pub language: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub kind: String, // "struct" | "enum" | "trait" | "type" | "class" | "interface"
+}
+
 #[derive(Debug)]
 pub struct AstMatch {
     pub line: u32,
@@ -45,7 +55,7 @@ pub trait LanguageAnalyzer: Send + Sync {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>)>;
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)>;
     fn supports_ast_search(&self) -> bool {
         false
     }

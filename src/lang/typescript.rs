@@ -7,7 +7,7 @@ use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
 
 use super::{
     line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    LanguageAnalyzer, NodeKinds,
+    IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
 pub struct TypeScriptAnalyzer;
@@ -34,7 +34,7 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -45,8 +45,9 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
             .ok_or_else(|| anyhow::anyhow!("failed to parse {}", file.display()))?;
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
-        walk_ts(&source, root, file, tree.root_node(), &mut functions, &mut endpoints);
-        Ok((functions, endpoints))
+        let mut types = Vec::new();
+        walk_ts(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        Ok((functions, endpoints, types))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -79,6 +80,7 @@ fn walk_ts(
     node: Node,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
+    types: &mut Vec<IndexedType>,
 ) {
     match node.kind() {
         "function_declaration" => {
@@ -139,11 +141,75 @@ fn walk_ts(
         "call_expression" => {
             detect_express_call(source, root, file, node, endpoints);
         }
+        "class_declaration" | "abstract_class_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    let (start_line, end_line) = line_range(&node);
+                    types.push(IndexedType {
+                        name,
+                        file: relative(root, file),
+                        language: "typescript".to_string(),
+                        start_line,
+                        end_line,
+                        kind: "class".to_string(),
+                    });
+                }
+            }
+        }
+        "interface_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    let (start_line, end_line) = line_range(&node);
+                    types.push(IndexedType {
+                        name,
+                        file: relative(root, file),
+                        language: "typescript".to_string(),
+                        start_line,
+                        end_line,
+                        kind: "interface".to_string(),
+                    });
+                }
+            }
+        }
+        "type_alias_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    let (start_line, end_line) = line_range(&node);
+                    types.push(IndexedType {
+                        name,
+                        file: relative(root, file),
+                        language: "typescript".to_string(),
+                        start_line,
+                        end_line,
+                        kind: "type".to_string(),
+                    });
+                }
+            }
+        }
+        "enum_declaration" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    let (start_line, end_line) = line_range(&node);
+                    types.push(IndexedType {
+                        name,
+                        file: relative(root, file),
+                        language: "typescript".to_string(),
+                        start_line,
+                        end_line,
+                        kind: "enum".to_string(),
+                    });
+                }
+            }
+        }
         _ => {}
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_ts(source, root, file, child, functions, endpoints);
+        walk_ts(source, root, file, child, functions, endpoints, types);
     }
 }
 

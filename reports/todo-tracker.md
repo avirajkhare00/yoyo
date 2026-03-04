@@ -1,5 +1,5 @@
 # TODO Tracker
-**Last updated:** 2026-03-04 (updated file paths after engine refactor v0.3.1)
+**Last updated:** 2026-03-04 (v0.3.3: struct/type indexing)
 **Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session report
 
 Items are tagged with source:
@@ -44,13 +44,6 @@ Only 3 path-pattern keywords (`routes`, `controllers`, `services`, `models`, `en
 ---
 
 ## 🟡 P1 — Significantly limits usefulness
-
-### 4. `symbol` does not index structs, classes, or types
-**Source:** `[CODE]` `[BENCH]` `[SESSION]`
-
-Searching `symbol(BakeIndex)` returns nothing — it's a struct, not a function. Searching `symbol(SsdMobilenetv1)` returns call-site matches but not the class definition itself. During the blast-radius implementation session, finding `BakeIndex`'s definition required falling back to `supersearch` with `context: identifiers`.
-
-**Fix:** Add `struct_item`, `type_item`, `class_declaration`, `interface_declaration` to each language analyzer. Store in a separate `types` array in `BakeIndex`. Extend the `symbol` tool to search both `functions` and `types`.
 
 ---
 
@@ -150,11 +143,6 @@ Zero unit tests in `src/`. No CI pipeline.
 
 ---
 
-### 15. `search` only matches function names — misses struct/type names
-**Source:** `[SESSION]`
-
-Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only indexes `functions`. Should also search the `types` array once #4 is resolved.
-
 ---
 
 ## ✅ Resolved
@@ -173,6 +161,8 @@ Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only in
 | ✅ | Stale bake index after yoyo upgrade — auto-reindex when binary version > index version | v0.3.1 |
 | ✅ | Stale bake index after source edits — auto-reindex when any source file newer than `bake.json` | v0.3.1 |
 | ✅ | `llm_instructions` returned flat guidance string — replaced with structured tool catalog + 10 workflow chains | v0.3.2 |
+| ✅ | `symbol` and `search` missed structs, classes, interfaces, enums — added `IndexedType` to all 4 language analyzers + `types` array in `BakeIndex` | v0.3.3 |
+| ✅ | `search` only matched function names — now also searches `types` array | v0.3.3 |
 
 ---
 
@@ -181,7 +171,7 @@ Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only in
 | Priority | Count |
 |---|---|
 | 🔴 P0 (breaks usage) | 3 |
-| 🟡 P1 (significant gaps) | 5 |
-| 🟢 P2 (polish) | 7 |
-| ✅ Resolved | 12 |
+| 🟡 P1 (significant gaps) | 4 |
+| 🟢 P2 (polish) | 6 |
+| ✅ Resolved | 14 |
 | **Total tracked** | **27** |

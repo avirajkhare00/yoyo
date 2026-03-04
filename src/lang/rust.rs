@@ -7,7 +7,7 @@ use tree_sitter_rust::LANGUAGE;
 
 use super::{
     line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    LanguageAnalyzer, NodeKinds,
+    IndexedType, LanguageAnalyzer, NodeKinds,
 };
 
 pub struct RustAnalyzer;
@@ -34,7 +34,7 @@ impl LanguageAnalyzer for RustAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -46,19 +46,20 @@ impl LanguageAnalyzer for RustAnalyzer {
 
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
+        let mut types = Vec::new();
         let root_node = tree.root_node();
 
-        scan_children(&source, root, file, root_node, &mut functions, &mut endpoints);
+        scan_children(&source, root, file, root_node, &mut functions, &mut endpoints, &mut types);
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "impl_item" {
                 if let Some(body) = child.child_by_field_name("body") {
-                    scan_children(&source, root, file, body, &mut functions, &mut endpoints);
+                    scan_children(&source, root, file, body, &mut functions, &mut endpoints, &mut types);
                 }
             }
         }
 
-        Ok((functions, endpoints))
+        Ok((functions, endpoints, types))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -91,6 +92,7 @@ fn scan_children(
     parent: Node,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
+    types: &mut Vec<IndexedType>,
 ) {
     let mut cursor = parent.walk();
     let children: Vec<Node> = parent.children(&mut cursor).collect();
@@ -126,6 +128,28 @@ fn scan_children(
                                 framework: "actix/rocket".to_string(),
                             });
                         }
+                    }
+                }
+                pending_http = None;
+            }
+            "struct_item" | "enum_item" | "trait_item" | "type_item" => {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
+                        let (start_line, end_line) = line_range(&child);
+                        let kind = match child.kind() {
+                            "struct_item" => "struct",
+                            "enum_item"   => "enum",
+                            "trait_item"  => "trait",
+                            _             => "type",
+                        };
+                        types.push(IndexedType {
+                            name: name.to_string(),
+                            file: relative(root_path, file),
+                            language: "rust".to_string(),
+                            start_line,
+                            end_line,
+                            kind: kind.to_string(),
+                        });
                     }
                 }
                 pending_http = None;

@@ -15,6 +15,8 @@ pub(crate) struct BakeIndex {
     pub(crate) functions: Vec<crate::lang::IndexedFunction>,
     #[serde(default)]
     pub(crate) endpoints: Vec<crate::lang::IndexedEndpoint>,
+    #[serde(default)]
+    pub(crate) types: Vec<crate::lang::IndexedType>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -121,6 +123,8 @@ pub(crate) struct SearchFunctionHit {
     pub(crate) end_line: u32,
     pub(crate) complexity: u32,
     pub(crate) score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) kind: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -147,6 +151,8 @@ pub(crate) struct SymbolMatch {
     pub(crate) start_line: u32,
     pub(crate) end_line: u32,
     pub(crate) complexity: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source: Option<String>,
 }
