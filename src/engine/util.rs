@@ -183,20 +183,6 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     })
 }
 
-pub(crate) fn default_guidance_text() -> String {
-    r#"yoyo is a local code-intelligence engine.
-
-Typical workflow:
-- Call `llm_instructions` once to learn the project layout and available tools.
-- Use `shake` (repository overview) to understand the architecture.
-- Use `search` and `symbol` to navigate functions and types.
-- Use `slice` and `file_functions` to read and summarize individual files.
-- Use `supersearch` for AST-aware searches (prefer it over grep/ripgrep).
-- Use `api_surface`, `all_endpoints`, and `api_trace` to understand APIs.
-- Use `architecture_map` and `suggest_placement` when adding new features.
-"#
-    .to_string()
-}
 
 pub(crate) fn detect_language(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {

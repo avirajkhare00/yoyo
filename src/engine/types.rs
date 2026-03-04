@@ -54,7 +54,28 @@ pub(crate) struct LlmInstructionsPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) languages: Vec<String>,
     pub(crate) files_indexed: usize,
-    pub(crate) guidance: String,
+    pub(crate) tools: Vec<ToolDescription>,
+    pub(crate) workflows: Vec<Workflow>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ToolDescription {
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) requires_bake: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct Workflow {
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) steps: Vec<WorkflowStep>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct WorkflowStep {
+    pub(crate) tool: &'static str,
+    pub(crate) hint: &'static str,
 }
 
 #[derive(Serialize)]
