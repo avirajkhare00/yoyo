@@ -32,9 +32,8 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "llm_instructions", description: "Read this first. Returns available tools, workflows, and project stats.", requires_bake: false },
         ToolDescription { name: "bake",             description: "Build or refresh the index. Auto-reindexes on version upgrade or source file change.", requires_bake: false },
         ToolDescription { name: "shake",            description: "Repository overview: languages, file counts, top complex functions, detected endpoints.", requires_bake: false },
-        ToolDescription { name: "search",           description: "Fuzzy search over function names and file paths. Returns scored hits with line ranges.", requires_bake: true },
         ToolDescription { name: "symbol",           description: "Exact/partial function lookup. Set include_source=true to retrieve the function body inline.", requires_bake: true },
-        ToolDescription { name: "slice",            description: "Read a specific line range of any file. Use start_line/end_line from search or symbol.", requires_bake: false },
+        ToolDescription { name: "slice",            description: "Read a specific line range of any file. Use start_line/end_line from symbol.", requires_bake: false },
         ToolDescription { name: "file_functions",   description: "List all functions in a file with line ranges and cyclomatic complexity.", requires_bake: true },
         ToolDescription { name: "supersearch",      description: "AST-aware search over source files. Prefer over grep. Supports context and pattern filters.", requires_bake: true },
         ToolDescription { name: "all_endpoints",    description: "List all detected HTTP endpoints (Express / Actix / Gin / net/http).", requires_bake: true },
@@ -65,9 +64,9 @@ fn workflow_catalog() -> Vec<Workflow> {
             name: "Explore a function",
             description: "Find a function by name and read its source.",
             steps: vec![
-                WorkflowStep { tool: "search", hint: "Fuzzy search by function name or file path to get line ranges" },
-                WorkflowStep { tool: "symbol", hint: "Exact lookup; set include_source=true to get the body inline" },
-                WorkflowStep { tool: "slice",  hint: "Read surrounding context using start_line/end_line from symbol" },
+                WorkflowStep { tool: "supersearch", hint: "Search by name or pattern to find the function" },
+                WorkflowStep { tool: "symbol",      hint: "Exact lookup; set include_source=true to get the body inline" },
+                WorkflowStep { tool: "slice",       hint: "Read surrounding context using start_line/end_line from symbol" },
             ],
         },
         Workflow {
@@ -94,7 +93,7 @@ fn workflow_catalog() -> Vec<Workflow> {
             name: "Impact analysis",
             description: "Find everything that will break if you change a function.",
             steps: vec![
-                WorkflowStep { tool: "search",       hint: "Confirm the exact symbol name exists in the index" },
+                WorkflowStep { tool: "symbol",       hint: "Confirm the exact symbol name exists in the index" },
                 WorkflowStep { tool: "blast_radius", hint: "Get all transitive callers and affected files" },
                 WorkflowStep { tool: "symbol",       hint: "Inspect each caller for context" },
                 WorkflowStep { tool: "slice",        hint: "Read caller bodies to understand the coupling" },

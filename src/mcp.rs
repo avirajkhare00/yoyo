@@ -158,7 +158,14 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "serverInfo": {
                     "name": "yoyo",
                     "version": env!("CARGO_PKG_VERSION"),
-                }
+                },
+                "instructions": "You have access to yoyo, a code intelligence MCP server. \
+                    Always call `llm_instructions` first on any new project to learn available tools and workflows. \
+                    Call `bake` to build or refresh the index before using index-dependent tools. \
+                    Use `supersearch` for all code search (replaces grep). \
+                    Use `symbol` with include_source=true to read function bodies. \
+                    Use `slice` to read arbitrary line ranges. \
+                    Use `patch` or `patch_by_symbol` to write changes back."
             });
 
             JsonRpcResponse {
