@@ -133,7 +133,7 @@ All commands accept `--path /path/to/project` (defaults to current directory).
 | API trace | `yoyo api-trace --endpoint <path> --method <GET\|POST\|…>` | Trace a route through its handler |
 | CRUD operations | `yoyo crud-operations [--entity <name>]` | CRUD matrix inferred from routes |
 | Find docs | `yoyo find-docs --doc-type <readme\|env\|config\|docker\|all>` | Locate config and documentation files |
-| Patch | `yoyo patch --file <f> --start <n> --end <n> --new-content <text>` | Replace a line range in a file |
+| Patch | `yoyo patch --symbol <name> --new-content <text>` or `--file <f> --start <n> --end <n> --new-content <text>` | Replace by symbol name (from index) or by line range |
 | LLM instructions | `yoyo llm-instructions` | Prime directive JSON for AI assistants |
 
 ---

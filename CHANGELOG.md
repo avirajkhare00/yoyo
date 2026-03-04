@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.4] - 2026-03-04
+
+### Added
+- **Patch by symbol** — `patch` can now target a function by name instead of file/line range.
+  CLI: `yoyo patch --symbol <name> --new-content "..." [--match-index N]`. MCP: pass `name`
+  (and optional `match_index`) instead of `file`/`start`/`end`. Resolves location from the bake
+  index; same sort order as `symbol` (exact match first, then complexity). Range-based patch
+  (`--file`, `--start`, `--end`) unchanged.
+
+---
+
 ## [0.2.3] - 2026-03-04
 
 ### Added
