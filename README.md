@@ -10,13 +10,11 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
 | | Without yoyo | With yoyo |
 |---|---|---|
-| Onboard to an unfamiliar codebase | ~15–20 min of `ls`, grep, file-by-file reading | ~30 seconds across 8 parallel tool calls |
+| Onboard to an unfamiliar codebase | `ls`, grep, file-by-file reading | A few parallel tool calls |
 | Find where a function is defined | Search IDE, scroll, guess filenames | `yoyo symbol --name myFn` → file + line range |
-| Trace usage of a function across 386 files | Hours with grep | `yoyo supersearch --query detectAllFaces` → instant |
+| Trace usages across a large codebase | Grep hunt across dozens of files | `yoyo supersearch --query myFn` → instant |
 | Understand a module's public API | Open every file in the module | `yoyo package_summary --package services` → done |
 | Know where to add new code | Team discussion, guesswork | `yoyo suggest_placement --function-name sendEmail` |
-
-**Benchmarked on real codebases: 30–40× faster onboarding than manual methods.**
 
 ---
 
@@ -26,7 +24,7 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 Top complex functions, language breakdown, and project structure in one call. No reading required.
 
 **`supersearch` — whole-codebase search in seconds.**
-Traced every usage of `detectAllFaces` across a 386-file ML library in a single query.
+AST-aware search across TypeScript, Rust, and Python — finds every usage of a function or identifier in one query.
 
 **`symbol` + `slice` — pinpoint any function.**
 Find a 260-line function by name, then read it verbatim. Use `symbol --include-source` to get the
