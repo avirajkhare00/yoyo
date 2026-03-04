@@ -1,5 +1,5 @@
 # TODO Tracker
-**Last updated:** 2026-03-04
+**Last updated:** 2026-03-04 (updated file paths after engine refactor v0.3.1)
 **Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session report
 
 Items are tagged with source:
@@ -14,7 +14,7 @@ Items are tagged with source:
 
 ### 1. `api_surface` has no output cap — overflows LLM context on large projects
 **Source:** `[README]` `[BENCH]`
-**File:** `src/engine.rs` — `api_surface()`
+**File:** `src/engine/api.rs:40` — `api_surface()`
 
 Returns all functions for all modules in one shot. Produced **50.7 KB** on face-api.js (386 files), exceeding inline display limits.
 
@@ -33,7 +33,7 @@ Produced 298 K characters on face-api.js. Completely unusable on any mid-size pr
 
 ### 3. `architecture_map` role inference is too narrow
 **Source:** `[README]` `[CODE]` `[BENCH]`
-**File:** `src/engine.rs:762–776`
+**File:** `src/engine/nav.rs:73` — `architecture_map()`
 
 Only 3 path-pattern keywords (`routes`, `controllers`, `services`, `models`, `entities`). All 45 directories in face-api.js got `roles: []`. Also, the `intent` parameter is required but not documented as such — calling without it returns an MCP error, which is a bad experience.
 
@@ -56,7 +56,7 @@ Searching `symbol(BakeIndex)` returns nothing — it's a struct, not a function.
 
 ### 5. `blast_radius` output has no deduplication — same caller appears N times via N paths
 **Source:** `[SESSION]`
-**File:** `src/engine.rs:916–979`
+**File:** `src/engine/analysis.rs:11` — `blast_radius()`
 
 `blast_radius(load_bake_index, depth=3)` returns `call_tool` 15 times at depth 2 (once per engine function it calls). `run` appears 14 times at depth 3. The BFS correctly avoids re-enqueueing visited nodes but does not deduplicate the output `callers` vec.
 
@@ -146,7 +146,7 @@ No per-project excludes beyond the hardcoded list (`.git`, `node_modules`, `targ
 
 Zero unit tests in `src/`. No CI pipeline.
 
-**Fix:** Unit test each `engine.rs` function against fixture files. Integration test `bake` on a known project and assert specific functions are found.
+**Fix:** Unit test each engine submodule function against fixture files. Integration test `bake` on a known project and assert specific functions are found.
 
 ---
 
@@ -169,6 +169,10 @@ Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only in
 | ✅ | Bake index lacked call graph — no `calls`/`called_by` data | v0.2.6 |
 | ✅ | No blast radius analysis tool | v0.2.6 |
 | ✅ | Go language support missing | v0.2.6 |
+| ✅ | `engine.rs` monolith (1,756 lines) — split into 9 submodules under `src/engine/` | v0.3.1 |
+| ✅ | Stale bake index after yoyo upgrade — auto-reindex when binary version > index version | v0.3.1 |
+| ✅ | Stale bake index after source edits — auto-reindex when any source file newer than `bake.json` | v0.3.1 |
+| ✅ | `llm_instructions` returned flat guidance string — replaced with structured tool catalog + 10 workflow chains | v0.3.2 |
 
 ---
 
@@ -179,5 +183,5 @@ Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only in
 | 🔴 P0 (breaks usage) | 3 |
 | 🟡 P1 (significant gaps) | 5 |
 | 🟢 P2 (polish) | 7 |
-| ✅ Resolved | 8 |
-| **Total tracked** | **23** |
+| ✅ Resolved | 12 |
+| **Total tracked** | **27** |
