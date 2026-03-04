@@ -9,8 +9,6 @@ pub enum Command {
     Shake(ShakeArgs),
     /// Build and persist a bake index under the project root.
     Bake(BakeArgs),
-    /// Fuzzy search over functions and files from the bake index.
-    Search(SearchArgs),
     /// Detailed lookup of a function symbol from the bake index.
     Symbol(SymbolArgs),
     /// List all detected API endpoints from the bake index.
@@ -60,21 +58,6 @@ pub struct BakeArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct SearchArgs {
-    /// Optional path to the project directory to analyze.
-    #[arg(long)]
-    pub path: Option<String>,
-
-    /// Search query text.
-    #[arg(long)]
-    pub q: String,
-
-    /// Maximum number of results for functions and files.
-    #[arg(long, default_value_t = 10)]
-    pub limit: usize,
 }
 
 #[derive(Args, Debug)]
@@ -300,7 +283,6 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
         Some(Command::Shake(args)) => run_shake(args).await?,
         Some(Command::Bake(args)) => run_bake(args).await?,
-        Some(Command::Search(args)) => run_search(args).await?,
         Some(Command::Symbol(args)) => run_symbol(args).await?,
         Some(Command::AllEndpoints(args)) => run_all_endpoints(args).await?,
         Some(Command::Slice(args)) => run_slice(args).await?,
@@ -316,9 +298,8 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Patch(args)) => run_patch(args).await?,
         Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
         None => {
-            // For now, print a minimal hint. More commands will be added later.
             eprintln!(
-                "No command provided. Try `yoyo llm-instructions --help`, `yoyo shake --help`, `yoyo bake --help`, `yoyo search --help`, `yoyo symbol --help`, `yoyo all-endpoints --help`, `yoyo slice --help`, `yoyo api-surface --help`, `yoyo file-functions --help`, `yoyo supersearch --help`, `yoyo package-summary --help`, `yoyo architecture-map --help`, `yoyo suggest-placement --help`, `yoyo crud-operations --help`, `yoyo api-trace --help`, `yoyo find-docs --help`, `yoyo patch --help`, or `yoyo blast-radius --help`."
+                "No command provided. Try `yoyo llm-instructions --help`, `yoyo shake --help`, `yoyo bake --help`, `yoyo symbol --help`, `yoyo all-endpoints --help`, `yoyo slice --help`, `yoyo api-surface --help`, `yoyo file-functions --help`, `yoyo supersearch --help`, `yoyo package-summary --help`, `yoyo architecture-map --help`, `yoyo suggest-placement --help`, `yoyo crud-operations --help`, `yoyo api-trace --help`, `yoyo find-docs --help`, `yoyo patch --help`, or `yoyo blast-radius --help`."
             );
         }
     }
@@ -339,12 +320,6 @@ async fn run_shake(args: ShakeArgs) -> anyhow::Result<()> {
 
 async fn run_bake(args: BakeArgs) -> anyhow::Result<()> {
     let json = crate::engine::bake(args.path)?;
-    println!("{json}");
-    Ok(())
-}
-
-async fn run_search(args: SearchArgs) -> anyhow::Result<()> {
-    let json = crate::engine::search(args.path, args.q, Some(args.limit))?;
     println!("{json}");
     Ok(())
 }

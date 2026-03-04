@@ -105,37 +105,6 @@ pub(crate) struct BakeSummary {
 }
 
 #[derive(Serialize)]
-pub(crate) struct SearchPayload {
-    pub(crate) tool: &'static str,
-    pub(crate) version: &'static str,
-    pub(crate) project_root: PathBuf,
-    pub(crate) query: String,
-    pub(crate) limit: usize,
-    pub(crate) function_hits: Vec<SearchFunctionHit>,
-    pub(crate) file_hits: Vec<SearchFileHit>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct SearchFunctionHit {
-    pub(crate) name: String,
-    pub(crate) file: String,
-    pub(crate) start_line: u32,
-    pub(crate) end_line: u32,
-    pub(crate) complexity: u32,
-    pub(crate) score: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) kind: Option<String>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct SearchFileHit {
-    pub(crate) path: String,
-    pub(crate) language: String,
-    pub(crate) bytes: u64,
-    pub(crate) score: f32,
-}
-
-#[derive(Serialize)]
 pub(crate) struct SymbolPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,

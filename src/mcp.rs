@@ -254,27 +254,6 @@ fn list_tools() -> Value {
                 }
             },
             {
-                "name": "search",
-                "description": "Fuzzy search over functions and files from the bake index.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "q": {
-                            "type": "string",
-                            "description": "Search query text"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of results for functions and files (default 10)"
-                        }
-                    }
-                }
-            },
-            {
                 "name": "symbol",
                 "description": "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline (no need to call slice separately).",
                 "inputSchema": {
@@ -634,34 +613,6 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             let json = crate::engine::bake(path)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "search" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let q = p
-                .arguments
-                .get("q")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'q' argument for search"))?;
-            let limit = p
-                .arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let json = crate::engine::search(path, q, limit)?;
             Ok(serde_json::json!({
                 "content": [
                     {
