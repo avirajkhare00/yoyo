@@ -1,6 +1,6 @@
 # yoyo – Local Code Intelligence Engine
 
-**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 17 LLM-ready tools over CLI and stdio.
+**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 18 LLM-ready tools over CLI and stdio.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
@@ -106,7 +106,7 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
-Once configured, your AI assistant can call **all 17 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
+Once configured, your AI assistant can call **all 18 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
 
 | MCP tool | Typical call | What it does |
 |---|---|---|
@@ -115,17 +115,18 @@ Once configured, your AI assistant can call **all 17 yoyo tools as MCP methods**
 | `search` | `search(path, q)` | Fuzzy search over function names and file paths. Great for “where is X defined?”. |
 | `symbol` | `symbol(path, name, include_source)` | Find a function by name, returning file, line range, and optionally the full body inline. |
 | `slice` | `slice(path, file, start, end)` | Read an exact line range from a file for precise code inspection. |
-| `supersearch` | `supersearch(path, query)` | AST-aware search across TypeScript, Rust, and Python source files. |
+| `supersearch` | `supersearch(path, query)` | AST-aware search across TypeScript, Rust, Python, and Go source files. |
 | `file_functions` | `file_functions(path, file)` | List all functions in a file with complexity scores. |
 | `api_surface` | `api_surface(path, package)` | Exported/public API grouped by module; omit `package` for a project-wide view. |
 | `package_summary` | `package_summary(path, package)` | Deep-dive a module: files, functions, endpoints, and complexity. |
 | `architecture_map` | `architecture_map(path, intent)` | Directory tree with role hints based on file names and an optional intent string. |
 | `suggest_placement` | `suggest_placement(path, function_name, function_type, related_to)` | Scored candidates for where new code should live, given a name/type and an optional related symbol. |
-| `all_endpoints` | `all_endpoints(path)` | List all detected HTTP endpoints (Express/Actix/Flask/FastAPI). |
+| `all_endpoints` | `all_endpoints(path)` | List all detected HTTP endpoints (Express/Actix/Flask/FastAPI/gin/echo). |
 | `api_trace` | `api_trace(path, endpoint, method)` | Trace a single route through its handler for a given path + HTTP method. |
 | `crud_operations` | `crud_operations(path, entity)` | Inferred CRUD matrix from routes, optionally filtered to a specific entity. |
 | `find_docs` | `find_docs(path, doc_type)` | Locate READMEs, `.env`, Dockerfiles, and other config/docs (`doc_type` can be `readme`, `env`, `config`, `docker`, or `all`). |
 | `patch` | `patch(path, ...)` | Apply structured edits by symbol (`symbol` + `new_content`) or by file + line range. |
+| `blast_radius` | `blast_radius(path, symbol, depth)` | Find all functions that transitively call a symbol, and the affected files. Uses the call graph built into the bake index. |
 | `llm_instructions` | `llm_instructions(path)` | Return a compact JSON “prime directive” with guidance on how assistants should use yoyo. |
 
 In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
@@ -154,6 +155,7 @@ All commands accept `--path /path/to/project` (defaults to current directory).
 | CRUD operations | `yoyo crud-operations [--entity <name>]` | CRUD matrix inferred from routes |
 | Find docs | `yoyo find-docs --doc-type <readme\|env\|config\|docker\|all>` | Locate config and documentation files |
 | Patch | `yoyo patch --symbol <name> --new-content <text>` or `--file <f> --start <n> --end <n> --new-content <text>` | Replace by symbol name (from index) or by line range |
+| Blast radius | `yoyo blast-radius --symbol <name> [--depth N]` | Transitive callers of a function + affected files (default depth 2) |
 | LLM instructions | `yoyo llm-instructions` | Prime directive JSON for AI assistants |
 
 ---
@@ -203,7 +205,10 @@ LSP tells you what exists at your cursor. yoyo tells an AI what the codebase loo
 
 - **Limited route detection** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), Flask/FastAPI (Python), and gin/echo/net-http (Go) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
 - **Large project output** — `find_docs` and `api_surface` on 300+ file projects can exceed LLM context limits. Use `--package` or `--limit` to filter.
-- **No call graph** — `api_trace` cannot follow call chains deeper than the route handler itself.
+- **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package will match all callers of any `parse`. Re-run `bake` after code changes to refresh the graph.
+- **No struct/type lookup** — `symbol` and `search` only index functions; searching for a struct or class name requires `supersearch`.
+
+Full prioritised backlog: [`reports/todo-tracker.md`](./reports/todo-tracker.md)
 
 ---
 
@@ -216,10 +221,11 @@ src/
   engine.rs         core query functions backing all tools
   mcp.rs            MCP JSON-RPC server over stdio
   lang/
-    mod.rs          LanguageAnalyzer trait, shared AST helpers
-    typescript.rs   TypeScript/Express indexing
-    rust.rs         Rust/Actix/Rocket indexing
-    python.rs       Python/Flask/FastAPI indexing
+    mod.rs          LanguageAnalyzer trait, IndexedFunction (incl. calls graph), shared AST helpers
+    typescript.rs   TypeScript/JS — functions, arrow fns, Express routes, call extraction
+    rust.rs         Rust — functions, Actix/Rocket routes, call + method_call extraction
+    python.rs       Python — functions, Flask/FastAPI decorators, call extraction
+    go.rs           Go — functions, methods, gin/echo/net-http routes, call extraction
 ```
 
 ---

@@ -114,6 +114,7 @@ fn scan_children(
                             start_line,
                             end_line,
                             complexity: estimate_complexity(child, source),
+                            calls: collect_calls(child, source),
                         });
                         if let Some((method, path)) = pending_http.take() {
                             endpoints.push(IndexedEndpoint {
@@ -134,6 +135,53 @@ fn scan_children(
                 pending_http = None;
             }
         }
+    }
+}
+
+fn collect_calls(node: Node, source: &str) -> Vec<String> {
+    let mut calls = Vec::new();
+    collect_calls_inner(node, source, &mut calls);
+    calls.sort();
+    calls.dedup();
+    calls
+}
+
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<String>) {
+    match node.kind() {
+        "call_expression" => {
+            if let Some(func) = node.child_by_field_name("function") {
+                let name = match func.kind() {
+                    "identifier" => func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+                    "scoped_identifier" => func
+                        .child_by_field_name("name")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("")
+                        .to_string(),
+                    "field_expression" => func
+                        .child_by_field_name("field")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("")
+                        .to_string(),
+                    _ => String::new(),
+                };
+                if !name.is_empty() {
+                    calls.push(name);
+                }
+            }
+        }
+        "method_call_expression" => {
+            if let Some(method) = node.child_by_field_name("method") {
+                let name = method.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                if !name.is_empty() {
+                    calls.push(name);
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_calls_inner(child, source, calls);
     }
 }
 

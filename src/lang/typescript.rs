@@ -108,6 +108,7 @@ fn walk_ts(
                                 start_line,
                                 end_line,
                                 complexity: estimate_complexity(value, source),
+                                calls: collect_calls(value, source),
                             });
                         }
                     }
@@ -128,6 +129,7 @@ fn walk_ts(
                                 start_line,
                                 end_line,
                                 complexity: estimate_complexity(right, source),
+                                calls: collect_calls(right, source),
                             });
                         }
                     }
@@ -165,7 +167,39 @@ fn push_function(
         start_line,
         end_line,
         complexity: estimate_complexity(node, source),
+        calls: collect_calls(node, source),
     });
+}
+
+fn collect_calls(node: Node, source: &str) -> Vec<String> {
+    let mut calls = Vec::new();
+    collect_calls_inner(node, source, &mut calls);
+    calls.sort();
+    calls.dedup();
+    calls
+}
+
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<String>) {
+    if node.kind() == "call_expression" {
+        if let Some(func) = node.child_by_field_name("function") {
+            let name = match func.kind() {
+                "identifier" => func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+                "member_expression" => func
+                    .child_by_field_name("property")
+                    .and_then(|p| p.utf8_text(source.as_bytes()).ok())
+                    .unwrap_or("")
+                    .to_string(),
+                _ => String::new(),
+            };
+            if !name.is_empty() {
+                calls.push(name);
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_calls_inner(child, source, calls);
+    }
 }
 
 /// Get a single name from a declarator (identifier, or "constructor" for class property assign).

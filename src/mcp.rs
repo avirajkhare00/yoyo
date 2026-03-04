@@ -554,6 +554,28 @@ fn list_tools() -> Value {
                         }
                     }
                 }
+            },
+            {
+                "name": "blast_radius",
+                "description": "Analyse the blast radius of a symbol: find all functions that (transitively) call it, and the set of affected files. Requires a prior bake.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": "Function name to analyse (exact match on the callee name)"
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Maximum call-graph depth to traverse (default 2)"
+                        }
+                    }
+                }
             }
         ]
     })
@@ -1022,6 +1044,34 @@ async fn call_tool(params: Value) -> Result<Value> {
                     as u32;
                 crate::engine::patch(path, file, start, end, new_content)?
             };
+            Ok(serde_json::json!({
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json
+                    }
+                ],
+                "isError": false
+            }))
+        }
+        "blast_radius" => {
+            let path = p
+                .arguments
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let symbol = p
+                .arguments
+                .get("symbol")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'symbol' argument for blast_radius"))?;
+            let depth = p
+                .arguments
+                .get("depth")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let json = crate::engine::blast_radius(path, symbol, depth)?;
             Ok(serde_json::json!({
                 "content": [
                     {

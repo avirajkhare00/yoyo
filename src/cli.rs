@@ -37,6 +37,8 @@ pub enum Command {
     FindDocs(FindDocsArgs),
     /// Apply a patch by symbol name or by file/line range.
     Patch(PatchArgs),
+    /// Analyse the blast radius of a symbol (transitive callers + affected files).
+    BlastRadius(BlastRadiusArgs),
 }
 
 #[derive(Args, Debug)]
@@ -278,6 +280,21 @@ pub struct PatchArgs {
     pub new_content: String,
 }
 
+#[derive(Args, Debug)]
+pub struct BlastRadiusArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Function name to analyse (exact match on the callee name).
+    #[arg(long)]
+    pub symbol: String,
+
+    /// Maximum call-graph depth to traverse (default 2).
+    #[arg(long)]
+    pub depth: Option<usize>,
+}
+
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
         Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
@@ -297,10 +314,11 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::ApiTrace(args)) => run_api_trace(args).await?,
         Some(Command::FindDocs(args)) => run_find_docs(args).await?,
         Some(Command::Patch(args)) => run_patch(args).await?,
+        Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
         None => {
             // For now, print a minimal hint. More commands will be added later.
             eprintln!(
-                "No command provided. Try `yoyo llm-instructions --help`, `yoyo shake --help`, `yoyo bake --help`, `yoyo search --help`, `yoyo symbol --help`, `yoyo all-endpoints --help`, `yoyo slice --help`, `yoyo api-surface --help`, `yoyo file-functions --help`, `yoyo supersearch --help`, `yoyo package-summary --help`, `yoyo architecture-map --help`, `yoyo suggest-placement --help`, `yoyo crud-operations --help`, `yoyo api-trace --help`, `yoyo find-docs --help`, or `yoyo patch --help`."
+                "No command provided. Try `yoyo llm-instructions --help`, `yoyo shake --help`, `yoyo bake --help`, `yoyo search --help`, `yoyo symbol --help`, `yoyo all-endpoints --help`, `yoyo slice --help`, `yoyo api-surface --help`, `yoyo file-functions --help`, `yoyo supersearch --help`, `yoyo package-summary --help`, `yoyo architecture-map --help`, `yoyo suggest-placement --help`, `yoyo crud-operations --help`, `yoyo api-trace --help`, `yoyo find-docs --help`, `yoyo patch --help`, or `yoyo blast-radius --help`."
             );
         }
     }
@@ -429,3 +447,8 @@ async fn run_patch(args: PatchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn run_blast_radius(args: BlastRadiusArgs) -> anyhow::Result<()> {
+    let json = crate::engine::blast_radius(args.path, args.symbol, args.depth)?;
+    println!("{json}");
+    Ok(())
+}

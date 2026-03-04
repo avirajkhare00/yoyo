@@ -1,194 +1,183 @@
 # TODO Tracker
 **Last updated:** 2026-03-04
-**Sources:** README.md roadmap + live code analysis of `src/`
-
-> Items marked ✅ were resolved in v0.2.0.
+**Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session report
 
 Items are tagged with source:
 - `[README]` — listed in README TODO/Roadmap section
 - `[CODE]` — discovered by reading source files
 - `[BENCH]` — confirmed broken by live benchmark run
+- `[SESSION]` — discovered during a live implementation session
 
 ---
 
 ## 🔴 P0 — Breaks real usage today
 
-### 1. ts_index.rs misses non-`function_declaration` nodes
-**Source:** `[CODE]` `[BENCH]`
-**File:** `src/ts_index.rs:70`
-```rust
-"function_declaration" => { ... }
-// NOT captured:
-// - method_definition (class methods)
-// - arrow_function (const fn = () => ...)
-// - function_expression (const fn = function() {})
-// - public_method_definition
-```
-`file_functions` returns 0 results for any TypeScript file that uses classes or arrow functions — which is the majority of modern TypeScript. `SsdMobilenetv1.ts` (133 lines, 5 methods) returned zero functions.
-
-**Fix:** Add cases for `method_definition`, `arrow_function`, `function_expression` in `walk_ts()`. For arrow/expression functions, use `variable_declarator` parent to infer the name.
-
----
-
-### 2. `api_surface` has no pagination — overflows LLM context on large projects
+### 1. `api_surface` has no output cap — overflows LLM context on large projects
 **Source:** `[README]` `[BENCH]`
 **File:** `src/engine.rs` — `api_surface()`
 
-Returns all functions for all modules in one shot. Produced **50.7 KB** on face-api.js (386 files), exceeding the inline display limit.
+Returns all functions for all modules in one shot. Produced **50.7 KB** on face-api.js (386 files), exceeding inline display limits.
 
-**Fix:** Honour existing `--limit` and `--package` flags to cap output. Add a `"truncated": true` field and `total_count` when results are capped.
-
----
-
-### 3. `find_docs` has no output cap
-**Source:** `[README]`
-**Previous benchmark result:** 298 K characters on face-api.js.
-
-**Fix:** Limit results to 50 items max. Add `--doc-type` and `--limit` filtering at the query level, not just post-collection.
+**Fix:** Honour existing `--limit` and `--package` flags to cap output. Add `"truncated": true` and `total_count` when results are capped.
 
 ---
 
-### 4. `architecture_map` role inference is too narrow
+### 2. `find_docs` has no output cap
+**Source:** `[README]` `[BENCH]`
+
+Produced 298 K characters on face-api.js. Completely unusable on any mid-size project.
+
+**Fix:** Limit results to 50 items max. Add filtering at the query level, not just post-collection.
+
+---
+
+### 3. `architecture_map` role inference is too narrow
 **Source:** `[README]` `[CODE]` `[BENCH]`
 **File:** `src/engine.rs:762–776`
-```rust
-if path_str.contains("routes") || path_str.contains("controllers") { ... }
-if path_str.contains("services") { ... }
-if path_str.contains("models") || path_str.contains("entities") { ... }
-```
-Only 3 patterns. All 45 directories in face-api.js got `roles: []`.
 
-**Missing keywords:** `handlers`, `repositories`, `resolvers`, `middleware`, `hooks`, `components`, `store`, `reducers`, `actions`, `selectors`, `utils`, `helpers`, `lib`, `api`, `net`, `network`, `dom`, `draw`, `ops`, `env`, `factories`, `classes`.
+Only 3 path-pattern keywords (`routes`, `controllers`, `services`, `models`, `entities`). All 45 directories in face-api.js got `roles: []`. Also, the `intent` parameter is required but not documented as such — calling without it returns an MCP error, which is a bad experience.
 
-**Fix:** Expand keyword table. Consider using `intent` parameter to boost matching for the stated project type.
+**Missing keywords:** `handlers`, `repositories`, `resolvers`, `middleware`, `hooks`, `components`, `store`, `reducers`, `actions`, `selectors`, `utils`, `helpers`, `lib`, `api`, `net`, `network`, `dom`, `draw`, `ops`, `factories`.
+
+**Fix:** Expand keyword table. Make `intent` optional with a sensible default (use empty string).
 
 ---
 
 ## 🟡 P1 — Significantly limits usefulness
 
-### 5. `supersearch` default path bypasses AST filtering
-**Source:** `[CODE]`
-**File:** `src/engine.rs:512`
-```rust
-if lang == "typescript" && (context_norm != "all" || pattern_norm != "all") {
-    ast_supersearch_typescript(...)
-} else {
-    // plain line-oriented text search ← default path (context=all, pattern=all)
-}
-```
-When the user passes the defaults (`context=all, pattern=all`), the code falls through to a plain `str.contains()` loop — the AST walk is never entered. Users passing context/pattern always get AST filtering, but anyone relying on the default gets dumb line search.
+### 4. `symbol` does not index structs, classes, or types
+**Source:** `[CODE]` `[BENCH]` `[SESSION]`
 
-Additionally, the `walk_ts_supersearch` function may report duplicate line numbers when multiple AST nodes on the same line match the query (one `push` per identifier leaf, not per line).
+Searching `symbol(BakeIndex)` returns nothing — it's a struct, not a function. Searching `symbol(SsdMobilenetv1)` returns call-site matches but not the class definition itself. During the blast-radius implementation session, finding `BakeIndex`'s definition required falling back to `supersearch` with `context: identifiers`.
 
-**Fix:** Always use AST walk for TypeScript files; apply context/pattern filtering on the same pass. Deduplicate by `(file, line)` before pushing to `matches`.
+**Fix:** Add `struct_item`, `type_item`, `class_declaration`, `interface_declaration` to each language analyzer. Store in a separate `types` array in `BakeIndex`. Extend the `symbol` tool to search both `functions` and `types`.
 
 ---
 
-### 6. `supersearch` context/pattern flags described as "best-effort" but expected to work
+### 5. `blast_radius` output has no deduplication — same caller appears N times via N paths
+**Source:** `[SESSION]`
+**File:** `src/engine.rs:916–979`
+
+`blast_radius(load_bake_index, depth=3)` returns `call_tool` 15 times at depth 2 (once per engine function it calls). `run` appears 14 times at depth 3. The BFS correctly avoids re-enqueueing visited nodes but does not deduplicate the output `callers` vec.
+
+**Fix:** Add a `--unique` flag (default true) that deduplicates callers by name+file before returning. Keep the current "show all paths" behaviour accessible via `--unique false`.
+
+---
+
+### 6. `supersearch` context/pattern flags unreliable — "best-effort" caveat
 **Source:** `[README]` `[BENCH]`
-The CLI help strings and MCP schema descriptions both say "currently best-effort" — this signals to LLM consumers that the flags may be ignored. The README benchmark confirmed identical results across three filter combinations.
 
-**Fix:** Once #5 is resolved, remove "currently best-effort" from help strings and mark the flags as reliable.
+CLI help strings and MCP schema both say "currently best-effort". Benchmark confirmed identical results across three filter combinations.
 
----
-
-### 7. `symbol` does not index class definitions
-**Source:** `[CODE]` `[BENCH]`
-Searching `symbol(SsdMobilenetv1)` returns `allFacesSsdMobilenetv1` and `createSsdMobilenetv1` — not the class itself. Class declarations are not captured in `ts_index.rs`.
-
-**Fix:** Add `"class_declaration"` to `walk_ts()`. Store class name + file + line range in a separate `ts_classes` array in `BakeIndex`.
+**Fix:** Verify AST filter wiring for all languages; remove "currently best-effort" wording once confirmed reliable.
 
 ---
 
-### 8. `api_trace` and `crud_operations` limited to static Express routes
+### 7. `api_trace` and `crud_operations` limited to static route patterns
 **Source:** `[README]`
-Both tools return zero results on non-Express projects (CLI tools, ML libraries, NestJS apps, etc.).
+
+Return zero results on NestJS, Fastify, Hono, CLI tools, ML libraries. Now that we have a call graph, `api_trace` could follow chains deeper than the route handler.
 
 **Fix (incremental):**
 - Phase 1: Detect NestJS `@Get()`, `@Post()`, `@Controller()` decorators via Tree-sitter.
 - Phase 2: Detect Fastify/Hono route patterns.
-- Phase 3: Add DB-layer signal (Prisma `findMany/create/update/delete`) as CRUD proxy.
+- Phase 3: Use `calls` graph to follow handler call chains (now possible with blast_radius data).
 
 ---
 
-### ✅ 9. No language support beyond TypeScript/JavaScript *(resolved in v0.2.0)*
-Rust and Python support added via `LanguageAnalyzer` trait. `symbol`, `file_functions`, `supersearch` now work for `.rs` and `.py` files.
+### 8. No import/dependency graph
+**Source:** `[SESSION]`
 
----
+`blast_radius` traces call-graph edges (function → function) but has no concept of file-level imports. A file that imports a changed module but never calls its functions is not captured. Call-name matching is also unqualified — `foo` matches any `foo` regardless of module.
 
-### 10. `symbol` requires a follow-up `slice` to read the function body
-**Source:** `[README]`
-Every `symbol` call forces a second round-trip (`slice`) to get the actual source. For LLM use cases this doubles latency.
-
-**Fix:** Add optional `--include-source` flag to `symbol`. When set, append a `source` field containing the full function body text.
+**Fix:** Extract `import`/`use`/`require` statements in each language analyzer. Store as `imports: Vec<String>` on `IndexedFile`. Build a file-level reverse dependency graph alongside the call graph.
 
 ---
 
 ## 🟢 P2 — Polish & completeness
 
-### 11. `suggest_placement` often recommends test files
+### 9. `suggest_placement` recommends test files
 **Source:** `[BENCH]`
-`suggest_placement(detectFacesFromStream, service, related_to=detectAllFaces)` returned `test/tests/globalApi/detectAllFaces.test.ts` as top result. Test files should be excluded from placement candidates by default (or heavily down-ranked).
 
-**Fix:** Exclude `test/`, `spec/`, `__tests__/` directories from placement suggestions by default. Add `--include-tests` flag to opt in.
+Returns `test/tests/globalApi/detectAllFaces.test.ts` as top candidate for a service function. Test files should be excluded by default.
+
+**Fix:** Exclude `test/`, `spec/`, `__tests__/` from placement candidates. Add `--include-tests` to opt in.
 
 ---
 
-### 12. `shake` shows no top functions when run before `bake` in parallel
+### 10. `shake` returns no function data if run before bake completes
 **Source:** `[BENCH]`
-When `shake` and `bake` run in parallel (Batch 1), `shake` fires before `bake` writes `bake.json` and falls back to a lightweight filesystem scan with no function data.
 
-**Fix:** `shake` could check for the bake index with a short retry or note in the response that baking is in progress.
+When `shake` and `bake` run in parallel, `shake` fires before `bake.json` is written and falls back to a lightweight scan with no function data.
 
----
-
-### 13. Missing PRD tools: `related_to` and `frontend`
-**Source:** `[README]`
-- `related_to` — find symbols related to a given one by call graph proximity.
-- `frontend` — components, hooks, props, client-side routes.
+**Fix:** `shake` could note in the response that baking is in progress, or attempt a short retry.
 
 ---
 
-### 14. Bake index lacks call graph
-**Source:** `[README]`
-No `calls`/`called_by` data persisted. `api_trace` can't follow call chains.
+### 11. `blast_radius` callers list is unsorted and unranked
+**Source:** `[SESSION]`
 
-**Fix:** Add `callee` extraction in `walk_ts()` — when inside a `function_declaration`, record `call_expression` callee names as outgoing edges.
+Callers are returned in BFS traversal order. For large codebases, the most impactful callers (high-complexity functions, entry points) should surface first.
+
+**Fix:** Sort callers by depth (ascending), then by function complexity (descending from bake index). Optionally add a `risk_score` per caller.
 
 ---
 
-### 15. No incremental baking
+### 12. No incremental baking
 **Source:** `[README]`
-Full re-bake on every invocation. For a 386-file project this is fast enough, but will become slow on monorepos (1000+ files).
+
+Full re-bake on every invocation. Fast enough for small projects, will bottleneck on monorepos (1000+ files).
 
 **Fix:** Hash file contents; skip re-parsing files whose hash hasn't changed since last bake.
 
 ---
 
-### 16. No `yoyo.yaml` config file support
+### 13. No `yoyo.yaml` config file support
 **Source:** `[README]`
-No per-project excludes (e.g. `node_modules/`, `dist/`, `vendor/`). face-api.js inflated file counts due to nested paths.
+
+No per-project excludes beyond the hardcoded list (`.git`, `node_modules`, `target`, `dist`, `build`, `__pycache__`).
+
+**Fix:** Support `yoyo.yaml` with `exclude`, `include_only`, and `depth` settings.
 
 ---
 
-### 17. No tests or CI
+### 14. No tests or CI
 **Source:** `[README]`
+
 Zero unit tests in `src/`. No CI pipeline.
 
-**Fix:** Unit test each `engine.rs` function against fixture TypeScript files. Integration test `bake` on a known project and assert specific functions are found.
+**Fix:** Unit test each `engine.rs` function against fixture files. Integration test `bake` on a known project and assert specific functions are found.
 
 ---
 
-### ✅ 18. License not set *(resolved in v0.2.0)*
-MIT license added (`LICENSE` file, README updated).
+### 15. `search` only matches function names — misses struct/type names
+**Source:** `[SESSION]`
+
+Searching for `BakeIndex` returns 0 hits because it's a struct. `search` only indexes `functions`. Should also search the `types` array once #4 is resolved.
 
 ---
 
-## Counts by priority
+## ✅ Resolved
+
+| # | Item | Version |
+|---|---|---|
+| ✅ | No language support beyond TypeScript/JavaScript | v0.2.0 |
+| ✅ | License not set | v0.2.0 |
+| ✅ | `symbol` requires a follow-up `slice` for source — added `--include-source` | v0.2.4 |
+| ✅ | `walk_ts` missed `method_definition`, `arrow_function`, `function_expression` | v0.2.0 |
+| ✅ | `supersearch` bypassed AST walk on default `context=all, pattern=all` | v0.2.5 |
+| ✅ | Bake index lacked call graph — no `calls`/`called_by` data | v0.2.6 |
+| ✅ | No blast radius analysis tool | v0.2.6 |
+| ✅ | Go language support missing | v0.2.6 |
+
+---
+
+## Priority summary
 
 | Priority | Count |
 |---|---|
-| 🔴 P0 (breaks usage) | 4 |
-| 🟡 P1 (significant gaps) | 6 |
-| 🟢 P2 (polish) | 8 |
-| **Total** | **18** |
+| 🔴 P0 (breaks usage) | 3 |
+| 🟡 P1 (significant gaps) | 5 |
+| 🟢 P2 (polish) | 7 |
+| ✅ Resolved | 8 |
+| **Total tracked** | **23** |

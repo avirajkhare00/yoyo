@@ -17,6 +17,8 @@ pub struct IndexedFunction {
     pub start_line: u32,
     pub end_line: u32,
     pub complexity: u32,
+    #[serde(default)]
+    pub calls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

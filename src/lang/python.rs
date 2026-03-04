@@ -93,6 +93,7 @@ fn walk_py(
                     start_line,
                     end_line,
                     complexity: estimate_complexity(node, source),
+                    calls: collect_calls(node, source),
                 });
             }
         }
@@ -120,6 +121,7 @@ fn walk_py(
                             start_line,
                             end_line,
                             complexity: estimate_complexity(def, source),
+                            calls: collect_calls(def, source),
                         });
                         if let Some((method, path)) = method_path {
                             endpoints.push(IndexedEndpoint {
@@ -145,6 +147,37 @@ fn walk_py(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         walk_py(source, root, file, child, functions, endpoints);
+    }
+}
+
+fn collect_calls(node: Node, source: &str) -> Vec<String> {
+    let mut calls = Vec::new();
+    collect_calls_inner(node, source, &mut calls);
+    calls.sort();
+    calls.dedup();
+    calls
+}
+
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<String>) {
+    if node.kind() == "call" {
+        if let Some(func) = node.child_by_field_name("function") {
+            let name = match func.kind() {
+                "identifier" => func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+                "attribute" => func
+                    .child_by_field_name("attribute")
+                    .and_then(|a| a.utf8_text(source.as_bytes()).ok())
+                    .unwrap_or("")
+                    .to_string(),
+                _ => String::new(),
+            };
+            if !name.is_empty() {
+                calls.push(name);
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_calls_inner(child, source, calls);
     }
 }
 
