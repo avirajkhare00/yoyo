@@ -1,3 +1,4 @@
+pub mod go;
 pub mod python;
 pub mod rust;
 pub mod typescript;
@@ -60,6 +61,7 @@ pub trait LanguageAnalyzer: Send + Sync {
 /// Registry — one place to add new languages.
 pub fn find_analyzer(lang: &str) -> Option<Box<dyn LanguageAnalyzer>> {
     let all: Vec<Box<dyn LanguageAnalyzer>> = vec![
+        Box::new(go::GoAnalyzer),
         Box::new(python::PythonAnalyzer),
         Box::new(rust::RustAnalyzer),
         Box::new(typescript::TypeScriptAnalyzer),

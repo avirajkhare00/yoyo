@@ -468,6 +468,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-go"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8560a4d2f835cc0d4d2c2e03cbd0dde2f6114b43bc491164238d333e28b16ea"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -612,7 +622,7 @@ checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "yoyo"
-version = "0.2.3"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -620,6 +630,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tree-sitter",
+ "tree-sitter-go",
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",

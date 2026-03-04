@@ -1,6 +1,6 @@
 # yoyo – Local Code Intelligence Engine
 
-**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, and Python projects with Tree-sitter and exposes 17 LLM-ready tools over CLI and stdio.
+**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 17 LLM-ready tools over CLI and stdio.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
@@ -183,7 +183,7 @@ Full benchmark report: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports
 
 ## Known limitations (current version)
 
-- **Express/Actix/Flask routes only** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), and Flask/FastAPI (Python) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
+- **Limited route detection** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), Flask/FastAPI (Python), and gin/echo/net-http (Go) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
 - **Large project output** — `find_docs` and `api_surface` on 300+ file projects can exceed LLM context limits. Use `--package` or `--limit` to filter.
 - **No call graph** — `api_trace` cannot follow call chains deeper than the route handler itself.
 
