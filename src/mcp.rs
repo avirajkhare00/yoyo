@@ -276,7 +276,7 @@ fn list_tools() -> Value {
             },
             {
                 "name": "symbol",
-                "description": "Detailed lookup of a function symbol from the bake index.",
+                "description": "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline (no need to call slice separately).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -287,6 +287,10 @@ fn list_tools() -> Value {
                         "name": {
                             "type": "string",
                             "description": "Symbol (function) name to look up"
+                        },
+                        "include_source": {
+                            "type": "boolean",
+                            "description": "If true, include the function body (source code) in each match"
                         }
                     }
                 }
@@ -650,7 +654,12 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for symbol"))?;
-            let json = crate::engine::symbol(path, name)?;
+            let include_source = p
+                .arguments
+                .get("include_source")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let json = crate::engine::symbol(path, name, include_source)?;
             Ok(serde_json::json!({
                 "content": [
                     {

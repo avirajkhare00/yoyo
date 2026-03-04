@@ -21,8 +21,8 @@ Call all tools in this exact sequence, in parallel batches where possible:
 - `supersearch(path, query="<key pattern>")`          → AST-aware text search
 
 ## BATCH 4 (symbol inspection)
-- `symbol(path, name="<most complex function>")`      → definition + location
-- `symbol(path, name="<key data type>")`              → definition + location
+- `symbol(path, name="<most complex function>", include_source=true)`  → definition + location + body
+- `symbol(path, name="<key data type>", include_source=true)`        → definition + location + body
 - `file_functions(path, file="<main entry file>")`    → all functions in file
 - `file_functions(path, file="<core logic file>")`    → all functions in file
 

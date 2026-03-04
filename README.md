@@ -29,7 +29,8 @@ Top complex functions, language breakdown, and project structure in one call. No
 Traced every usage of `detectAllFaces` across a 386-file ML library in a single query.
 
 **`symbol` + `slice` — pinpoint any function.**
-Find a 260-line function by name, then read it verbatim. No IDE, no scrolling.
+Find a 260-line function by name, then read it verbatim. Use `symbol --include-source` to get the
+function body inline in one call; no second `slice` needed. No IDE, no scrolling.
 
 **`package_summary` — full module deep-dive.**
 Got the complete MTCNN 3-stage pipeline (PNet → RNet → ONet) without opening a single file.
@@ -82,7 +83,7 @@ yoyo bake --path /path/to/your/project
 # 2. instant overview
 yoyo shake --path /path/to/your/project
 
-# 3. find a function by name
+# 3. find a function by name (add --include-source to get body inline)
 yoyo symbol --path /path/to/your/project --name myFunction
 
 # 4. search across all files
@@ -120,7 +121,7 @@ All commands accept `--path /path/to/project` (defaults to current directory).
 | Bake | `yoyo bake` | Build Tree-sitter index → `bakes/latest/bake.json` |
 | Shake | `yoyo shake` | Overview: languages, top complex functions, endpoints |
 | Search | `yoyo search --q <term>` | Fuzzy search over function names and file paths |
-| Symbol | `yoyo symbol --name <fn>` | Find a function by name → file + line range |
+| Symbol | `yoyo symbol --name <fn> [--include-source]` | Find a function by name → file + line range (optionally include body inline) |
 | Slice | `yoyo slice --file <f> --start <n> --end <n>` | Read an exact line range |
 | Supersearch | `yoyo supersearch --query <term>` | AST-aware search across TypeScript, Rust, and Python files |
 | File functions | `yoyo file-functions --file <f>` | List functions in a file with complexity |
@@ -163,7 +164,6 @@ Full benchmark report: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports
 ## Known limitations (current version)
 
 - **Express/Actix/Flask routes only** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), and Flask/FastAPI (Python) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
-- **Class methods and arrow functions** — TypeScript indexing captures `function_declaration` nodes. Class methods and arrow functions are not yet indexed.
 - **Large project output** — `find_docs` and `api_surface` on 300+ file projects can exceed LLM context limits. Use `--package` or `--limit` to filter.
 - **No call graph** — `api_trace` cannot follow call chains deeper than the route handler itself.
 

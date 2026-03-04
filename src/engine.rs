@@ -222,7 +222,8 @@ pub fn search(path: Option<String>, query: String, limit: Option<usize>) -> Resu
 }
 
 /// Public entrypoint for the `symbol` tool: detailed lookup by function name.
-pub fn symbol(path: Option<String>, name: String) -> Result<String> {
+/// When `include_source` is true, each match includes the function body (lines start_line..end_line).
+pub fn symbol(path: Option<String>, name: String, include_source: bool) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
@@ -241,6 +242,7 @@ pub fn symbol(path: Option<String>, name: String) -> Result<String> {
                     start_line: f.start_line,
                     end_line: f.end_line,
                     complexity: f.complexity,
+                    source: None,
                 })
             } else {
                 None
@@ -257,6 +259,21 @@ pub fn symbol(path: Option<String>, name: String) -> Result<String> {
             .then(b.complexity.cmp(&a.complexity))
             .then(a.file.cmp(&b.file))
     });
+
+    if include_source {
+        for m in &mut matches {
+            let full_path = root.join(&m.file);
+            if let Ok(content) = fs::read_to_string(&full_path) {
+                let all_lines: Vec<&str> = content.lines().collect();
+                let total = all_lines.len() as u32;
+                let s = (m.start_line.saturating_sub(1) as usize).min(all_lines.len());
+                let e = (m.end_line.min(total).saturating_sub(1) as usize).min(all_lines.len());
+                if s <= e {
+                    m.source = Some(all_lines[s..=e].join("\n"));
+                }
+            }
+        }
+    }
 
     let payload = SymbolPayload {
         tool: "symbol",
@@ -1135,6 +1152,8 @@ struct SymbolMatch {
     start_line: u32,
     end_line: u32,
     complexity: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
 }
 
 #[derive(Serialize)]

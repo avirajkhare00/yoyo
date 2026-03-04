@@ -83,16 +83,55 @@ fn walk_ts(
     match node.kind() {
         "function_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
+                push_function(source, root, file, node, name_node, functions);
+            }
+        }
+        "method_definition" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
-                let (start_line, end_line) = line_range(&node);
-                functions.push(IndexedFunction {
-                    name,
-                    file: relative(root, file),
-                    language: "typescript".to_string(),
-                    start_line,
-                    end_line,
-                    complexity: estimate_complexity(node, source),
-                });
+                if !name.is_empty() {
+                    push_function(source, root, file, node, name_node, functions);
+                }
+            }
+        }
+        "variable_declarator" => {
+            if let Some(value) = node.child_by_field_name("value") {
+                if value.kind() == "arrow_function" {
+                    if let Some(name_node) = node.child_by_field_name("name") {
+                        let name = name_from_declarator(name_node, source);
+                        if !name.is_empty() {
+                            let (start_line, end_line) = line_range(&value);
+                            functions.push(IndexedFunction {
+                                name,
+                                file: relative(root, file),
+                                language: "typescript".to_string(),
+                                start_line,
+                                end_line,
+                                complexity: estimate_complexity(value, source),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        "assignment_expression" => {
+            if let Some(right) = node.child_by_field_name("right") {
+                if right.kind() == "arrow_function" {
+                    if let Some(left) = node.child_by_field_name("left") {
+                        let name = left.utf8_text(source.as_bytes()).unwrap_or("").trim().to_string();
+                        if !name.is_empty() {
+                            let (start_line, end_line) = line_range(&right);
+                            functions.push(IndexedFunction {
+                                name,
+                                file: relative(root, file),
+                                language: "typescript".to_string(),
+                                start_line,
+                                end_line,
+                                complexity: estimate_complexity(right, source),
+                            });
+                        }
+                    }
+                }
             }
         }
         "call_expression" => {
@@ -103,6 +142,41 @@ fn walk_ts(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         walk_ts(source, root, file, child, functions, endpoints);
+    }
+}
+
+fn push_function(
+    source: &str,
+    root: &Path,
+    file: &Path,
+    node: Node,
+    name_node: Node,
+    functions: &mut Vec<IndexedFunction>,
+) {
+    let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+    if name.is_empty() {
+        return;
+    }
+    let (start_line, end_line) = line_range(&node);
+    functions.push(IndexedFunction {
+        name,
+        file: relative(root, file),
+        language: "typescript".to_string(),
+        start_line,
+        end_line,
+        complexity: estimate_complexity(node, source),
+    });
+}
+
+/// Get a single name from a declarator (identifier, or "constructor" for class property assign).
+fn name_from_declarator(name_node: Node, source: &str) -> String {
+    match name_node.kind() {
+        "identifier" => name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+        "object_pattern" | "array_pattern" => {
+            // Named arrow from destructuring: const { foo } = ...; we don't index as "foo" here.
+            String::new()
+        }
+        _ => name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
     }
 }
 

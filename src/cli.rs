@@ -84,6 +84,10 @@ pub struct SymbolArgs {
     /// Symbol (function) name to look up.
     #[arg(long)]
     pub name: String,
+
+    /// Include function body (source) inline in each match.
+    #[arg(long, default_value_t = false)]
+    pub include_source: bool,
 }
 
 #[derive(Args, Debug)]
@@ -320,7 +324,7 @@ async fn run_search(args: SearchArgs) -> anyhow::Result<()> {
 }
 
 async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
-    let json = crate::engine::symbol(args.path, args.name)?;
+    let json = crate::engine::symbol(args.path, args.name, args.include_source)?;
     println!("{json}");
     Ok(())
 }

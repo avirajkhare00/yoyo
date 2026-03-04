@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.3] - 2026-03-04
+
+### Added
+- **TypeScript class methods and arrow functions** — `bake` now indexes class methods
+  (`method_definition`, including `constructor`) and named arrow functions: `const fn = () => ...`
+  and `fn = () => ...` (from `variable_declarator` and `assignment_expression`). Modern TS/JS
+  codebases are fully covered; verified on notion-to-github.
+- **`symbol --include-source`** — When set (CLI: `--include-source`, MCP: `include_source: true`),
+  each symbol match includes the function body inline in the `source` field. Eliminates the
+  symbol → slice two-step; one call returns location and full source.
+
+### Changed
+- **Known limitations** — Removed “Class methods and arrow functions” from README; both are now
+  supported for TypeScript.
+
+---
+
 ## [0.2.2] - 2026-03-04
 
 ### Fixed
