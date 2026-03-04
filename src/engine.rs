@@ -508,7 +508,7 @@ pub fn supersearch(
 
     for file in &bake.files {
         let lang = file.language.as_str();
-        if !matches!(lang, "typescript" | "javascript" | "rust" | "python") {
+        if !matches!(lang, "typescript" | "javascript" | "rust" | "python" | "go") {
             continue;
         }
 
