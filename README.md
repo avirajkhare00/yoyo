@@ -181,6 +181,24 @@ Full benchmark report: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports
 
 ---
 
+## Why not just use LSP?
+
+LSP is for humans navigating code in an editor. yoyo is for AI agents understanding code. Different consumer, different job.
+
+| | LSP | yoyo |
+|---|---|---|
+| Consumer | Editor (VS Code, Neovim…) | AI assistant (Claude, Cursor…) |
+| Protocol | JSON-RPC to editor buffers | MCP stdio — AI calls tools directly |
+| Scope | Per-file, cursor-aware | Whole codebase in one call |
+| Setup | One server per language (gopls, rust-analyzer, pyright…) | One binary for all languages |
+| "Where should new code go?" | No equivalent | `suggest_placement` |
+| Project-wide complexity overview | No equivalent | `shake` |
+| Edit by symbol name | No equivalent | `patch` |
+
+LSP tells you what exists at your cursor. yoyo tells an AI what the codebase looks like and lets it act on it. Use both — LSP while writing, yoyo when asking Claude to understand or modify a codebase it has never seen.
+
+---
+
 ## Known limitations (current version)
 
 - **Limited route detection** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), Flask/FastAPI (Python), and gin/echo/net-http (Go) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
