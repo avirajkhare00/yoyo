@@ -16,7 +16,59 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 | Understand a module's public API | Open every file in the module | `yoyo package_summary --package services` → done |
 | Know where to add new code | Team discussion, guesswork | `yoyo suggest_placement --function-name sendEmail` |
 
+
+## How it works
+
+yoyo maintains two artifacts — source files and a bake index (`bakes/latest/bake.json`). The index is always derived from source; source is always the source of truth.
+
+### Index lifecycle
+
+```mermaid
+stateDiagram-v2
+    direction LR
+
+    [*] --> Uninitialised : project cloned / no index
+
+    Uninitialised --> Fresh : bake
+
+    Fresh --> Fresh : read tools\n(symbol, supersearch, slice…)\nno side-effects — parallelise freely
+
+    Fresh --> Fresh : write tool\n(patch, graph_rename…)\nreindex_files() auto-syncs after every write
+
+    Fresh --> Stale : external edit to source\n(outside yoyo)
+
+    Stale --> Fresh : bake\nor auto-detected on next tool call\n(mtime check)
+```
+
+### Tool call flow
+
+```mermaid
+flowchart TD
+    A([New session]) --> B{bake index\nexists and fresh?}
+
+    B -- No --> C[bake\nbootstrap — wait for completion]
+    B -- Yes --> D
+
+    C --> D{What do you need?}
+
+    D -- Explore structure --> E[shake · architecture_map\nfind_docs · package_summary\nparallelise freely — no index required]
+
+    D -- Read / search --> F[symbol · supersearch · slice\nblast_radius · trace_down · api_surface\nparallelise freely — index-dependent]
+
+    D -- Modify source --> G[patch · graph_rename\ngraph_add · graph_move\nsequential — one at a time]
+
+    G --> H[reindex_files auto-syncs\nbake.json updated immediately]
+    H --> D
+
+    E --> D
+    F --> D
+```
+
+**Concurrency rules in one line:** `bootstrap → (read* ∥) → write → (read* ∥) → …`
+Read tools are always safe to parallelise with each other. Write tools are always sequential. Never call a read-indexed tool on the same file while a write is in flight.
+
 ---
+
 
 ## Installation
 
