@@ -262,7 +262,7 @@ fn list_tools() -> Value {
             },
             {
                 "name": "symbol",
-                "description": "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline (no need to call slice separately).",
+                "description": "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline. Use file to scope to one module and limit to cap result size.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -277,6 +277,14 @@ fn list_tools() -> Value {
                         "include_source": {
                             "type": "boolean",
                             "description": "If true, include the function body (source code) in each match"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max matches to return (default 20). Lower when include_source=true to stay within context limits."
                         }
                     }
                 }
@@ -363,7 +371,7 @@ fn list_tools() -> Value {
             },
             {
                 "name": "supersearch",
-                "description": "AST-aware search over TypeScript, Rust, and Python source files.",
+                "description": "AST-aware search over TypeScript, Rust, Python, and Go source files. Prefer over grep. Use file to restrict scope and limit to cap noisy results.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -386,6 +394,14 @@ fn list_tools() -> Value {
                         "exclude_tests": {
                             "type": "boolean",
                             "description": "Whether to exclude likely test files"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max matches to return (default 200). Reduce for large codebases with common terms."
                         }
                     }
                 }
@@ -783,7 +799,17 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .get("include_source")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let json = crate::engine::symbol(path, name, include_source)?;
+            let file = p
+                .arguments
+                .get("file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let limit = p
+                .arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let json = crate::engine::symbol(path, name, include_source, file, limit)?;
             Ok(serde_json::json!({
                 "content": [
                     {
@@ -928,8 +954,19 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .arguments
                 .get("exclude_tests")
                 .and_then(|v| v.as_bool());
-            let json =
-                crate::engine::supersearch(path, query, context, pattern, exclude_tests)?;
+            let file_filter = p
+                .arguments
+                .get("file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let limit = p
+                .arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let json = crate::engine::supersearch(
+                path, query, context, pattern, exclude_tests, file_filter, limit,
+            )?;
             Ok(serde_json::json!({
                 "content": [
                     {

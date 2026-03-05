@@ -10,12 +10,19 @@ use super::util::{load_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `symbol` tool: detailed lookup by function name.
 /// When `include_source` is true, each match includes the function body (lines start_line..end_line).
-pub fn symbol(path: Option<String>, name: String, include_source: bool) -> Result<String> {
+pub fn symbol(
+    path: Option<String>,
+    name: String,
+    include_source: bool,
+    file: Option<String>,
+    limit: Option<usize>,
+) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
 
     let needle = name.to_lowercase();
+    let file_filter = file.as_deref().map(str::to_lowercase);
 
     let mut matches: Vec<SymbolMatch> = bake
         .functions
@@ -54,6 +61,11 @@ pub fn symbol(path: Option<String>, name: String, include_source: bool) -> Resul
         }))
         .collect();
 
+    // Narrow by file substring when caller specifies one.
+    if let Some(ref ff) = file_filter {
+        matches.retain(|m| m.file.to_lowercase().contains(ff.as_str()));
+    }
+
     matches.sort_by(|a, b| {
         // Prefer exact matches, then higher complexity.
         let a_exact = (a.name.to_lowercase() == needle) as i32;
@@ -63,6 +75,8 @@ pub fn symbol(path: Option<String>, name: String, include_source: bool) -> Resul
             .then(b.complexity.cmp(&a.complexity))
             .then(a.file.cmp(&b.file))
     });
+
+    matches.truncate(limit.unwrap_or(20));
 
     if include_source {
         for m in &mut matches {
@@ -102,6 +116,8 @@ pub fn supersearch(
     context: String,
     pattern: String,
     exclude_tests: Option<bool>,
+    file_filter: Option<String>,
+    limit: Option<usize>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
@@ -109,6 +125,7 @@ pub fn supersearch(
 
     let exclude_tests = exclude_tests.unwrap_or(false);
     let q = query.to_lowercase();
+    let ff = file_filter.as_deref().map(str::to_lowercase);
 
     // Normalize context/pattern to known values; fall back to "all" if unknown.
     let context_norm = match context.as_str() {
@@ -135,6 +152,11 @@ pub fn supersearch(
         let path_str = file.path.to_string_lossy();
         if exclude_tests && (path_str.contains("test") || path_str.contains("spec")) {
             continue;
+        }
+        if let Some(ref f) = ff {
+            if !path_str.to_lowercase().contains(f.as_str()) {
+                continue;
+            }
         }
 
         let full_path = root.join(&file.path);
@@ -178,6 +200,8 @@ pub fn supersearch(
             }
         }
     }
+
+    matches.truncate(limit.unwrap_or(200));
 
     let payload = SupersearchPayload {
         tool: "supersearch",
