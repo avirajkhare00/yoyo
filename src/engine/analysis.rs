@@ -75,13 +75,20 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
 }
 
 /// Public entrypoint for the `find_docs` tool.
-pub fn find_docs(path: Option<String>, doc_type: String) -> Result<String> {
+pub fn find_docs(path: Option<String>, doc_type: String, limit: Option<usize>) -> Result<String> {
     let root = resolve_project_root(path)?;
+    let limit = limit.unwrap_or(50);
 
     let mut matches = Vec::new();
 
-    fn walk_docs(dir: &Path, root: &Path, doc_type: &str, out: &mut Vec<DocMatch>) -> Result<()> {
+    fn walk_docs(dir: &Path, root: &Path, doc_type: &str, limit: usize, out: &mut Vec<DocMatch>) -> Result<()> {
+        if out.len() >= limit {
+            return Ok(());
+        }
         for entry in fs::read_dir(dir)? {
+            if out.len() >= limit {
+                break;
+            }
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
@@ -90,15 +97,18 @@ pub fn find_docs(path: Option<String>, doc_type: String) -> Result<String> {
                         continue;
                     }
                 }
-                walk_docs(&path, root, doc_type, out)?;
+                walk_docs(&path, root, doc_type, limit, out)?;
             } else if path.is_file() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
 
                 let is_match = match doc_type {
                     "readme" => name.to_lowercase().starts_with("readme"),
-                    "env" => name.starts_with(".env") || name.to_lowercase().contains("env"),
-                    "config" => name.to_lowercase().contains("config") || name.ends_with(".json"),
+                    "env" => name.starts_with(".env") || name.to_lowercase() == "env",
+                    "config" => {
+                        let lc = name.to_lowercase();
+                        lc.contains("config") || lc.ends_with(".toml") || lc.ends_with(".yaml") || lc.ends_with(".yml")
+                    }
                     "docker" => name.to_lowercase().contains("docker"),
                     "all" => true,
                     _ => false,
@@ -118,13 +128,15 @@ pub fn find_docs(path: Option<String>, doc_type: String) -> Result<String> {
         Ok(())
     }
 
-    walk_docs(&root, &root, &doc_type, &mut matches)?;
+    walk_docs(&root, &root, &doc_type, limit, &mut matches)?;
+    let truncated = matches.len() >= limit;
 
     let payload = FindDocsPayload {
         tool: "find_docs",
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         doc_type,
+        truncated,
         matches,
     };
 

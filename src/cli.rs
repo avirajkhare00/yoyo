@@ -199,7 +199,7 @@ pub struct ArchitectureMapArgs {
 
     /// Intent description, e.g. "user handler" or "auth service".
     #[arg(long)]
-    pub intent: String,
+    pub intent: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -256,6 +256,10 @@ pub struct FindDocsArgs {
     /// Documentation type: readme | env | config | docker | all.
     #[arg(long)]
     pub doc_type: String,
+
+    /// Maximum number of results to return (default 50).
+    #[arg(long, default_value_t = 50)]
+    pub limit: usize,
 }
 
 #[derive(Args, Debug)]
@@ -492,7 +496,7 @@ async fn run_api_trace(args: ApiTraceArgs) -> anyhow::Result<()> {
 }
 
 async fn run_find_docs(args: FindDocsArgs) -> anyhow::Result<()> {
-    let json = crate::engine::find_docs(args.path, args.doc_type)?;
+    let json = crate::engine::find_docs(args.path, args.doc_type, Some(args.limit))?;
     println!("{json}");
     Ok(())
 }

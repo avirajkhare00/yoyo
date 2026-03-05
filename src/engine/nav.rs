@@ -70,7 +70,7 @@ pub fn package_summary(path: Option<String>, package: String) -> Result<String> 
 }
 
 /// Public entrypoint for the `architecture_map` tool: project structure and placement hints.
-pub fn architecture_map(path: Option<String>, intent: String) -> Result<String> {
+pub fn architecture_map(path: Option<String>, intent: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
@@ -94,19 +94,24 @@ pub fn architecture_map(path: Option<String>, intent: String) -> Result<String> 
         entry.file_count += 1;
         entry.languages.insert(file.language.clone());
 
-        if path_str.contains("routes") || path_str.contains("controllers") {
-            if !entry.roles.contains(&"http-endpoints".to_string()) {
-                entry.roles.push("http-endpoints".to_string());
-            }
-        }
-        if path_str.contains("services") {
-            if !entry.roles.contains(&"services".to_string()) {
-                entry.roles.push("services".to_string());
-            }
-        }
-        if path_str.contains("models") || path_str.contains("entities") {
-            if !entry.roles.contains(&"models".to_string()) {
-                entry.roles.push("models".to_string());
+        let p = path_str.to_lowercase();
+        let role_map: &[(&str, &[&str])] = &[
+            ("http-endpoints", &["routes", "controllers", "handlers", "resolvers"]),
+            ("services",       &["services", "service"]),
+            ("models",         &["models", "entities", "entity", "schemas", "schema"]),
+            ("middleware",     &["middleware", "interceptors"]),
+            ("repositories",   &["repositories", "repo", "repos", "store", "stores"]),
+            ("components",     &["components", "widgets", "views"]),
+            ("utils",          &["utils", "helpers", "lib", "shared", "common"]),
+            ("api-client",     &["api", "network", "client", "clients"]),
+            ("hooks",          &["hooks"]),
+            ("factories",      &["factories", "factory"]),
+        ];
+        for (role, keywords) in role_map {
+            if keywords.iter().any(|kw| p.contains(kw)) {
+                if !entry.roles.contains(&role.to_string()) {
+                    entry.roles.push(role.to_string());
+                }
             }
         }
     }
@@ -114,38 +119,46 @@ pub fn architecture_map(path: Option<String>, intent: String) -> Result<String> 
     let mut dirs: Vec<ArchitectureDir> = directories.into_values().collect();
     dirs.sort_by(|a, b| a.path.cmp(&b.path));
 
-    // Very simple suggestion heuristic based on intent keywords.
-    let intent_lc = intent.to_lowercase();
+    let intent_str = intent.clone().unwrap_or_default();
+    let intent_lc = intent_str.to_lowercase();
     let mut suggestions = Vec::new();
-    for dir in &dirs {
-        let mut score = 0u32;
-        let path_lc = dir.path.to_lowercase();
 
-        if intent_lc.contains("handler") || intent_lc.contains("endpoint") {
-            if path_lc.contains("routes") || path_lc.contains("controllers") {
-                score += 5;
-            }
-        }
-        if intent_lc.contains("service") {
-            if path_lc.contains("service") {
-                score += 5;
-            }
-        }
-        if intent_lc.contains("model") {
-            if path_lc.contains("model") {
-                score += 5;
-            }
-        }
+    if !intent_lc.is_empty() {
+        for dir in &dirs {
+            let mut score = 0u32;
+            let path_lc = dir.path.to_lowercase();
 
-        if score > 0 {
-            suggestions.push(ArchitectureSuggestion {
-                directory: dir.path.clone(),
-                score,
-                rationale: format!("Matches intent \"{}\" based on directory name/role.", intent),
-            });
+            if intent_lc.contains("handler") || intent_lc.contains("endpoint") || intent_lc.contains("route") {
+                if path_lc.contains("routes") || path_lc.contains("controllers") || path_lc.contains("handlers") {
+                    score += 5;
+                }
+            }
+            if intent_lc.contains("service") {
+                if path_lc.contains("service") { score += 5; }
+            }
+            if intent_lc.contains("model") || intent_lc.contains("entity") || intent_lc.contains("schema") {
+                if path_lc.contains("model") || path_lc.contains("entit") || path_lc.contains("schema") { score += 5; }
+            }
+            if intent_lc.contains("middleware") {
+                if path_lc.contains("middleware") { score += 5; }
+            }
+            if intent_lc.contains("util") || intent_lc.contains("helper") {
+                if path_lc.contains("util") || path_lc.contains("helper") || path_lc.contains("lib") { score += 5; }
+            }
+            if intent_lc.contains("repo") || intent_lc.contains("store") {
+                if path_lc.contains("repo") || path_lc.contains("store") { score += 5; }
+            }
+
+            if score > 0 {
+                suggestions.push(ArchitectureSuggestion {
+                    directory: dir.path.clone(),
+                    score,
+                    rationale: format!("Matches intent \"{}\" based on directory name/role.", intent_str),
+                });
+            }
         }
+        suggestions.sort_by(|a, b| b.score.cmp(&a.score));
     }
-    suggestions.sort_by(|a, b| b.score.cmp(&a.score));
 
     let payload = ArchitectureMapPayload {
         tool: "architecture_map",
