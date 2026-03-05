@@ -1,6 +1,6 @@
 # yoyo – Local Code Intelligence Engine
 
-**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 21 LLM-ready tools over CLI and stdio.
+**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 22 LLM-ready tools over CLI and stdio.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
@@ -106,7 +106,7 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
-Once configured, your AI assistant can call **all 21 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
+Once configured, your AI assistant can call **all 22 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
 
 | MCP tool | Typical call | What it does |
 |---|---|---|
@@ -129,9 +129,9 @@ Once configured, your AI assistant can call **all 21 yoyo tools as MCP methods**
 | `graph_rename` | `graph_rename(path, name, new_name)` | Rename a symbol at its definition and every call site atomically. Word-boundary matching prevents partial renames. |
 | `graph_add` | `graph_add(path, entity_type, name, file, after_symbol?)` | Insert a new function scaffold at the right location; fill the body with `patch`. |
 | `graph_move` | `graph_move(path, name, to_file)` | Move a function from one file to another; removes from source, appends to destination. |
+| `trace_down` | `trace_down(path, name, depth?, file?)` | Trace a function's call chain downward to external boundaries (db, http, queue). Go + Rust. |
 | `llm_instructions` | `llm_instructions(path)` | Return a compact JSON "prime directive" with guidance on how assistants should use yoyo. |
 
-In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
 In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
 
 ---
@@ -161,7 +161,7 @@ All commands accept `--path /path/to/project` (defaults to current directory).
 | Graph add | `yoyo graph-add --entity-type fn --name <fn> --file <f> [--after-symbol <s>]` | Insert a new function scaffold; fill body with `patch` |
 | Graph move | `yoyo graph-move --name <fn> --to-file <f>` | Move a function from one file to another |
 | LLM instructions | `yoyo llm-instructions` | Prime directive JSON for AI assistants |
-| LLM instructions | `yoyo llm-instructions` | Prime directive JSON for AI assistants |
+| Trace down | `yoyo trace-down --name <fn> [--depth N] [--file <substr>]` | Call chain from a function to db/http/queue boundaries. Go + Rust. |
 
 ---
 
@@ -207,17 +207,18 @@ LSP tells you what exists at your cursor. yoyo tells an AI what the codebase loo
 ---
 
 ## Known limitations (current version)
-## Known limitations (current version)
 
 - **Limited route detection** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), Flask/FastAPI (Python), and gin/echo/net-http (Go) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
-- **Result explosion on common terms** — `symbol` and `supersearch` can return hundreds of matches for generic names like `connect` or `parse`. Use `--file` to scope to a directory/file and `--limit` to cap the result count.
+- **Result explosion on common terms** — `symbol` and `supersearch` can return hundreds of matches for generic names like `connect` or `parse`. Use `--file` to scope to a directory/file and `--limit` to cap the result count. Other tools (`api_surface`, `find_docs`, `package_summary`) have no cap yet.
+- **Inline closure handlers not named** — In Go codebases where route handlers are inline closures (e.g. `r.GET("/path", func(c *gin.Context){...})`), `all_endpoints` returns `handler_name: null` and `file_functions` does not index the closure body. Name your handlers or extract them to named functions.
+- **Chained method calls partially resolved** — `trace_down` extracts the first qualifier in a chain (`db` from `db.Query()`). Chained GORM-style calls like `db.DB.Preload("Nodes").First(...)` are listed as unresolved rather than classified as `database` boundary.
+- **Rust macro syntax not caught by tree-sitter** — Post-patch syntax validation uses tree-sitter (fast) plus `cargo check` (thorough). For non-Rust languages, only tree-sitter runs; `go build`, `python3 -m py_compile`, and `tsc --noEmit` are used for Go, Python, and TypeScript respectively.
 - **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package will match all callers of any `parse`. Re-run `bake` after code changes to refresh the graph.
 - **Import updates not automated** — `graph_move` relocates a function body between files but does not add or remove `use`/`import` statements. Update those manually after moving.
 
 Full prioritised backlog: [`reports/todo-tracker.md`](./reports/todo-tracker.md)
 ---
 
-## Project layout
 ## Project layout
 
 ```

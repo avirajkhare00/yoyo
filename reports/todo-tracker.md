@@ -1,6 +1,6 @@
 # TODO Tracker
-**Last updated:** 2026-03-04 (v0.3.3: struct/type indexing)
-**Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session report
+**Last updated:** 2026-03-05 (v0.8.0: trace_down + syntax validation)
+**Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session + wise-analytics Go eval
 
 Items are tagged with source:
 - `[README]` — listed in README TODO/Roadmap section
@@ -145,6 +145,39 @@ Zero unit tests in `src/`. No CI pipeline.
 
 ---
 
+---
+
+## 🟡 P1 — New items from v0.8.0 Go eval
+
+### 15. Go inline closure handlers not indexed
+**Source:** `[SESSION]` wise-analytics Go eval
+**File:** `src/lang/go.rs`
+
+When route handlers are anonymous closures (`r.GET("/path", func(c *gin.Context){...})`), `all_endpoints` returns `handler_name: null` and `file_functions` does not index the body at all. The entire handler logic is invisible to `symbol`, `trace_down`, and complexity scoring.
+
+**Fix:** In the Go tree-sitter walk, detect `call_expression` nodes where the callee is a gin/echo method and the last argument is a `func_literal`. Extract the closure body, assign it a synthetic name (`GET_/path`), and index it as a regular function.
+
+---
+
+### 16. Chained method qualifier resolution truncated
+**Source:** `[SESSION]` wise-analytics Go eval
+**File:** `src/engine/graph.rs` — `boundary_from_call()`
+
+`trace_down` extracts the first qualifier only. `db.DB.Preload("Nodes").First(...)` resolves qualifier as `db` (correct) but the full chained call is listed as unresolved rather than hitting the `database` boundary. Affects GORM, SQLx, and similar fluent APIs.
+
+**Fix:** After extracting `qualifier`, also check if the full call text (from the source snippet) contains any `DB_QUALIFIERS` substring. Mark as `database` boundary if matched.
+
+---
+
+### 17. `trace_down` unresolved list too noisy
+**Source:** `[SESSION]` wise-analytics Go eval
+
+31 unresolved entries including stdlib (`time.Now`, `fmt.Printf`, `append`, `len`, `make`, `string`). These are known-stdlib symbols that will never resolve and add noise.
+
+**Fix:** Maintain a per-language stdlib/builtin filter list. Suppress symbols matching it from the `unresolved` output entirely.
+
+---
+
 ## ✅ Resolved
 
 | # | Item | Version |
@@ -163,6 +196,11 @@ Zero unit tests in `src/`. No CI pipeline.
 | ✅ | `llm_instructions` returned flat guidance string — replaced with structured tool catalog + 10 workflow chains | v0.3.2 |
 | ✅ | `symbol` and `search` missed structs, classes, interfaces, enums — added `IndexedType` to all 4 language analyzers + `types` array in `BakeIndex` | v0.3.3 |
 | ✅ | `search` only matched function names — now also searches `types` array | v0.3.3 |
+| ✅ | Bake index left stale after `patch`/`patch_bytes`/`multi_patch` — added `reindex_files()` auto-sync | v0.6.0 |
+| ✅ | No graph-level mutation tools — added `graph_rename`, `graph_add`, `graph_move` | v0.6.0 |
+| ✅ | Result explosion on `symbol`/`supersearch` for common terms — added `--file` and `--limit` | v0.7.0 |
+| ✅ | No downward call chain tracing — added `trace_down` (Go + Rust, BFS to db/http/queue boundaries) | v0.8.0 |
+| ✅ | Patch tool silently corrupted files — added post-patch syntax validation (tree-sitter + compiler per language) | v0.8.0 |
 
 ---
 
@@ -171,7 +209,7 @@ Zero unit tests in `src/`. No CI pipeline.
 | Priority | Count |
 |---|---|
 | 🔴 P0 (breaks usage) | 3 |
-| 🟡 P1 (significant gaps) | 4 |
+| 🟡 P1 (significant gaps) | 7 |
 | 🟢 P2 (polish) | 6 |
-| ✅ Resolved | 14 |
-| **Total tracked** | **27** |
+| ✅ Resolved | 21 |
+| **Total tracked** | **37** |
