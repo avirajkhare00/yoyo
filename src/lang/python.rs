@@ -174,28 +174,38 @@ fn walk_py(
     }
 }
 
-fn collect_calls(node: Node, source: &str) -> Vec<String> {
+fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
     let mut calls = Vec::new();
     collect_calls_inner(node, source, &mut calls);
-    calls.sort();
-    calls.dedup();
+    calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
+    calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
     calls
 }
 
-fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<String>) {
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::CallSite>) {
     if node.kind() == "call" {
         if let Some(func) = node.child_by_field_name("function") {
-            let name = match func.kind() {
-                "identifier" => func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
-                "attribute" => func
-                    .child_by_field_name("attribute")
-                    .and_then(|a| a.utf8_text(source.as_bytes()).ok())
-                    .unwrap_or("")
-                    .to_string(),
-                _ => String::new(),
+            let line = node.start_position().row as u32 + 1;
+            let (callee, qualifier) = match func.kind() {
+                "identifier" => {
+                    (func.utf8_text(source.as_bytes()).unwrap_or("").to_string(), None)
+                }
+                "attribute" => {
+                    let callee = func
+                        .child_by_field_name("attribute")
+                        .and_then(|a| a.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let qualifier = func
+                        .child_by_field_name("object")
+                        .and_then(|o| o.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.to_string());
+                    (callee, qualifier)
+                }
+                _ => (String::new(), None),
             };
-            if !name.is_empty() {
-                calls.push(name);
+            if !callee.is_empty() {
+                calls.push(crate::lang::CallSite { callee, qualifier, line });
             }
         }
     }

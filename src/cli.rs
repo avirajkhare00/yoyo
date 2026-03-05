@@ -42,7 +42,10 @@ pub enum Command {
     /// Insert a new function scaffold into a file.
     GraphAdd(GraphAddArgs),
     /// Move a function from one file to another.
+    /// Move a function from one file to another.
     GraphMove(GraphMoveArgs),
+    /// Trace a function's call chain downward to external boundaries.
+    TraceDown(TraceDownArgs),
 }
 
 #[derive(Args, Debug)]
@@ -380,6 +383,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::GraphRename(args)) => run_graph_rename(args).await?,
         Some(Command::GraphAdd(args)) => run_graph_add(args).await?,
         Some(Command::GraphMove(args)) => run_graph_move(args).await?,
+        Some(Command::TraceDown(args)) => run_trace_down(args).await?,
         None => {
             eprintln!(
                 "No command provided. Run `yoyo --help` for available commands."
@@ -534,6 +538,31 @@ async fn run_graph_add(args: GraphAddArgs) -> anyhow::Result<()> {
 
 async fn run_graph_move(args: GraphMoveArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_move(args.path, args.name, args.to_file)?;
+    println!("{json}");
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct TraceDownArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Function name to start the trace from.
+    #[arg(long)]
+    pub name: String,
+
+    /// Maximum call depth to follow (default 5).
+    #[arg(long)]
+    pub depth: Option<usize>,
+
+    /// Optional file path substring to disambiguate when multiple functions share the same name.
+    #[arg(long)]
+    pub file: Option<String>,
+}
+
+async fn run_trace_down(args: TraceDownArgs) -> anyhow::Result<()> {
+    let json = crate::engine::trace_down(args.path, args.name, args.depth, args.file)?;
     println!("{json}");
     Ok(())
 }

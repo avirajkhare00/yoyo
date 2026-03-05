@@ -165,42 +165,63 @@ fn scan_children(
     }
 }
 
-fn collect_calls(node: Node, source: &str) -> Vec<String> {
+fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
     let mut calls = Vec::new();
     collect_calls_inner(node, source, &mut calls);
-    calls.sort();
-    calls.dedup();
+    calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
+    calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
     calls
 }
 
-fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<String>) {
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::CallSite>) {
+    let line = node.start_position().row as u32 + 1;
     match node.kind() {
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
-                let name = match func.kind() {
-                    "identifier" => func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
-                    "scoped_identifier" => func
-                        .child_by_field_name("name")
-                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                        .unwrap_or("")
-                        .to_string(),
-                    "field_expression" => func
-                        .child_by_field_name("field")
-                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                        .unwrap_or("")
-                        .to_string(),
-                    _ => String::new(),
+                let (callee, qualifier) = match func.kind() {
+                    "identifier" => {
+                        (func.utf8_text(source.as_bytes()).unwrap_or("").to_string(), None)
+                    }
+                    "scoped_identifier" => {
+                        let callee = func
+                            .child_by_field_name("name")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .unwrap_or("")
+                            .to_string();
+                        let qualifier = func
+                            .child_by_field_name("path")
+                            .and_then(|p| p.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+                        (callee, qualifier)
+                    }
+                    "field_expression" => {
+                        let callee = func
+                            .child_by_field_name("field")
+                            .and_then(|f| f.utf8_text(source.as_bytes()).ok())
+                            .unwrap_or("")
+                            .to_string();
+                        let qualifier = func
+                            .child_by_field_name("value")
+                            .and_then(|v| v.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+                        (callee, qualifier)
+                    }
+                    _ => (String::new(), None),
                 };
-                if !name.is_empty() {
-                    calls.push(name);
+                if !callee.is_empty() {
+                    calls.push(crate::lang::CallSite { callee, qualifier, line });
                 }
             }
         }
         "method_call_expression" => {
             if let Some(method) = node.child_by_field_name("method") {
-                let name = method.utf8_text(source.as_bytes()).unwrap_or("").to_string();
-                if !name.is_empty() {
-                    calls.push(name);
+                let callee = method.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let qualifier = node
+                    .child_by_field_name("receiver")
+                    .and_then(|r| r.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                if !callee.is_empty() {
+                    calls.push(crate::lang::CallSite { callee, qualifier, line });
                 }
             }
         }

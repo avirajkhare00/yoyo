@@ -714,6 +714,32 @@ fn list_tools() -> Value {
                         }
                     }
                 }
+            },
+            {
+                "name": "trace_down",
+                "description": "Trace a function's call chain downward to its leaves and external boundaries (database, http_client, queue). Scoped to Go and Rust. Requires a prior bake.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["name"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Function name to start the trace from"
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Maximum call depth to follow (default 5)"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "Optional file path substring to disambiguate when multiple functions share the same name"
+                        }
+                    }
+                }
             }
         ]
     })
@@ -1353,6 +1379,22 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .map(|s| s.to_string())
                 .ok_or_else(|| anyhow::anyhow!("Missing required 'to_file' argument for graph_move"))?;
             let json = crate::engine::graph_move(path, name, to_file)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
+                "isError": false
+            }))
+        }
+        "trace_down" => {
+            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let name = p
+                .arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for trace_down"))?;
+            let depth = p.arguments.get("depth").and_then(|v| v.as_u64()).map(|n| n as usize);
+            let file = p.arguments.get("file").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let json = crate::engine::trace_down(path, name, depth, file)?;
             Ok(serde_json::json!({
                 "content": [{"type": "text", "text": json}],
                 "isError": false

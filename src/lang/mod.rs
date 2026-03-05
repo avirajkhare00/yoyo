@@ -10,6 +10,14 @@ use serde::{Deserialize, Serialize};
 use tree_sitter::Node;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallSite {
+    pub callee: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qualifier: Option<String>,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedFunction {
     pub name: String,
     pub file: String,
@@ -18,7 +26,7 @@ pub struct IndexedFunction {
     pub end_line: u32,
     pub complexity: u32,
     #[serde(default)]
-    pub calls: Vec<String>,
+    pub calls: Vec<CallSite>,
     #[serde(default)]
     pub byte_start: usize,
     #[serde(default)]

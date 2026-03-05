@@ -51,7 +51,8 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "multi_patch",      description: "Apply N byte-level edits across M files in one call. Low-level tool; prefer graph_rename for full identifier renaming. Edits are applied bottom-up per file so offsets stay valid.", requires_bake: true },
         ToolDescription { name: "graph_rename",     description: "Rename a symbol everywhere (definition + all call sites) atomically. Uses word-boundary matching. Reindexes affected files automatically.", requires_bake: false },
         ToolDescription { name: "graph_add",        description: "Insert a new function scaffold into a file, optionally after an existing symbol. Reindexes the file automatically.", requires_bake: false },
-        ToolDescription { name: "graph_move",       description: "Move a function from one file to another. Removes from source, appends to destination, reindexes both files.", requires_bake: true },
+        ToolDescription { name: "graph_move",    description: "Move a function from one file to another. Removes from source, appends to destination, reindexes both files.", requires_bake: true },
+        ToolDescription { name: "trace_down",    description: "Trace a function's call chain downward to external boundaries (db, http, queue). BFS up to max depth. Go + Rust only.", requires_bake: true },
     ]
 }
 
@@ -187,6 +188,15 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "symbol",      hint: "Look up the function; note byte_start/byte_end from the index" },
                 WorkflowStep { tool: "slice",       hint: "Read the relevant lines to confirm the target byte range" },
                 WorkflowStep { tool: "patch_bytes", hint: "Splice new_content at byte_start..byte_end; only those bytes change" },
+            ],
+        },
+        Workflow {
+            name: "Trace a call chain",
+            description: "Follow a function's callees downward to database, HTTP, or queue boundaries.",
+            steps: vec![
+                WorkflowStep { tool: "bake",       hint: "Ensure index is fresh so call edges are populated" },
+                WorkflowStep { tool: "trace_down", hint: "Pass symbol name; optionally set depth (default 5) and file to disambiguate" },
+                WorkflowStep { tool: "symbol",     hint: "Inspect any resolved callee with include_source=true" },
             ],
         },
     ]
