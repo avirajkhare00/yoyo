@@ -19,17 +19,67 @@ fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
-        "rs"                      => parser.set_language(&tree_sitter_rust::LANGUAGE.into()),
-        "go"                      => parser.set_language(&tree_sitter_go::LANGUAGE.into()),
-        "py"                      => parser.set_language(&tree_sitter_python::LANGUAGE.into()),
+        "rs"                        => parser.set_language(&tree_sitter_rust::LANGUAGE.into()),
+        "go"                        => parser.set_language(&tree_sitter_go::LANGUAGE.into()),
+        "py"                        => parser.set_language(&tree_sitter_python::LANGUAGE.into()),
         "ts" | "tsx" | "js" | "jsx" => parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
-        _                         => return vec![],
+        _                           => return vec![],
     };
     if ok.is_err() { return vec![]; }
 
     let Some(tree) = parser.parse(&source, None) else { return vec![] };
     let mut errors = vec![];
     collect_errors(tree.root_node(), &source, &mut errors);
+
+    // For Rust files, also run `cargo check` to catch macro-level and type errors
+    // that tree-sitter cannot see (e.g. mismatched braces inside serde_json::json!).
+    if ext == "rs" {
+        errors.extend(cargo_check_errors(root, file));
+    }
+
+    errors
+}
+
+/// Run `cargo check --message-format=json` in `root` and return compiler errors
+/// that mention `file`. Best-effort: returns empty vec on any failure.
+fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("cargo")
+        .args(["check", "--message-format=json", "--quiet"])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut errors = vec![];
+
+    // Normalise the target file path for comparison.
+    let file_norm = file.replace('\\', "/");
+
+    for line in stdout.lines() {
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") { continue; }
+
+        let message = &msg["message"];
+        if message.get("level").and_then(|l| l.as_str()) != Some("error") { continue; }
+
+        let Some(spans) = message.get("spans").and_then(|s| s.as_array()) else { continue };
+
+        for span in spans {
+            let span_file = span.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
+            let span_norm = span_file.replace('\\', "/");
+            // Match if either path ends with the other (handles relative vs absolute).
+            if !span_norm.ends_with(&file_norm) && !file_norm.ends_with(&span_norm) { continue; }
+
+            let line_num = span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
+            let raw = message.get("message").and_then(|m| m.as_str()).unwrap_or("");
+            let text: String = raw.chars().take(120).collect();
+            errors.push(SyntaxError { line: line_num, kind: "cargo".to_string(), text });
+        }
+    }
+
     errors
 }
 
