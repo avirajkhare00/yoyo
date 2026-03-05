@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload};
-use super::util::{load_bake_index, resolve_project_root};
+use super::util::{load_bake_index, reindex_files, resolve_project_root};
 
 /// Public entrypoint for the `slice` tool: read a specific line range of a file.
 pub fn slice(
@@ -78,6 +78,7 @@ pub fn patch(
     let root = resolve_project_root(path)?;
     let (file, start, end, total_lines) =
         apply_patch_to_range(&root, &file, start, end, &new_content)?;
+    let _ = reindex_files(&root, &[file.as_str()]);
     let payload = PatchPayload {
         tool: "patch",
         version: env!("CARGO_PKG_VERSION"),
@@ -145,6 +146,7 @@ pub fn patch_by_symbol(
     let (file, start, end, _, _) = &matches[idx];
     let (file, start, end, total_lines) =
         apply_patch_to_range(&root, file.as_str(), *start, *end, &new_content)?;
+    let _ = reindex_files(&root, &[file.as_str()]);
     let payload = PatchPayload {
         tool: "patch",
         version: env!("CARGO_PKG_VERSION"),
@@ -188,6 +190,7 @@ pub fn patch_bytes(
     fs::write(&full_path, &bytes).with_context(|| {
         format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
     })?;
+    let _ = reindex_files(&root, &[file.as_str()]);
     let payload = PatchBytesPayload {
         tool: "patch_bytes",
         version: env!("CARGO_PKG_VERSION"),
@@ -223,6 +226,7 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
     }
 
     let files_written = by_file.len();
+    let files_for_reindex: Vec<String> = by_file.keys().cloned().collect();
 
     for (file, mut file_edits) in by_file {
         let full_path = root.join(&file);
@@ -270,6 +274,9 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
             format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
         })?;
     }
+
+    let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
+    let _ = reindex_files(&root, &refs);
 
     let payload = MultiPatchPayload {
         tool: "multi_patch",

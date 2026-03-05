@@ -37,6 +37,12 @@ pub enum Command {
     Patch(PatchArgs),
     /// Analyse the blast radius of a symbol (transitive callers + affected files).
     BlastRadius(BlastRadiusArgs),
+    /// Rename a symbol everywhere (definition + all call sites) atomically.
+    GraphRename(GraphRenameArgs),
+    /// Insert a new function scaffold into a file.
+    GraphAdd(GraphAddArgs),
+    /// Move a function from one file to another.
+    GraphMove(GraphMoveArgs),
 }
 
 #[derive(Args, Debug)]
@@ -278,6 +284,63 @@ pub struct BlastRadiusArgs {
     pub depth: Option<usize>,
 }
 
+#[derive(Args, Debug)]
+pub struct GraphRenameArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Current identifier name to rename.
+    #[arg(long)]
+    pub name: String,
+
+    /// New identifier name.
+    #[arg(long)]
+    pub new_name: String,
+}
+
+#[derive(Args, Debug)]
+pub struct GraphAddArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Scaffold type: fn | function | def | func.
+    #[arg(long)]
+    pub entity_type: String,
+
+    /// Name for the new function/entity.
+    #[arg(long)]
+    pub name: String,
+
+    /// File path relative to project root.
+    #[arg(long)]
+    pub file: String,
+
+    /// Insert after this existing symbol (name or substring).
+    #[arg(long)]
+    pub after_symbol: Option<String>,
+
+    /// Override language detection (rust | typescript | python | go).
+    #[arg(long)]
+    pub language: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct GraphMoveArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Exact function name to move.
+    #[arg(long)]
+    pub name: String,
+
+    /// Destination file path relative to project root.
+    #[arg(long)]
+    pub to_file: String,
+}
+
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
         Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
@@ -297,9 +360,12 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::FindDocs(args)) => run_find_docs(args).await?,
         Some(Command::Patch(args)) => run_patch(args).await?,
         Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
+        Some(Command::GraphRename(args)) => run_graph_rename(args).await?,
+        Some(Command::GraphAdd(args)) => run_graph_add(args).await?,
+        Some(Command::GraphMove(args)) => run_graph_move(args).await?,
         None => {
             eprintln!(
-                "No command provided. Try `yoyo llm-instructions --help`, `yoyo shake --help`, `yoyo bake --help`, `yoyo symbol --help`, `yoyo all-endpoints --help`, `yoyo slice --help`, `yoyo api-surface --help`, `yoyo file-functions --help`, `yoyo supersearch --help`, `yoyo package-summary --help`, `yoyo architecture-map --help`, `yoyo suggest-placement --help`, `yoyo crud-operations --help`, `yoyo api-trace --help`, `yoyo find-docs --help`, `yoyo patch --help`, or `yoyo blast-radius --help`."
+                "No command provided. Run `yoyo --help` for available commands."
             );
         }
     }
@@ -424,6 +490,31 @@ async fn run_patch(args: PatchArgs) -> anyhow::Result<()> {
 
 async fn run_blast_radius(args: BlastRadiusArgs) -> anyhow::Result<()> {
     let json = crate::engine::blast_radius(args.path, args.symbol, args.depth)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_graph_rename(args: GraphRenameArgs) -> anyhow::Result<()> {
+    let json = crate::engine::graph_rename(args.path, args.name, args.new_name)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_graph_add(args: GraphAddArgs) -> anyhow::Result<()> {
+    let json = crate::engine::graph_add(
+        args.path,
+        args.entity_type,
+        args.name,
+        args.file,
+        args.after_symbol,
+        args.language,
+    )?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_graph_move(args: GraphMoveArgs) -> anyhow::Result<()> {
+    let json = crate::engine::graph_move(args.path, args.name, args.to_file)?;
     println!("{json}");
     Ok(())
 }

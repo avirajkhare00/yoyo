@@ -295,6 +295,38 @@ pub(crate) struct MultiPatchPayload {
 }
 
 #[derive(Serialize)]
+pub(crate) struct GraphRenamePayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) old_name: String,
+    pub(crate) new_name: String,
+    pub(crate) files_changed: usize,
+    pub(crate) occurrences_renamed: usize,
+}
+
+#[derive(Serialize)]
+pub(crate) struct GraphAddPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) entity_type: String,
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) inserted_at_byte: usize,
+}
+
+#[derive(Serialize)]
+pub(crate) struct GraphMovePayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) name: String,
+    pub(crate) from_file: String,
+    pub(crate) to_file: String,
+}
+
+#[derive(Serialize)]
 pub(crate) struct SlicePayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,

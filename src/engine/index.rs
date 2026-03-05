@@ -48,7 +48,10 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "patch",            description: "Replace a line range in a file with new content.", requires_bake: false },
         ToolDescription { name: "patch_by_symbol",  description: "Replace a function body by symbol name. Resolves location from the bake index.", requires_bake: true },
         ToolDescription { name: "patch_bytes",      description: "Splice at exact byte offsets. Use byte_start/byte_end from the bake index for sub-line precision (e.g. rename an identifier without touching the rest of the line).", requires_bake: true },
-        ToolDescription { name: "multi_patch",      description: "Apply N byte-level edits across M files in one call. Edits are applied bottom-up per file so offsets stay valid. Each file is written exactly once. Ideal for graph-level mutations like renaming a symbol at every call site.", requires_bake: true },
+        ToolDescription { name: "multi_patch",      description: "Apply N byte-level edits across M files in one call. Low-level tool; prefer graph_rename for full identifier renaming. Edits are applied bottom-up per file so offsets stay valid.", requires_bake: true },
+        ToolDescription { name: "graph_rename",     description: "Rename a symbol everywhere (definition + all call sites) atomically. Uses word-boundary matching. Reindexes affected files automatically.", requires_bake: false },
+        ToolDescription { name: "graph_add",        description: "Insert a new function scaffold into a file, optionally after an existing symbol. Reindexes the file automatically.", requires_bake: false },
+        ToolDescription { name: "graph_move",       description: "Move a function from one file to another. Removes from source, appends to destination, reindexes both files.", requires_bake: true },
     ]
 }
 
@@ -73,13 +76,12 @@ fn workflow_catalog() -> Vec<Workflow> {
         },
         Workflow {
             name: "Add a new feature",
-            description: "Decide where to place a new function and write it.",
+            description: "Decide where to place a new function and scaffold it.",
             steps: vec![
                 WorkflowStep { tool: "architecture_map",  hint: "Understand directory roles; pass your intent (e.g. 'user handler')" },
                 WorkflowStep { tool: "suggest_placement", hint: "Get ranked file suggestions for the new function" },
-                WorkflowStep { tool: "file_functions",    hint: "See existing functions in the target file" },
-                WorkflowStep { tool: "slice",             hint: "Read the relevant section before editing" },
-                WorkflowStep { tool: "patch_by_symbol",   hint: "Replace or add the function by symbol name" },
+                WorkflowStep { tool: "graph_add",         hint: "Insert a scaffold at the right location (optionally after_symbol); index auto-updates" },
+                WorkflowStep { tool: "patch_by_symbol",   hint: "Fill in the scaffold body with real implementation" },
             ],
         },
         Workflow {
@@ -144,8 +146,32 @@ fn workflow_catalog() -> Vec<Workflow> {
             ],
         },
         Workflow {
-            name: "Graph-level rename",
-            description: "Rename a symbol at its definition and every call site using byte-precise edits. Each file is written exactly once.",
+            name: "Graph rename (one-shot)",
+            description: "Rename an identifier at its definition and every call site in one call. No multi-step setup required.",
+            steps: vec![
+                WorkflowStep { tool: "graph_rename", hint: "Pass name (old) and new_name; word-boundary matching prevents partial renames; index is auto-updated" },
+                WorkflowStep { tool: "symbol",       hint: "Verify the definition now carries the new name" },
+            ],
+        },
+        Workflow {
+            name: "Add a function scaffold",
+            description: "Insert a new empty function body at the right location, then fill it in.",
+            steps: vec![
+                WorkflowStep { tool: "graph_add",        hint: "Specify entity_type (fn/function/def/func), name, file, and optionally after_symbol" },
+                WorkflowStep { tool: "patch_by_symbol",  hint: "Fill in the generated scaffold with real implementation" },
+            ],
+        },
+        Workflow {
+            name: "Move a function between files",
+            description: "Relocate a function to a different module/file and keep the index consistent.",
+            steps: vec![
+                WorkflowStep { tool: "bake",       hint: "Ensure byte_start/byte_end offsets are fresh" },
+                WorkflowStep { tool: "graph_move", hint: "Pass the function name and destination file; source removal and dest append happen atomically" },
+            ],
+        },
+        Workflow {
+            name: "Graph-level rename (manual — prefer graph_rename)",
+            description: "[DEPRECATED: use graph_rename for one-shot rename] Manual rename via byte-precise edits with multi_patch. Use only when you need fine-grained control over which occurrences to rename.",
             steps: vec![
                 WorkflowStep { tool: "bake",         hint: "Ensure the index is fresh so byte_start/byte_end are accurate" },
                 WorkflowStep { tool: "symbol",        hint: "Confirm the definition: note file, byte_start, byte_end" },

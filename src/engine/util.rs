@@ -212,6 +212,50 @@ pub(crate) fn detect_language(path: &Path) -> &'static str {
     }
 }
 
+/// Incrementally re-index a set of changed files in the bake index.
+/// If no bake index exists this is a no-op. Errors are silently swallowed so
+/// callers can use `let _ = reindex_files(...)`.
+pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()> {
+    let bake_path = root.join("bakes").join("latest").join("bake.json");
+    if !bake_path.exists() {
+        return Ok(());
+    }
+
+    let data = match fs::read_to_string(&bake_path) {
+        Ok(d) => d,
+        Err(_) => return Ok(()),
+    };
+    let mut bake: super::types::BakeIndex = match serde_json::from_str(&data) {
+        Ok(b) => b,
+        Err(_) => return Ok(()),
+    };
+
+    for file in changed_files {
+        // Remove stale entries for this file.
+        bake.functions.retain(|f| f.file.as_str() != *file);
+        bake.endpoints.retain(|e| e.file.as_str() != *file);
+        bake.types.retain(|t| t.file.as_str() != *file);
+
+        // Re-analyze the file.
+        let full_path = root.join(file);
+        if !full_path.exists() {
+            continue;
+        }
+        let lang = detect_language(&full_path);
+        if let Some(analyzer) = crate::lang::find_analyzer(lang) {
+            if let Ok((funcs, eps, typs)) = analyzer.analyze_file(root, &full_path) {
+                bake.functions.extend(funcs);
+                bake.endpoints.extend(eps);
+                bake.types.extend(typs);
+            }
+        }
+    }
+
+    let json = serde_json::to_string_pretty(&bake)?;
+    fs::write(&bake_path, json)?;
+    Ok(())
+}
+
 pub(crate) fn module_from_path(path: &str) -> String {
     // Heuristic: use directory portion of the path as the "module".
     if let Some((dir, _file)) = path.rsplit_once('/') {
