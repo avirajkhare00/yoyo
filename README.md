@@ -216,7 +216,7 @@ LSP tells you what exists at your cursor. yoyo tells an AI what the codebase loo
 - **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package will match all callers of any `parse`. Re-run `bake` after code changes to refresh the graph.
 - **Import updates not automated** — `graph_move` relocates a function body between files but does not add or remove `use`/`import` statements. Update those manually after moving.
 
-Full prioritised backlog: [`reports/todo-tracker.md`](./reports/todo-tracker.md)
+Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkhare00/yoyo/issues)
 ---
 
 ## Project layout

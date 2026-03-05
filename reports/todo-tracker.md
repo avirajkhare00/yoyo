@@ -1,215 +1,29 @@
 # TODO Tracker
-**Last updated:** 2026-03-05 (v0.8.0: trace_down + syntax validation)
-**Sources:** README.md roadmap + live code analysis + benchmark on face-api.js + blast-radius session + wise-analytics Go eval
 
-Items are tagged with source:
-- `[README]` — listed in README TODO/Roadmap section
-- `[CODE]` — discovered by reading source files
-- `[BENCH]` — confirmed broken by live benchmark run
-- `[SESSION]` — discovered during a live implementation session
-
----
-
-## 🔴 P0 — Breaks real usage today
-
-### 1. `api_surface` has no output cap — overflows LLM context on large projects
-**Source:** `[README]` `[BENCH]`
-**File:** `src/engine/api.rs:40` — `api_surface()`
-
-Returns all functions for all modules in one shot. Produced **50.7 KB** on face-api.js (386 files), exceeding inline display limits.
-
-**Fix:** Honour existing `--limit` and `--package` flags to cap output. Add `"truncated": true` and `total_count` when results are capped.
-
----
-
-### 2. `find_docs` has no output cap
-**Source:** `[README]` `[BENCH]`
-
-Produced 298 K characters on face-api.js. Completely unusable on any mid-size project.
-
-**Fix:** Limit results to 50 items max. Add filtering at the query level, not just post-collection.
-
----
-
-### 3. `architecture_map` role inference is too narrow
-**Source:** `[README]` `[CODE]` `[BENCH]`
-**File:** `src/engine/nav.rs:73` — `architecture_map()`
-
-Only 3 path-pattern keywords (`routes`, `controllers`, `services`, `models`, `entities`). All 45 directories in face-api.js got `roles: []`. Also, the `intent` parameter is required but not documented as such — calling without it returns an MCP error, which is a bad experience.
-
-**Missing keywords:** `handlers`, `repositories`, `resolvers`, `middleware`, `hooks`, `components`, `store`, `reducers`, `actions`, `selectors`, `utils`, `helpers`, `lib`, `api`, `net`, `network`, `dom`, `draw`, `ops`, `factories`.
-
-**Fix:** Expand keyword table. Make `intent` optional with a sensible default (use empty string).
-
----
-
-## 🟡 P1 — Significantly limits usefulness
-
----
-
-### 5. `blast_radius` output has no deduplication — same caller appears N times via N paths
-**Source:** `[SESSION]`
-**File:** `src/engine/analysis.rs:11` — `blast_radius()`
-
-`blast_radius(load_bake_index, depth=3)` returns `call_tool` 15 times at depth 2 (once per engine function it calls). `run` appears 14 times at depth 3. The BFS correctly avoids re-enqueueing visited nodes but does not deduplicate the output `callers` vec.
-
-**Fix:** Add a `--unique` flag (default true) that deduplicates callers by name+file before returning. Keep the current "show all paths" behaviour accessible via `--unique false`.
-
----
-
-### 6. `supersearch` context/pattern flags unreliable — "best-effort" caveat
-**Source:** `[README]` `[BENCH]`
-
-CLI help strings and MCP schema both say "currently best-effort". Benchmark confirmed identical results across three filter combinations.
-
-**Fix:** Verify AST filter wiring for all languages; remove "currently best-effort" wording once confirmed reliable.
-
----
-
-### 7. `api_trace` and `crud_operations` limited to static route patterns
-**Source:** `[README]`
-
-Return zero results on NestJS, Fastify, Hono, CLI tools, ML libraries. Now that we have a call graph, `api_trace` could follow chains deeper than the route handler.
-
-**Fix (incremental):**
-- Phase 1: Detect NestJS `@Get()`, `@Post()`, `@Controller()` decorators via Tree-sitter.
-- Phase 2: Detect Fastify/Hono route patterns.
-- Phase 3: Use `calls` graph to follow handler call chains (now possible with blast_radius data).
-
----
-
-### 8. No import/dependency graph
-**Source:** `[SESSION]`
-
-`blast_radius` traces call-graph edges (function → function) but has no concept of file-level imports. A file that imports a changed module but never calls its functions is not captured. Call-name matching is also unqualified — `foo` matches any `foo` regardless of module.
-
-**Fix:** Extract `import`/`use`/`require` statements in each language analyzer. Store as `imports: Vec<String>` on `IndexedFile`. Build a file-level reverse dependency graph alongside the call graph.
-
----
-
-## 🟢 P2 — Polish & completeness
-
-### 9. `suggest_placement` recommends test files
-**Source:** `[BENCH]`
-
-Returns `test/tests/globalApi/detectAllFaces.test.ts` as top candidate for a service function. Test files should be excluded by default.
-
-**Fix:** Exclude `test/`, `spec/`, `__tests__/` from placement candidates. Add `--include-tests` to opt in.
-
----
-
-### 10. `shake` returns no function data if run before bake completes
-**Source:** `[BENCH]`
-
-When `shake` and `bake` run in parallel, `shake` fires before `bake.json` is written and falls back to a lightweight scan with no function data.
-
-**Fix:** `shake` could note in the response that baking is in progress, or attempt a short retry.
-
----
-
-### 11. `blast_radius` callers list is unsorted and unranked
-**Source:** `[SESSION]`
-
-Callers are returned in BFS traversal order. For large codebases, the most impactful callers (high-complexity functions, entry points) should surface first.
-
-**Fix:** Sort callers by depth (ascending), then by function complexity (descending from bake index). Optionally add a `risk_score` per caller.
-
----
-
-### 12. No incremental baking
-**Source:** `[README]`
-
-Full re-bake on every invocation. Fast enough for small projects, will bottleneck on monorepos (1000+ files).
-
-**Fix:** Hash file contents; skip re-parsing files whose hash hasn't changed since last bake.
-
----
-
-### 13. No `yoyo.yaml` config file support
-**Source:** `[README]`
-
-No per-project excludes beyond the hardcoded list (`.git`, `node_modules`, `target`, `dist`, `build`, `__pycache__`).
-
-**Fix:** Support `yoyo.yaml` with `exclude`, `include_only`, and `depth` settings.
-
----
-
-### 14. No tests or CI
-**Source:** `[README]`
-
-Zero unit tests in `src/`. No CI pipeline.
-
-**Fix:** Unit test each engine submodule function against fixture files. Integration test `bake` on a known project and assert specific functions are found.
-
----
-
----
-
----
-
-## 🟡 P1 — New items from v0.8.0 Go eval
-
-### 15. Go inline closure handlers not indexed
-**Source:** `[SESSION]` wise-analytics Go eval
-**File:** `src/lang/go.rs`
-
-When route handlers are anonymous closures (`r.GET("/path", func(c *gin.Context){...})`), `all_endpoints` returns `handler_name: null` and `file_functions` does not index the body at all. The entire handler logic is invisible to `symbol`, `trace_down`, and complexity scoring.
-
-**Fix:** In the Go tree-sitter walk, detect `call_expression` nodes where the callee is a gin/echo method and the last argument is a `func_literal`. Extract the closure body, assign it a synthetic name (`GET_/path`), and index it as a regular function.
-
----
-
-### 16. Chained method qualifier resolution truncated
-**Source:** `[SESSION]` wise-analytics Go eval
-**File:** `src/engine/graph.rs` — `boundary_from_call()`
-
-`trace_down` extracts the first qualifier only. `db.DB.Preload("Nodes").First(...)` resolves qualifier as `db` (correct) but the full chained call is listed as unresolved rather than hitting the `database` boundary. Affects GORM, SQLx, and similar fluent APIs.
-
-**Fix:** After extracting `qualifier`, also check if the full call text (from the source snippet) contains any `DB_QUALIFIERS` substring. Mark as `database` boundary if matched.
-
----
-
-### 17. `trace_down` unresolved list too noisy
-**Source:** `[SESSION]` wise-analytics Go eval
-
-31 unresolved entries including stdlib (`time.Now`, `fmt.Printf`, `append`, `len`, `make`, `string`). These are known-stdlib symbols that will never resolve and add noise.
-
-**Fix:** Maintain a per-language stdlib/builtin filter list. Suppress symbols matching it from the `unresolved` output entirely.
+Issues are tracked on GitHub: https://github.com/avirajkhare00/yoyo/issues
 
 ---
 
 ## ✅ Resolved
 
-| # | Item | Version |
-|---|---|---|
-| ✅ | No language support beyond TypeScript/JavaScript | v0.2.0 |
-| ✅ | License not set | v0.2.0 |
-| ✅ | `symbol` requires a follow-up `slice` for source — added `--include-source` | v0.2.4 |
-| ✅ | `walk_ts` missed `method_definition`, `arrow_function`, `function_expression` | v0.2.0 |
-| ✅ | `supersearch` bypassed AST walk on default `context=all, pattern=all` | v0.2.5 |
-| ✅ | Bake index lacked call graph — no `calls`/`called_by` data | v0.2.6 |
-| ✅ | No blast radius analysis tool | v0.2.6 |
-| ✅ | Go language support missing | v0.2.6 |
-| ✅ | `engine.rs` monolith (1,756 lines) — split into 9 submodules under `src/engine/` | v0.3.1 |
-| ✅ | Stale bake index after yoyo upgrade — auto-reindex when binary version > index version | v0.3.1 |
-| ✅ | Stale bake index after source edits — auto-reindex when any source file newer than `bake.json` | v0.3.1 |
-| ✅ | `llm_instructions` returned flat guidance string — replaced with structured tool catalog + 10 workflow chains | v0.3.2 |
-| ✅ | `symbol` and `search` missed structs, classes, interfaces, enums — added `IndexedType` to all 4 language analyzers + `types` array in `BakeIndex` | v0.3.3 |
-| ✅ | `search` only matched function names — now also searches `types` array | v0.3.3 |
-| ✅ | Bake index left stale after `patch`/`patch_bytes`/`multi_patch` — added `reindex_files()` auto-sync | v0.6.0 |
-| ✅ | No graph-level mutation tools — added `graph_rename`, `graph_add`, `graph_move` | v0.6.0 |
-| ✅ | Result explosion on `symbol`/`supersearch` for common terms — added `--file` and `--limit` | v0.7.0 |
-| ✅ | No downward call chain tracing — added `trace_down` (Go + Rust, BFS to db/http/queue boundaries) | v0.8.0 |
-| ✅ | Patch tool silently corrupted files — added post-patch syntax validation (tree-sitter + compiler per language) | v0.8.0 |
-
----
-
-## Priority summary
-
-| Priority | Count |
-|---|---|
-| 🔴 P0 (breaks usage) | 3 |
-| 🟡 P1 (significant gaps) | 7 |
-| 🟢 P2 (polish) | 6 |
-| ✅ Resolved | 21 |
-| **Total tracked** | **37** |
+| Item | Version |
+|------|---------|
+| No language support beyond TypeScript/JavaScript | v0.2.0 |
+| License not set | v0.2.0 |
+| `symbol` requires follow-up `slice` for source — added `--include-source` | v0.2.4 |
+| `walk_ts` missed `method_definition`, `arrow_function`, `function_expression` | v0.2.0 |
+| `supersearch` bypassed AST walk on default `context=all, pattern=all` | v0.2.5 |
+| Bake index lacked call graph — no `calls`/`called_by` data | v0.2.6 |
+| No blast radius analysis tool | v0.2.6 |
+| Go language support missing | v0.2.6 |
+| `engine.rs` monolith (1,756 lines) — split into 9 submodules under `src/engine/` | v0.3.1 |
+| Stale bake index after yoyo upgrade — auto-reindex on version change | v0.3.1 |
+| Stale bake index after source edits — auto-reindex when source newer than bake | v0.3.1 |
+| `llm_instructions` returned flat string — replaced with structured tool catalog + workflows | v0.3.2 |
+| `symbol`/`search` missed structs, classes, interfaces, enums — added `IndexedType` | v0.3.3 |
+| `search` only matched function names — now also searches `types` array | v0.3.3 |
+| Bake index stale after patch — added `reindex_files()` auto-sync | v0.6.0 |
+| No graph-level mutation tools — added `graph_rename`, `graph_add`, `graph_move` | v0.6.0 |
+| Result explosion on `symbol`/`supersearch` — added `--file` and `--limit` | v0.7.0 |
+| No downward call chain tracing — added `trace_down` (Go + Rust) | v0.8.0 |
+| Patch tool silently corrupted files — added post-patch syntax validation | v0.8.0 |
