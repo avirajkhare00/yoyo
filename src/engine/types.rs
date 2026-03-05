@@ -373,3 +373,26 @@ pub(crate) struct FileFunctionSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<String>,
 }
+
+#[derive(Serialize)]
+pub(crate) struct TraceNode {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) depth: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) qualifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) boundary: Option<String>,
+    pub(crate) resolved: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct TraceDownPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) symbol: String,
+    pub(crate) chain: Vec<TraceNode>,
+    pub(crate) unresolved: Vec<String>,
+}

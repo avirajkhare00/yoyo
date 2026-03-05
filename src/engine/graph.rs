@@ -1,9 +1,10 @@
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
-use super::types::{GraphAddPayload, GraphMovePayload, GraphRenamePayload};
+use super::types::{GraphAddPayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
 use super::util::{detect_language, load_bake_index, reindex_files, resolve_project_root};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -320,5 +321,175 @@ pub fn graph_move(
         from_file,
         to_file,
     };
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+// ── trace_down ────────────────────────────────────────────────────────────────
+
+/// Known external boundary signals — qualifier substrings → boundary label.
+const DB_QUALIFIERS: &[&str] = &["db", "sql", "gorm", "sqlx", "pg", "mysql", "mongo", "redis", "store", "repo", "repository"];
+const DB_CALLEES:    &[&str] = &["query", "exec", "find", "findbyid", "insert", "update", "delete", "save", "scan", "get", "create"];
+const HTTP_QUALIFIERS: &[&str] = &["client", "http", "fetch", "axios", "reqwest", "request", "httpclient"];
+const HTTP_CALLEES:    &[&str] = &["get", "post", "put", "patch", "delete", "do", "send", "request", "call"];
+const QUEUE_QUALIFIERS: &[&str] = &["kafka", "iggy", "nats", "rabbit", "queue", "producer", "publisher", "broker"];
+/// Receiver names too generic to use as qualifier hints.
+const TRIVIAL_RECEIVERS: &[&str] = &["self", "this", "c", "s", "r", "ctx", "app", "e", "g"];
+
+fn boundary_from_call(callee: &str, qualifier: &Option<String>) -> Option<String> {
+    let cl = callee.to_lowercase();
+    let ql = qualifier.as_deref().unwrap_or("").to_lowercase();
+
+    if DB_QUALIFIERS.iter().any(|q| ql.contains(q)) && DB_CALLEES.iter().any(|c| cl == *c) {
+        return Some("database".into());
+    }
+    if HTTP_QUALIFIERS.iter().any(|q| ql.contains(q)) && HTTP_CALLEES.iter().any(|c| cl == *c) {
+        return Some("http_client".into());
+    }
+    if QUEUE_QUALIFIERS.iter().any(|q| ql.contains(q)) {
+        return Some("queue".into());
+    }
+    None
+}
+
+fn resolve_candidate<'a>(
+    candidates: &[&'a crate::lang::IndexedFunction],
+    caller: &crate::lang::IndexedFunction,
+    qualifier: &Option<String>,
+) -> Option<&'a crate::lang::IndexedFunction> {
+    if candidates.len() == 1 {
+        return Some(candidates[0]);
+    }
+    // Use qualifier to narrow by file path (skip trivial receivers)
+    if let Some(qual) = qualifier {
+        let ql = qual.to_lowercase();
+        if !TRIVIAL_RECEIVERS.contains(&ql.as_str()) {
+            if let Some(m) = candidates.iter().find(|f| f.file.to_lowercase().contains(&ql)) {
+                return Some(m);
+            }
+        }
+    }
+    // Same language first
+    let same_lang: Vec<_> = candidates.iter().filter(|f| f.language == caller.language).collect();
+    if same_lang.len() == 1 {
+        return Some(same_lang[0]);
+    }
+    // Closest directory
+    if let Some(dir) = caller.file.rsplit('/').skip(1).next() {
+        if let Some(m) = candidates.iter().find(|f| f.file.contains(dir)) {
+            return Some(m);
+        }
+    }
+    candidates.first().copied()
+}
+
+pub fn trace_down(
+    path: Option<String>,
+    symbol: String,
+    depth: Option<usize>,
+    file: Option<String>,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let bake = load_bake_index(&root)?
+        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+
+    let max_depth = depth.unwrap_or(5);
+    let file_filter = file.as_deref().map(str::to_lowercase);
+    let needle = symbol.to_lowercase();
+
+    // Find the starting function
+    let start = bake
+        .functions
+        .iter()
+        .find(|f| {
+            f.name.to_lowercase() == needle
+                && file_filter
+                    .as_ref()
+                    .map(|ff| f.file.to_lowercase().contains(ff.as_str()))
+                    .unwrap_or(true)
+        })
+        .ok_or_else(|| anyhow!("Symbol '{}' not found. Run `bake` first or check the name.", symbol))?;
+
+    // Build lookup: name_lc -> vec of functions
+    let mut by_name: HashMap<String, Vec<&crate::lang::IndexedFunction>> = HashMap::new();
+    for f in &bake.functions {
+        by_name.entry(f.name.to_lowercase()).or_default().push(f);
+    }
+
+    let mut chain: Vec<TraceNode> = Vec::new();
+    let mut unresolved: Vec<String> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<(&crate::lang::IndexedFunction, usize)> = VecDeque::new();
+
+    visited.insert(format!("{}:{}", start.file, start.name));
+    queue.push_back((start, 0));
+
+    while let Some((func, d)) = queue.pop_front() {
+        chain.push(TraceNode {
+            name: func.name.clone(),
+            file: func.file.clone(),
+            start_line: func.start_line,
+            depth: d,
+            qualifier: None,
+            boundary: None,
+            resolved: true,
+        });
+
+        if d >= max_depth {
+            continue;
+        }
+
+        for call in &func.calls {
+            let cl = call.callee.to_lowercase();
+
+            // Check if this call site itself signals a boundary
+            if let Some(b) = boundary_from_call(&call.callee, &call.qualifier) {
+                let key = format!("boundary:{}:{}", b, call.callee);
+                if !visited.contains(&key) {
+                    visited.insert(key);
+                    chain.push(TraceNode {
+                        name: call.callee.clone(),
+                        file: String::new(),
+                        start_line: call.line,
+                        depth: d + 1,
+                        qualifier: call.qualifier.clone(),
+                        boundary: Some(b),
+                        resolved: false,
+                    });
+                }
+                continue;
+            }
+
+            if let Some(candidates) = by_name.get(&cl) {
+                if let Some(callee_fn) = resolve_candidate(candidates, func, &call.qualifier) {
+                    let key = format!("{}:{}", callee_fn.file, callee_fn.name);
+                    if !visited.contains(&key) {
+                        visited.insert(key);
+                        queue.push_back((callee_fn, d + 1));
+                    }
+                }
+            } else {
+                // Not in index and not a boundary — record as unresolved
+                let label = match &call.qualifier {
+                    Some(q) => format!("{}.{}", q, call.callee),
+                    None => call.callee.clone(),
+                };
+                if !unresolved.contains(&label) {
+                    unresolved.push(label);
+                }
+            }
+        }
+    }
+
+    chain.sort_by_key(|n| n.depth);
+
+    let payload = TraceDownPayload {
+        tool: "trace_down",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        symbol,
+        chain,
+        unresolved,
+    };
+
     Ok(serde_json::to_string_pretty(&payload)?)
 }

@@ -21,11 +21,12 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
     for f in &bake.functions {
         for callee in &f.calls {
             called_by
-                .entry(callee.clone())
+                .entry(callee.callee.clone())
                 .or_default()
                 .push((f.name.clone(), f.file.clone()));
         }
     }
+
 
     // BFS from target symbol outward through callers
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
