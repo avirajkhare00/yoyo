@@ -620,6 +620,84 @@ fn list_tools() -> Value {
                         }
                     }
                 }
+            },
+            {
+                "name": "graph_rename",
+                "description": "Rename a symbol everywhere — definition + all call sites — atomically. Uses word-boundary matching so partial identifier names are not affected. Reindexes affected files automatically.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["name", "new_name"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Current identifier name to rename"
+                        },
+                        "new_name": {
+                            "type": "string",
+                            "description": "New identifier name"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "graph_add",
+                "description": "Insert a new function or struct scaffold into a file. Optionally place it after an existing symbol (resolved from the bake index). Reindexes the file automatically.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["entity_type", "name", "file"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "entity_type": {
+                            "type": "string",
+                            "description": "Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Name for the new function/entity"
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "File path relative to project root"
+                        },
+                        "after_symbol": {
+                            "type": "string",
+                            "description": "Optional: insert after this existing symbol (name or substring)"
+                        },
+                        "language": {
+                            "type": "string",
+                            "description": "Optional: override language detection (rust | typescript | python | go)"
+                        }
+                    }
+                }
+            },
+            {
+                "name": "graph_move",
+                "description": "Move a function from its current file to another file. Removes from source, appends to destination, reindexes both. Requires a prior bake.",
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["name", "to_file"],
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to project directory"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Exact function name to move (matched case-insensitively in bake index)"
+                        },
+                        "to_file": {
+                            "type": "string",
+                            "description": "Destination file path relative to project root"
+                        }
+                    }
+                }
             }
         ]
     })
@@ -1172,6 +1250,74 @@ async fn call_tool(params: Value) -> Result<Value> {
                         "text": json
                     }
                 ],
+                "isError": false
+            }))
+        }
+        "graph_rename" => {
+            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let name = p
+                .arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_rename"))?;
+            let new_name = p
+                .arguments
+                .get("new_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'new_name' argument for graph_rename"))?;
+            let json = crate::engine::graph_rename(path, name, new_name)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
+                "isError": false
+            }))
+        }
+        "graph_add" => {
+            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let entity_type = p
+                .arguments
+                .get("entity_type")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'entity_type' argument for graph_add"))?;
+            let name = p
+                .arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_add"))?;
+            let file = p
+                .arguments
+                .get("file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for graph_add"))?;
+            let after_symbol = p.arguments.get("after_symbol").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let language = p.arguments.get("language").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let json = crate::engine::graph_add(path, entity_type, name, file, after_symbol, language)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
+                "isError": false
+            }))
+        }
+        "graph_move" => {
+            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let name = p
+                .arguments
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_move"))?;
+            let to_file = p
+                .arguments
+                .get("to_file")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'to_file' argument for graph_move"))?;
+            let json = crate::engine::graph_move(path, name, to_file)?;
+            Ok(serde_json::json!({
+                "content": [{"type": "text", "text": json}],
                 "isError": false
             }))
         }
