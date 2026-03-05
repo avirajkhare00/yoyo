@@ -71,6 +71,8 @@ pub fn api_surface(
             });
     }
 
+    let total_modules = modules.len();
+
     let mut modules_vec: Vec<ApiSurfaceModule> = modules
         .into_iter()
         .map(|(module, mut functions)| {
@@ -81,6 +83,8 @@ pub fn api_surface(
         .collect();
 
     modules_vec.sort_by(|a, b| a.module.cmp(&b.module));
+    modules_vec.truncate(limit);
+    let truncated = total_modules > limit;
 
     let payload = ApiSurfacePayload {
         tool: "api_surface",
@@ -88,6 +92,8 @@ pub fn api_surface(
         project_root: root,
         package,
         limit,
+        total_modules,
+        truncated,
         modules: modules_vec,
     };
 

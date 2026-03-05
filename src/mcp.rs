@@ -1036,8 +1036,7 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .arguments
                 .get("intent")
                 .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'intent' argument for architecture_map"))?;
+                .map(|s| s.to_string());
             let json = crate::engine::architecture_map(path, intent)?;
             Ok(serde_json::json!({
                 "content": [
@@ -1145,7 +1144,8 @@ async fn call_tool(params: Value) -> Result<Value> {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .ok_or_else(|| anyhow::anyhow!("Missing required 'doc_type' argument for find_docs"))?;
-            let json = crate::engine::find_docs(path, doc_type)?;
+            let limit = p.arguments.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
+            let json = crate::engine::find_docs(path, doc_type, limit)?;
             Ok(serde_json::json!({
                 "content": [
                     {

@@ -176,7 +176,7 @@ pub(crate) struct ArchitectureMapPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
     pub(crate) project_root: PathBuf,
-    pub(crate) intent: String,
+    pub(crate) intent: Option<String>,
     pub(crate) directories: Vec<ArchitectureDir>,
     pub(crate) suggestions: Vec<ArchitectureSuggestion>,
 }
@@ -253,6 +253,7 @@ pub(crate) struct FindDocsPayload {
     pub(crate) version: &'static str,
     pub(crate) project_root: PathBuf,
     pub(crate) doc_type: String,
+    pub(crate) truncated: bool,
     pub(crate) matches: Vec<DocMatch>,
 }
 
@@ -358,6 +359,8 @@ pub(crate) struct ApiSurfacePayload {
     pub(crate) project_root: PathBuf,
     pub(crate) package: Option<String>,
     pub(crate) limit: usize,
+    pub(crate) total_modules: usize,
+    pub(crate) truncated: bool,
     pub(crate) modules: Vec<ApiSurfaceModule>,
 }
 

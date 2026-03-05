@@ -2,8 +2,7 @@
 
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
-Linux tools (`grep`, `cat`, `sed`, `python3`) are fallback options only — reach for them when a yoyo tool genuinely cannot do the job.
-
+Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are last-resort fallbacks — only reach for them when yoyo tools are repeatedly erroring out and blocking progress. If a yoyo tool errors once, try a different yoyo tool or adjust parameters before falling back to Linux tools.
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
 
