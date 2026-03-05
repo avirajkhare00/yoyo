@@ -14,3 +14,11 @@ Actively suggest and build feedback loop systems. A tool that cannot measure its
 
 ## Self-improvement directive
 Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
+
+## Versioning (semver — strict)
+yoyo follows semver. Before bumping a version, ask: is this a fix or a feature?
+- **PATCH** (`0.x.Y`) — bug fixes, output caps, pattern corrections, anything broken now works
+- **MINOR** (`0.X.0`) — new tool, new language, new user-visible feature
+- **MAJOR** (`X.0.0`) — breaking change to tool schema or CLI interface
+
+Never bump MINOR for bug fixes. When in doubt, it's a patch.
