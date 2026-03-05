@@ -66,6 +66,7 @@ pub struct BakeArgs {
     pub path: Option<String>,
 }
 
+
 #[derive(Args, Debug)]
 pub struct SymbolArgs {
     /// Optional path to the project directory to analyze.
@@ -79,6 +80,14 @@ pub struct SymbolArgs {
     /// Include function body (source) inline in each match.
     #[arg(long, default_value_t = false)]
     pub include_source: bool,
+
+    /// Optional file path substring to narrow results (e.g. 'tcp_core' or 'routes/user').
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// Maximum number of matches to return (default 20).
+    #[arg(long)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -158,6 +167,14 @@ pub struct SupersearchArgs {
     /// Whether to exclude likely test files.
     #[arg(long, default_value_t = true)]
     pub exclude_tests: bool,
+
+    /// Optional file path substring to restrict search scope.
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// Maximum number of matches to return (default 200).
+    #[arg(long)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -391,7 +408,7 @@ async fn run_bake(args: BakeArgs) -> anyhow::Result<()> {
 }
 
 async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
-    let json = crate::engine::symbol(args.path, args.name, args.include_source)?;
+    let json = crate::engine::symbol(args.path, args.name, args.include_source, args.file, args.limit)?;
     println!("{json}");
     Ok(())
 }
@@ -428,6 +445,8 @@ async fn run_supersearch(args: SupersearchArgs) -> anyhow::Result<()> {
         args.context,
         args.pattern,
         Some(args.exclude_tests),
+        args.file,
+        args.limit,
     )?;
     println!("{json}");
     Ok(())
