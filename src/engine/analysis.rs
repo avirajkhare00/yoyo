@@ -27,9 +27,9 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
         }
     }
 
-
     // BFS from target symbol outward through callers
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_callers: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     let mut affected_files: BTreeSet<String> = BTreeSet::new();
     let mut callers: Vec<serde_json::Value> = Vec::new();
     let mut queue: std::collections::VecDeque<(String, usize)> = std::collections::VecDeque::new();
@@ -43,12 +43,15 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
         }
         if let Some(entries) = called_by.get(&sym) {
             for (caller_name, caller_file) in entries {
-                callers.push(serde_json::json!({
-                    "caller": caller_name,
-                    "file": caller_file,
-                    "depth": d + 1,
-                }));
-                affected_files.insert(caller_file.clone());
+                let key = (caller_name.clone(), caller_file.clone());
+                if seen_callers.insert(key) {
+                    callers.push(serde_json::json!({
+                        "caller": caller_name,
+                        "file": caller_file,
+                        "depth": d + 1,
+                    }));
+                    affected_files.insert(caller_file.clone());
+                }
                 if !visited.contains(caller_name) {
                     visited.insert(caller_name.clone());
                     queue.push_back((caller_name.clone(), d + 1));

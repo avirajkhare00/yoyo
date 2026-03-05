@@ -57,6 +57,7 @@ pub(crate) struct LlmInstructionsPayload {
     pub(crate) languages: Vec<String>,
     pub(crate) files_indexed: usize,
     pub(crate) tools: Vec<ToolDescription>,
+    pub(crate) concurrency_rules: Vec<&'static str>,
     pub(crate) workflows: Vec<Workflow>,
 }
 
@@ -65,6 +66,8 @@ pub(crate) struct ToolDescription {
     pub(crate) name: &'static str,
     pub(crate) description: &'static str,
     pub(crate) requires_bake: bool,
+    pub(crate) category: &'static str,
+    pub(crate) parallelisable: bool,
 }
 
 #[derive(Serialize)]
