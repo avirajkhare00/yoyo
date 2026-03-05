@@ -264,6 +264,13 @@ pub(crate) struct DocMatch {
 }
 
 #[derive(Serialize)]
+pub(crate) struct SyntaxError {
+    pub(crate) line: u32,
+    pub(crate) kind: String,   // "error" | "missing"
+    pub(crate) text: String,   // up to 80 chars of the offending node
+}
+
+#[derive(Serialize)]
 pub(crate) struct PatchPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
@@ -272,6 +279,8 @@ pub(crate) struct PatchPayload {
     pub(crate) start: u32,
     pub(crate) end: u32,
     pub(crate) total_lines: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) syntax_errors: Vec<SyntaxError>,
 }
 
 #[derive(Serialize)]
@@ -283,6 +292,8 @@ pub(crate) struct PatchBytesPayload {
     pub(crate) byte_start: usize,
     pub(crate) byte_end: usize,
     pub(crate) new_bytes: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) syntax_errors: Vec<SyntaxError>,
 }
 
 #[derive(Serialize)]
@@ -292,6 +303,8 @@ pub(crate) struct MultiPatchPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) files_written: usize,
     pub(crate) edits_applied: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) syntax_errors: Vec<SyntaxError>,
 }
 
 #[derive(Serialize)]
