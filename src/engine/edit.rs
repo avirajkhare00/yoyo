@@ -5,8 +5,47 @@ use anyhow::{anyhow, Context, Result};
 
 use std::collections::HashMap;
 
-use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload};
+use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
 use super::util::{load_bake_index, reindex_files, resolve_project_root};
+
+// ── Post-patch syntax validation ──────────────────────────────────────────────
+
+/// Parse `file` with tree-sitter and return any ERROR/MISSING nodes.
+/// Returns an empty vec if the language is unsupported or the file can't be read.
+fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    let full_path = root.join(file);
+    let Ok(source) = fs::read_to_string(&full_path) else { return vec![] };
+
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let mut parser = tree_sitter::Parser::new();
+    let ok = match ext {
+        "rs"                      => parser.set_language(&tree_sitter_rust::LANGUAGE.into()),
+        "go"                      => parser.set_language(&tree_sitter_go::LANGUAGE.into()),
+        "py"                      => parser.set_language(&tree_sitter_python::LANGUAGE.into()),
+        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        _                         => return vec![],
+    };
+    if ok.is_err() { return vec![]; }
+
+    let Some(tree) = parser.parse(&source, None) else { return vec![] };
+    let mut errors = vec![];
+    collect_errors(tree.root_node(), &source, &mut errors);
+    errors
+}
+
+fn collect_errors(node: tree_sitter::Node, source: &str, errors: &mut Vec<SyntaxError>) {
+    if node.is_error() || node.is_missing() {
+        let line = node.start_position().row as u32 + 1;
+        let raw  = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
+        let text: String = raw.chars().take(80).collect();
+        let kind = if node.is_missing() { "missing" } else { "error" }.to_string();
+        errors.push(SyntaxError { line, kind, text });
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_errors(child, source, errors);
+    }
+}
 
 /// Public entrypoint for the `slice` tool: read a specific line range of a file.
 pub fn slice(
@@ -79,6 +118,7 @@ pub fn patch(
     let (file, start, end, total_lines) =
         apply_patch_to_range(&root, &file, start, end, &new_content)?;
     let _ = reindex_files(&root, &[file.as_str()]);
+    let syntax_errors = syntax_check(&root, &file);
     let payload = PatchPayload {
         tool: "patch",
         version: env!("CARGO_PKG_VERSION"),
@@ -87,6 +127,7 @@ pub fn patch(
         start,
         end,
         total_lines,
+        syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
@@ -147,6 +188,7 @@ pub fn patch_by_symbol(
     let (file, start, end, total_lines) =
         apply_patch_to_range(&root, file.as_str(), *start, *end, &new_content)?;
     let _ = reindex_files(&root, &[file.as_str()]);
+    let syntax_errors = syntax_check(&root, &file);
     let payload = PatchPayload {
         tool: "patch",
         version: env!("CARGO_PKG_VERSION"),
@@ -155,11 +197,11 @@ pub fn patch_by_symbol(
         start,
         end,
         total_lines,
+        syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
 }
-
 // ── Byte-level patch ─────────────────────────────────────────────────────────
 
 /// Public entrypoint for `patch_bytes`: splice at exact byte offsets.
@@ -191,6 +233,7 @@ pub fn patch_bytes(
         format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
     })?;
     let _ = reindex_files(&root, &[file.as_str()]);
+    let syntax_errors = syntax_check(&root, &file);
     let payload = PatchBytesPayload {
         tool: "patch_bytes",
         version: env!("CARGO_PKG_VERSION"),
@@ -199,10 +242,10 @@ pub fn patch_bytes(
         byte_start,
         byte_end,
         new_bytes: new_byte_count,
+        syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
-
 // ── Multi-patch ───────────────────────────────────────────────────────────────
 
 pub struct PatchEdit {
@@ -277,13 +320,17 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
 
     let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
-
+    let syntax_errors: Vec<SyntaxError> = files_for_reindex
+        .iter()
+        .flat_map(|f| syntax_check(&root, f))
+        .collect();
     let payload = MultiPatchPayload {
         tool: "multi_patch",
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         files_written,
         edits_applied: total_edits,
+        syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
