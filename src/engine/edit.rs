@@ -30,15 +30,19 @@ fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     let Some(tree) = parser.parse(&source, None) else { return vec![] };
     let mut errors = vec![];
     collect_errors(tree.root_node(), &source, &mut errors);
-
-    // For Rust files, also run `cargo check` to catch macro-level and type errors
-    // that tree-sitter cannot see (e.g. mismatched braces inside serde_json::json!).
-    if ext == "rs" {
-        errors.extend(cargo_check_errors(root, file));
+    // For each supported language, run the compiler/checker to catch errors
+    // that tree-sitter cannot see (macros, type errors, import issues, etc.).
+    match ext {
+        "rs"                        => errors.extend(cargo_check_errors(root, file)),
+        "go"                        => errors.extend(go_build_errors(root, file)),
+        "py"                        => errors.extend(python_compile_errors(root, file)),
+        "ts" | "tsx" | "js" | "jsx" => errors.extend(tsc_errors(root, file)),
+        _ => {}
     }
 
     errors
 }
+
 
 /// Run `cargo check --message-format=json` in `root` and return compiler errors
 /// that mention `file`. Best-effort: returns empty vec on any failure.
@@ -80,6 +84,113 @@ fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
         }
     }
 
+    errors
+}
+
+/// Run `go build ./...` and return errors mentioning `file`. Best-effort.
+fn go_build_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("go")
+        .args(["build", "./..."])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+
+    // go build writes errors to stderr in the form: file.go:line:col: message
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut errors = vec![];
+    for line in stderr.lines() {
+        if !line.contains(file_name) { continue; }
+        // Format: path/to/file.go:LINE:COL: message
+        let parts: Vec<&str> = line.splitn(4, ':').collect();
+        if parts.len() < 4 { continue; }
+        let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
+        let text: String = parts[3].trim().chars().take(120).collect();
+        errors.push(SyntaxError { line: line_num, kind: "go".to_string(), text });
+    }
+    errors
+}
+
+/// Run `python -m py_compile <file>` and return syntax errors. Best-effort.
+fn python_compile_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("python3")
+        .args(["-m", "py_compile", file])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() { return vec![]; }
+
+    // py_compile writes to stderr: File "path", line N\n  SyntaxError: msg
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut line_num = 0u32;
+    let mut errors = vec![];
+
+    for ln in stderr.lines() {
+        if let Some(rest) = ln.trim().strip_prefix("File ") {
+            // File "path", line N
+            if let Some(idx) = rest.rfind(", line ") {
+                line_num = rest[idx + 7..].trim().parse().unwrap_or(0);
+            }
+        } else if ln.trim().starts_with("SyntaxError:") || ln.trim().starts_with("IndentationError:") {
+            let text: String = ln.trim().chars().take(120).collect();
+            errors.push(SyntaxError { line: line_num, kind: "python".to_string(), text });
+        }
+    }
+    errors
+}
+
+/// Run `tsc --noEmit` and return errors mentioning `file`. Best-effort.
+/// Requires `tsc` to be available (via npx or global install).
+fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    // Try npx tsc first, fall back to tsc directly.
+    let output = Command::new("npx")
+        .args(["--no-install", "tsc", "--noEmit", "--pretty", "false"])
+        .current_dir(root)
+        .output()
+        .or_else(|_| {
+            Command::new("tsc")
+                .args(["--noEmit", "--pretty", "false"])
+                .current_dir(root)
+                .output()
+        });
+
+    let Ok(output) = output else { return vec![] };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut errors = vec![];
+    for ln in combined.lines() {
+        if !ln.contains(file_name) { continue; }
+        // Format: path/file.ts(LINE,COL): error TS####: message
+        if let Some(paren) = ln.find('(') {
+            let rest = &ln[paren + 1..];
+            if let Some(comma) = rest.find(',') {
+                let line_num = rest[..comma].parse::<u32>().unwrap_or(0);
+                let text = ln.split(": ").skip(2).collect::<Vec<_>>().join(": ");
+                let text: String = text.chars().take(120).collect();
+                errors.push(SyntaxError { line: line_num, kind: "tsc".to_string(), text });
+            }
+        }
+    }
     errors
 }
 
