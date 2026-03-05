@@ -18,29 +18,6 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
 ---
 
-## Key strengths
-
-**`shake` — the killer onboarding command.**
-Top complex functions, language breakdown, and project structure in one call. No reading required.
-
-**`supersearch` — whole-codebase search in seconds.**
-AST-aware search across TypeScript, Rust, and Python — finds every usage of a function or identifier in one query.
-
-**`symbol` + `slice` — pinpoint any function.**
-Find a 260-line function by name, then read it verbatim. Use `symbol --include-source` to get the
-function body inline in one call; no second `slice` needed. No IDE, no scrolling.
-
-**`package_summary` — full module deep-dive.**
-Got the complete MTCNN 3-stage pipeline (PNet → RNet → ONet) without opening a single file.
-
-**MCP server — grounds AI in real code.**
-Connect to Claude Code, Cursor, or any MCP-compatible assistant. The AI calls your tools instead of hallucinating structure.
-
-**Fully local.**
-The bake index is a plain JSON file written inside your project. Nothing is sent anywhere.
-
----
-
 ## Installation
 
 ### Option 1 — Pre-built binary (recommended)
@@ -133,35 +110,6 @@ Once configured, your AI assistant can call **all 22 yoyo tools as MCP methods**
 | `llm_instructions` | `llm_instructions(path)` | Return a compact JSON "prime directive" with guidance on how assistants should use yoyo. |
 
 In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
-
----
-
-## Tool reference
-
-All commands accept `--path /path/to/project` (defaults to current directory).
-| Tool | Command | What it does |
-|---|---|---|
-| Bake | `yoyo bake` | Build Tree-sitter index → `bakes/latest/bake.json` |
-| Shake | `yoyo shake` | Overview: languages, top complex functions, endpoints |
-| Symbol | `yoyo symbol --name <fn> [--include-source] [--file <substr>] [--limit N]` | Find a function by name → file + line range; scope with `--file`, cap with `--limit` |
-| Slice | `yoyo slice --file <f> --start <n> --end <n>` | Read an exact line range |
-| Supersearch | `yoyo supersearch --query <term> [--file <substr>] [--limit N]` | AST-aware search across TypeScript, Rust, Python, and Go files |
-| File functions | `yoyo file-functions --file <f>` | List functions in a file with complexity |
-| API surface | `yoyo api-surface [--package <pkg>]` | Exported functions grouped by module |
-| Package summary | `yoyo package-summary --package <pkg>` | Deep-dive a module: files, functions, endpoints |
-| Architecture map | `yoyo architecture-map [--intent <desc>]` | Directory tree with role hints |
-| Suggest placement | `yoyo suggest-placement --function-name <fn> --function-type <type>` | Scored candidates for placing new code |
-| All endpoints | `yoyo all-endpoints` | List all detected HTTP endpoints |
-| API trace | `yoyo api-trace --endpoint <path> --method <GET\|POST\|…>` | Trace a route through its handler |
-| CRUD operations | `yoyo crud-operations [--entity <name>]` | CRUD matrix inferred from routes |
-| Find docs | `yoyo find-docs --doc-type <readme\|env\|config\|docker\|all>` | Locate config and documentation files |
-| Patch | `yoyo patch --symbol <name> --new-content <text>` or `--file <f> --start <n> --end <n> --new-content <text>` | Replace by symbol name or by line range; auto-syncs bake index |
-| Blast radius | `yoyo blast-radius --symbol <name> [--depth N]` | Transitive callers of a function + affected files |
-| Graph rename | `yoyo graph-rename --name <old> --new-name <new>` | Rename a symbol at its definition and every call site atomically |
-| Graph add | `yoyo graph-add --entity-type fn --name <fn> --file <f> [--after-symbol <s>]` | Insert a new function scaffold; fill body with `patch` |
-| Graph move | `yoyo graph-move --name <fn> --to-file <f>` | Move a function from one file to another |
-| LLM instructions | `yoyo llm-instructions` | Prime directive JSON for AI assistants |
-| Trace down | `yoyo trace-down --name <fn> [--depth N] [--file <substr>]` | Call chain from a function to db/http/queue boundaries. Go + Rust. |
 
 ---
 
