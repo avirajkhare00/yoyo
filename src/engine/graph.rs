@@ -382,6 +382,35 @@ fn resolve_candidate<'a>(
     candidates.first().copied()
 }
 
+fn is_stdlib_symbol(callee: &str, qualifier: Option<&str>) -> bool {
+    // Known Go stdlib package qualifiers
+    const GO_PKGS: &[&str] = &[
+        "fmt", "log", "time", "errors", "strings", "strconv", "os", "io", "sync",
+        "context", "math", "sort", "regexp", "http", "json", "bytes", "bufio",
+        "filepath", "path", "runtime", "reflect", "atomic", "rand", "hex", "base64",
+        "ioutil", "net", "url", "unicode", "utf8",
+    ];
+    // Known Go builtins (no qualifier)
+    const GO_BUILTINS: &[&str] = &[
+        "len", "cap", "make", "append", "delete", "new", "close", "panic", "recover",
+        "print", "println", "copy", "complex", "real", "imag", "string", "int",
+        "uint", "float64", "float32", "bool", "byte", "rune", "error",
+    ];
+    // Known Rust builtins / common std items (no qualifier)
+    const RUST_BUILTINS: &[&str] = &[
+        "println", "eprintln", "print", "eprint", "vec", "format", "assert",
+        "assert_eq", "assert_ne", "panic", "todo", "unimplemented", "unreachable",
+        "dbg", "write", "writeln", "unwrap", "expect", "clone", "into", "from",
+        "len", "push", "pop", "is_empty", "to_string", "to_owned", "as_str",
+    ];
+
+    if let Some(q) = qualifier {
+        GO_PKGS.contains(&q)
+    } else {
+        GO_BUILTINS.contains(&callee) || RUST_BUILTINS.contains(&callee)
+    }
+}
+
 pub fn trace_down(
     path: Option<String>,
     symbol: String,
@@ -468,12 +497,12 @@ pub fn trace_down(
                     }
                 }
             } else {
-                // Not in index and not a boundary — record as unresolved
+                // Not in index and not a boundary — record as unresolved (skip stdlib/builtins)
                 let label = match &call.qualifier {
                     Some(q) => format!("{}.{}", q, call.callee),
                     None => call.callee.clone(),
                 };
-                if !unresolved.contains(&label) {
+                if !unresolved.contains(&label) && !is_stdlib_symbol(&call.callee, call.qualifier.as_deref()) {
                     unresolved.push(label);
                 }
             }
