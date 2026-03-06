@@ -30,6 +30,27 @@ impl LanguageAnalyzer for GoAnalyzer {
         &["go"]
     }
 
+    fn extract_imports(&self, source: &str) -> Vec<String> {
+        let mut imports = Vec::new();
+        let mut in_block = false;
+        for line in source.lines() {
+            let t = line.trim();
+            if t == "import (" { in_block = true; continue; }
+            if in_block && t == ")" { in_block = false; continue; }
+            // single: import "pkg" or block entry: "pkg" or _ "pkg" or alias "pkg"
+            let candidate = if in_block { t } else { t.strip_prefix("import ").unwrap_or("") };
+            // extract content between quotes
+            if let Some(start) = candidate.find('"') {
+                let rest = &candidate[start + 1..];
+                if let Some(end) = rest.find('"') {
+                    let path = &rest[..end];
+                    if !path.is_empty() { imports.push(path.to_string()); }
+                }
+            }
+        }
+        imports
+    }
+
     fn analyze_file(
         &self,
         root: &Path,

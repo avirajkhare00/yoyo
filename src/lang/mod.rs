@@ -68,6 +68,10 @@ pub trait LanguageAnalyzer: Send + Sync {
         root: &Path,
         file: &Path,
     ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)>;
+    /// Extract import/use/require paths from source. Line-based — no AST needed.
+    fn extract_imports(&self, _source: &str) -> Vec<String> {
+        vec![]
+    }
     fn supports_ast_search(&self) -> bool {
         false
     }

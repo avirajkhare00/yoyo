@@ -83,6 +83,36 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
         })
     });
 
+    // Import-graph expansion: add files that import the target symbol's defining file
+    // or any already-affected file.  Catches file-level deps the call graph misses.
+    {
+        let target_file = bake.functions.iter()
+            .find(|f| f.name == symbol)
+            .map(|f| f.file.clone());
+
+        let mut seeds: Vec<String> = affected_files.iter().cloned().collect();
+        if let Some(tf) = target_file {
+            seeds.push(tf);
+        }
+
+        for seed in &seeds {
+            let seed_stem = std::path::Path::new(seed)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            if seed_stem.is_empty() { continue; }
+
+            for bake_file in &bake.files {
+                let path_str = bake_file.path.to_string_lossy().to_string();
+                if affected_files.contains(&path_str) { continue; }
+                if bake_file.imports.iter().any(|imp| imp.contains(&seed_stem)) {
+                    affected_files.insert(path_str);
+                }
+            }
+        }
+    }
+
     let affected_files: Vec<String> = affected_files.into_iter().collect();
     let total_callers = callers.len();
 
@@ -347,4 +377,66 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) ->
         bytes_removed,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn write_file(root: &TempDir, rel: &str, content: &str) {
+        let p = root.path().join(rel);
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(p, content).unwrap();
+    }
+
+    fn bake_dir(root: &TempDir) {
+        crate::engine::bake(Some(root.path().to_string_lossy().into_owned())).unwrap();
+    }
+
+    // ── graph_delete ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn delete_removes_function_body_from_file() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn keep_me() {\n    let x = 1;\n}\n\nfn remove_me() {\n    let y = 2;\n}\n",
+        );
+        bake_dir(&dir);
+
+        let result = graph_delete(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "remove_me".into(),
+            None,
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "graph_delete");
+        assert!(v["bytes_removed"].as_u64().unwrap() > 0);
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(!content.contains("remove_me"));
+        assert!(content.contains("fn keep_me"));
+    }
+
+    #[test]
+    fn delete_returns_error_when_symbol_not_in_index() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn foo() {}\n");
+        bake_dir(&dir);
+
+        let err = graph_delete(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "no_such_fn".into(),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
 }
