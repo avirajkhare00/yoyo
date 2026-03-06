@@ -6,8 +6,9 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_python::LANGUAGE;
 
 use super::{
-    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    IndexedType, LanguageAnalyzer, NodeKinds,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
+    AstMatch, IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
+    Visibility,
 };
 
 pub struct PythonAnalyzer;
@@ -65,7 +66,9 @@ impl LanguageAnalyzer for PythonAnalyzer {
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
         let mut types = Vec::new();
-        walk_py(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        let rel_file = relative(root, file);
+        let mod_path = module_path_from_file(&rel_file, "python");
+        walk_py(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
         Ok((functions, endpoints, types))
     }
 
@@ -92,11 +95,23 @@ impl LanguageAnalyzer for PythonAnalyzer {
     }
 }
 
+/// Python visibility: `__name` → Private, `_name` → Module, else → Public.
+fn py_visibility(name: &str) -> Visibility {
+    if name.starts_with("__") && !name.ends_with("__") {
+        Visibility::Private
+    } else if name.starts_with('_') {
+        Visibility::Module
+    } else {
+        Visibility::Public
+    }
+}
+
 fn walk_py(
     source: &str,
     root: &Path,
     file: &Path,
     node: Node,
+    mod_path: &str,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -107,6 +122,7 @@ fn walk_py(
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
+                    let vis = py_visibility(&name);
                     types.push(IndexedType {
                         name,
                         file: relative(root, file),
@@ -114,6 +130,8 @@ fn walk_py(
                         start_line,
                         end_line,
                         kind: "class".to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: vis,
                     });
                 }
             }
@@ -123,6 +141,8 @@ fn walk_py(
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
+                let vis = py_visibility(&name);
+                let qname = qualified_name(mod_path, &name, "python");
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -133,11 +153,13 @@ fn walk_py(
                     calls: collect_calls(node, source),
                     byte_start,
                     byte_end,
+                    module_path: mod_path.to_string(),
+                    qualified_name: qname,
+                    visibility: vis,
                 });
             }
         }
         "decorated_definition" => {
-            // Collect HTTP-method decorators and pair with the definition.
             let mut method_path: Option<(String, String)> = None;
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
@@ -147,13 +169,14 @@ fn walk_py(
                     }
                 }
             }
-            // Walk into the definition for functions/classes inside.
             if let Some(def) = node.child_by_field_name("definition") {
                 if def.kind() == "function_definition" {
                     if let Some(name_node) = def.child_by_field_name("name") {
                         let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                         let (start_line, end_line) = line_range(&def);
                         let (byte_start, byte_end) = byte_range(&def);
+                        let vis = py_visibility(&name);
+                        let qname = qualified_name(mod_path, &name, "python");
                         functions.push(IndexedFunction {
                             name: name.clone(),
                             file: relative(root, file),
@@ -164,6 +187,9 @@ fn walk_py(
                             calls: collect_calls(def, source),
                             byte_start,
                             byte_end,
+                            module_path: mod_path.to_string(),
+                            qualified_name: qname,
+                            visibility: vis,
                         });
                         if let Some((method, path)) = method_path {
                             endpoints.push(IndexedEndpoint {
@@ -177,10 +203,9 @@ fn walk_py(
                         }
                     }
                 } else {
-                    // Could be a class — recurse into it.
-                    walk_py(source, root, file, def, functions, endpoints, types);
+                    walk_py(source, root, file, def, mod_path, functions, endpoints, types);
                 }
-                return; // children already handled
+                return;
             }
         }
         _ => {}
@@ -188,7 +213,7 @@ fn walk_py(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_py(source, root, file, child, functions, endpoints, types);
+        walk_py(source, root, file, child, mod_path, functions, endpoints, types);
     }
 }
 

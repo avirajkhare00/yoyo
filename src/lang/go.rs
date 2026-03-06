@@ -6,8 +6,9 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_go::LANGUAGE;
 
 use super::{
-    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    IndexedType, LanguageAnalyzer, NodeKinds,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
+    AstMatch, IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
+    Visibility,
 };
 
 pub struct GoAnalyzer;
@@ -68,7 +69,12 @@ impl LanguageAnalyzer for GoAnalyzer {
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
         let mut types = Vec::new();
-        walk_go(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        // Go: use `package` declaration as module path; fall back to file-path derivation.
+        let mod_path = go_package_from_source(&source).unwrap_or_else(|| {
+            let rel = relative(root, file);
+            module_path_from_file(&rel, "go")
+        });
+        walk_go(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
         Ok((functions, endpoints, types))
     }
 
@@ -95,11 +101,40 @@ impl LanguageAnalyzer for GoAnalyzer {
     }
 }
 
+/// Extract Go package name from `package <name>` declaration.
+fn go_package_from_source(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let t = line.trim();
+        if t.starts_with("package ") {
+            let pkg = t.trim_start_matches("package ").trim();
+            if !pkg.is_empty() && pkg != "main" {
+                return Some(pkg.to_string());
+            }
+            return Some(pkg.to_string());
+        }
+        // Skip blank lines and comments before package decl
+        if !t.is_empty() && !t.starts_with("//") && !t.starts_with("/*") {
+            break;
+        }
+    }
+    None
+}
+
+/// Go visibility: exported (capitalized) → Public, unexported → Private.
+fn go_visibility(name: &str) -> Visibility {
+    if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        Visibility::Public
+    } else {
+        Visibility::Private
+    }
+}
+
 fn walk_go(
     source: &str,
     root: &Path,
     file: &Path,
     node: Node,
+    mod_path: &str,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -121,6 +156,7 @@ fn walk_go(
                                 })
                                 .unwrap_or("type");
                             let (start_line, end_line) = line_range(&child);
+                            let vis = go_visibility(&name);
                             types.push(IndexedType {
                                 name,
                                 file: relative(root, file),
@@ -128,6 +164,8 @@ fn walk_go(
                                 start_line,
                                 end_line,
                                 kind: kind.to_string(),
+                                module_path: mod_path.to_string(),
+                                visibility: vis,
                             });
                         }
                     }
@@ -139,6 +177,8 @@ fn walk_go(
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
+                let vis = go_visibility(&name);
+                let qname = qualified_name(mod_path, &name, "go");
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -149,6 +189,9 @@ fn walk_go(
                     calls: collect_calls(node, source),
                     byte_start,
                     byte_end,
+                    module_path: mod_path.to_string(),
+                    qualified_name: qname,
+                    visibility: vis,
                 });
             }
         }
@@ -157,6 +200,8 @@ fn walk_go(
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
+                let vis = go_visibility(&name);
+                let qname = qualified_name(mod_path, &name, "go");
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -167,6 +212,9 @@ fn walk_go(
                     calls: collect_calls(node, source),
                     byte_start,
                     byte_end,
+                    module_path: mod_path.to_string(),
+                    qualified_name: qname,
+                    visibility: vis,
                 });
             }
         }
@@ -181,7 +229,7 @@ fn walk_go(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_go(source, root, file, child, functions, endpoints, types);
+        walk_go(source, root, file, child, mod_path, functions, endpoints, types);
     }
 }
 

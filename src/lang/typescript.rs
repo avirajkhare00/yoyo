@@ -6,8 +6,9 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_typescript::LANGUAGE_TYPESCRIPT;
 
 use super::{
-    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    IndexedType, LanguageAnalyzer, NodeKinds,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
+    AstMatch, IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
+    Visibility,
 };
 
 pub struct TypeScriptAnalyzer;
@@ -74,7 +75,9 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
         let mut types = Vec::new();
-        walk_ts(&source, root, file, tree.root_node(), &mut functions, &mut endpoints, &mut types);
+        let rel_file = relative(root, file);
+        let mod_path = module_path_from_file(&rel_file, "typescript");
+        walk_ts(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
         Ok((functions, endpoints, types))
     }
 
@@ -106,6 +109,7 @@ fn walk_ts(
     root: &Path,
     file: &Path,
     node: Node,
+    mod_path: &str,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -113,14 +117,14 @@ fn walk_ts(
     match node.kind() {
         "function_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                push_function(source, root, file, node, name_node, functions);
+                push_function(source, root, file, node, name_node, mod_path, functions);
             }
         }
         "method_definition" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 if !name.is_empty() {
-                    push_function(source, root, file, node, name_node, functions);
+                    push_function(source, root, file, node, name_node, mod_path, functions);
                 }
             }
         }
@@ -132,6 +136,7 @@ fn walk_ts(
                         if !name.is_empty() {
                             let (start_line, end_line) = line_range(&value);
                             let (byte_start, byte_end) = byte_range(&value);
+                            let qname = qualified_name(mod_path, &name, "typescript");
                             functions.push(IndexedFunction {
                                 name,
                                 file: relative(root, file),
@@ -142,6 +147,9 @@ fn walk_ts(
                                 calls: collect_calls(value, source),
                                 byte_start,
                                 byte_end,
+                                module_path: mod_path.to_string(),
+                                qualified_name: qname,
+                                visibility: Visibility::Public,
                             });
                         }
                     }
@@ -156,6 +164,7 @@ fn walk_ts(
                         if !name.is_empty() {
                             let (start_line, end_line) = line_range(&right);
                             let (byte_start, byte_end) = byte_range(&right);
+                            let qname = qualified_name(mod_path, &name, "typescript");
                             functions.push(IndexedFunction {
                                 name,
                                 file: relative(root, file),
@@ -166,6 +175,9 @@ fn walk_ts(
                                 calls: collect_calls(right, source),
                                 byte_start,
                                 byte_end,
+                                module_path: mod_path.to_string(),
+                                qualified_name: qname,
+                                visibility: Visibility::Public,
                             });
                         }
                     }
@@ -187,6 +199,8 @@ fn walk_ts(
                         start_line,
                         end_line,
                         kind: "class".to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
                     });
                 }
             }
@@ -203,6 +217,8 @@ fn walk_ts(
                         start_line,
                         end_line,
                         kind: "interface".to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
                     });
                 }
             }
@@ -219,6 +235,8 @@ fn walk_ts(
                         start_line,
                         end_line,
                         kind: "type".to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
                     });
                 }
             }
@@ -235,6 +253,8 @@ fn walk_ts(
                         start_line,
                         end_line,
                         kind: "enum".to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
                     });
                 }
             }
@@ -243,7 +263,7 @@ fn walk_ts(
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_ts(source, root, file, child, functions, endpoints, types);
+        walk_ts(source, root, file, child, mod_path, functions, endpoints, types);
     }
 }
 
@@ -253,6 +273,7 @@ fn push_function(
     file: &Path,
     node: Node,
     name_node: Node,
+    mod_path: &str,
     functions: &mut Vec<IndexedFunction>,
 ) {
     let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
@@ -261,6 +282,7 @@ fn push_function(
     }
     let (start_line, end_line) = line_range(&node);
     let (byte_start, byte_end) = byte_range(&node);
+    let qname = qualified_name(mod_path, &name, "typescript");
     functions.push(IndexedFunction {
         name,
         file: relative(root, file),
@@ -271,6 +293,9 @@ fn push_function(
         calls: collect_calls(node, source),
         byte_start,
         byte_end,
+        module_path: mod_path.to_string(),
+        qualified_name: qname,
+        visibility: Visibility::Public,
     });
 }
 
