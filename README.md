@@ -1,69 +1,35 @@
-# yoyo – Local Code Intelligence Engine
+# yoyo
 
-**yoyo** is a pure-Rust code-intelligence engine and MCP server that indexes your TypeScript, JavaScript, Rust, Python, and Go projects with Tree-sitter and exposes 22 LLM-ready tools over CLI and stdio.
+yoyo parses your codebase and gives Claude or Cursor 24 tools to read and edit it over MCP.
+
+When Claude doesn't have a tool to read your code, it guesses — wrong file paths, stale function names, invented module structures. yoyo stops the guessing. Every answer comes from the AST.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
 ---
 
-## Why yoyo?
+## What you get
 
-| | Without yoyo | With yoyo |
-|---|---|---|
-| Onboard to an unfamiliar codebase | `ls`, grep, file-by-file reading | A few parallel tool calls |
-| Find where a function is defined | Search IDE, scroll, guess filenames | `yoyo symbol --name myFn` → file + line range |
-| Trace usages across a large codebase | Grep hunt across dozens of files | `yoyo supersearch --query myFn` → instant |
-| Understand a module's public API | Open every file in the module | `yoyo package_summary --package services` → done |
-| Know where to add new code | Team discussion, guesswork | `yoyo suggest_placement --function-name sendEmail` |
+- **Speed** — 8 parallel tool calls replace 15–20 minutes of manual file reading. A 400-file codebase in ~30 seconds.
+- **Accuracy** — file paths, function names, line numbers, and byte offsets come directly from the parsed AST, not from model memory.
 
-
-## How it works
-
-yoyo maintains two artifacts — source files and a bake index (`bakes/latest/bake.json`). The index is always derived from source; source is always the source of truth.
-
-### Session flow
-
-```mermaid
-sequenceDiagram
-    participant AI
-    participant yoyo
-    participant Source
-    participant Index
-
-    AI->>yoyo: bake
-    yoyo->>Source: walk + parse (tree-sitter)
-    yoyo->>Index: write bake.json
-    yoyo-->>AI: indexed N files
-
-    par read in parallel
-        AI->>yoyo: symbol(myFn)
-        AI->>yoyo: supersearch(query)
-        AI->>yoyo: shake
-    end
-    yoyo->>Index: read
-    yoyo-->>AI: results
-
-    AI->>yoyo: patch(file, lines, new_content)
-    yoyo->>Source: write file
-    yoyo->>Index: reindex_files() — auto-sync
-    yoyo-->>AI: done + syntax_errors (if any)
-
-    AI->>yoyo: symbol(myFn)
-    Note over AI,yoyo: fresh result — no manual bake needed
-    yoyo->>Index: read
-    yoyo-->>AI: updated result
-```
-
-**Concurrency rules:** read tools parallelise freely — write tools are always sequential. After every write, `reindex_files()` keeps the index in sync automatically.
+Tested on two real projects. Full benchmark: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports/benchmark-face-api-js-2026-03-03.md)
 
 ---
 
+## How it works
+
+```
+bake  →  parse source files with Tree-sitter  →  write bake.json
+read  →  symbol / supersearch / slice / ...   →  read from bake.json
+write →  patch / graph_rename / ...           →  write file + reindex
+```
+
+**Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically.
+
+---
 
 ## Installation
-
-### Option 1 — Pre-built binary (recommended)
-
-Download from the [latest GitHub release](https://github.com/avirajkhare00/yoyo/releases/latest):
 
 **macOS (Apple Silicon)**
 ```bash
@@ -79,10 +45,7 @@ curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_
 sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 ```
 
-### Option 2 — Build from source
-
-Requires [Rust stable](https://rustup.rs):
-
+**Build from source** (requires [Rust stable](https://rustup.rs)):
 ```bash
 git clone https://github.com/avirajkhare00/yoyo.git
 cd yoyo
@@ -90,25 +53,17 @@ cargo build --release
 sudo cp target/release/yoyo /usr/local/bin/yoyo
 ```
 
-### Quick start
-
+**Quick start:**
 ```bash
-# 1. index your project
 yoyo bake --path /path/to/your/project
-
-# 2. instant overview
 yoyo shake --path /path/to/your/project
-
-# 3. find a function by name (add --include-source to get body inline)
 yoyo symbol --path /path/to/your/project --name myFunction
-
-# 4. search across all files
-yoyo supersearch --path /path/to/your/project --query prisma
+yoyo supersearch --path /path/to/your/project --query myFunction
 ```
 
 ---
 
-## Use with AI assistants (MCP)
+## Use with Claude or Cursor (MCP)
 
 Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 
@@ -124,114 +79,80 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
-Once configured, your AI assistant can call **all 22 yoyo tools as MCP methods**. Each method takes a `path` to the project (defaults to the current workspace in most editors) plus a few tool-specific arguments:
-
-| MCP tool | Typical call | What it does |
-|---|---|---|
-| `bake` | `bake(path)` | Build the Tree-sitter index for the project. Must run before most other tools. |
-| `shake` | `shake(path)` | High-level repo overview: languages, file counts, top-complex functions, endpoints. |
-| `symbol` | `symbol(path, name, include_source, file?, limit?)` | Find a function by name. Use `file` to scope to a module and `limit` to cap result count. |
-| `slice` | `slice(path, file, start, end)` | Read an exact line range from a file for precise code inspection. |
-| `supersearch` | `supersearch(path, query, file?, limit?)` | AST-aware search across TypeScript, Rust, Python, and Go source files. |
-| `file_functions` | `file_functions(path, file)` | List all functions in a file with complexity scores. |
-| `api_surface` | `api_surface(path, package)` | Exported/public API grouped by module; omit `package` for a project-wide view. |
-| `package_summary` | `package_summary(path, package)` | Deep-dive a module: files, functions, endpoints, and complexity. |
-| `architecture_map` | `architecture_map(path, intent)` | Directory tree with role hints based on file names and an optional intent string. |
-| `suggest_placement` | `suggest_placement(path, function_name, function_type, related_to)` | Scored candidates for where new code should live. |
-| `all_endpoints` | `all_endpoints(path)` | List all detected HTTP endpoints (Express/Actix/Flask/FastAPI/gin/echo). |
-| `api_trace` | `api_trace(path, endpoint, method)` | Trace a single route through its handler for a given path + HTTP method. |
-| `crud_operations` | `crud_operations(path, entity)` | Inferred CRUD matrix from routes, optionally filtered to a specific entity. |
-| `find_docs` | `find_docs(path, doc_type)` | Locate READMEs, `.env`, Dockerfiles, and other config/docs. |
-| `patch` | `patch(path, ...)` | Apply structured edits by symbol or by file + line range. Auto-syncs the bake index after every write. |
-| `blast_radius` | `blast_radius(path, symbol, depth)` | Find all functions that transitively call a symbol, and the affected files. |
-| `graph_rename` | `graph_rename(path, name, new_name)` | Rename a symbol at its definition and every call site atomically. Word-boundary matching prevents partial renames. |
-| `graph_add` | `graph_add(path, entity_type, name, file, after_symbol?)` | Insert a new function scaffold at the right location; fill the body with `patch`. |
-| `graph_move` | `graph_move(path, name, to_file)` | Move a function from one file to another; removes from source, appends to destination. |
-| `trace_down` | `trace_down(path, name, depth?, file?)` | Trace a function's call chain downward to external boundaries (db, http, queue). Go + Rust. |
-| `llm_instructions` | `llm_instructions(path)` | Return a compact JSON "prime directive" with guidance on how assistants should use yoyo. |
-
-In Claude, Cursor, and other MCP-aware tools, you typically don't call these methods manually — the assistant selects and calls them as needed to ground its answers in your actual code.
+Claude calls the tools automatically. You don't manage it.
 
 ---
 
-## Benchmark
+## Tools
 
-Tested on two real TypeScript projects from scratch:
+| Tool | What it does |
+|---|---|
+| `bake` | Parse the project and write the index. Run this first. |
+| `shake` | Language breakdown, file count, top-complexity functions. |
+| `symbol` | Find a function by name. Returns file, line range, optionally the full body. |
+| `slice` | Read any line range from any file. |
+| `file_functions` | Every function in a file with line ranges and complexity scores. |
+| `supersearch` | AST-aware search. Finds call sites, assignments, identifiers across all files. |
+| `blast_radius` | All functions that transitively call a symbol. Affected file list included. |
+| `trace_down` | BFS call chain from a function to db/http/queue boundaries. Rust + Go. |
+| `health` | Dead code, high-complexity functions, and duplicate function name hints. |
+| `package_summary` | All functions, endpoints, and complexity in a module path. |
+| `architecture_map` | Directory tree with inferred roles (routes, services, models, etc.). |
+| `api_surface` | Exported functions grouped by module. |
+| `suggest_placement` | Ranked list of files to add a new function to. |
+| `find_docs` | Locate README, .env, Dockerfile, and config files. |
+| `all_endpoints` | All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo). |
+| `api_trace` | Trace a route path + HTTP method to its handler function. |
+| `crud_operations` | Create/read/update/delete matrix inferred from routes. |
+| `patch` | Write changes by symbol name, line range, or exact string match. Auto-reindexes. |
+| `patch_bytes` | Write at exact byte offsets from the index. |
+| `multi_patch` | Apply N edits across M files in one call. |
+| `graph_rename` | Rename a symbol at its definition and every call site atomically. |
+| `graph_add` | Insert a new function scaffold into a file. |
+| `graph_move` | Move a function from one file to another. |
+| `graph_delete` | Remove a function by name. |
 
-| Project | Files | Type |
-|---|---|---|
-| `schema-generator-prisma` | 24 | CLI tool |
-| `face-api.js` | 386 | ML library |
+**Languages:** TypeScript, JavaScript, Rust, Python, Go
 
-**With yoyo (8 tool calls, 3 parallel batches):**
-```
-Batch 1:  bake + shake
-Batch 2:  architecture_map + find_docs + api_surface
-Batch 3:  package_summary(globalApi) + package_summary(mtcnn) + supersearch(detectAllFaces)
-```
-Total wall-clock time: **~30 seconds**
-
-**Without yoyo (manual):** ~15–20 minutes of directory browsing, grepping, and file reading.
-
-Full benchmark report: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports/benchmark-face-api-js-2026-03-03.md)
-
----
-
-## Why not just use LSP?
-
-LSP is for humans navigating code in an editor. yoyo is for AI agents understanding code. Different consumer, different job.
-
-| | LSP | yoyo |
-|---|---|---|
-| Consumer | Editor (VS Code, Neovim…) | AI assistant (Claude, Cursor…) |
-| Protocol | JSON-RPC to editor buffers | MCP stdio — AI calls tools directly |
-| Scope | Per-file, cursor-aware | Whole codebase in one call |
-| Setup | One server per language (gopls, rust-analyzer, pyright…) | One binary for all languages |
-| "Where should new code go?" | No equivalent | `suggest_placement` |
-| Project-wide complexity overview | No equivalent | `shake` |
-| Edit by symbol name | No equivalent | `patch` |
-
-LSP tells you what exists at your cursor. yoyo tells an AI what the codebase looks like and lets it act on it. Use both — LSP while writing, yoyo when asking Claude to understand or modify a codebase it has never seen.
+**Route detection:** Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http
 
 ---
 
-## Known limitations (current version)
+## Known limitations
 
-- **Limited route detection** — `api_trace` and `crud_operations` detect Express (TS), Actix/Rocket (Rust), Flask/FastAPI (Python), and gin/echo/net-http (Go) routes. NestJS decorators, Fastify, and dynamic routers are not supported.
-- **Result explosion on common terms** — `symbol` and `supersearch` can return hundreds of matches for generic names like `connect` or `parse`. Use `--file` to scope to a directory/file and `--limit` to cap the result count. Other tools (`api_surface`, `find_docs`, `package_summary`) have no cap yet.
-- **Inline closure handlers not named** — In Go codebases where route handlers are inline closures (e.g. `r.GET("/path", func(c *gin.Context){...})`), `all_endpoints` returns `handler_name: null` and `file_functions` does not index the closure body. Name your handlers or extract them to named functions.
-- **Chained method calls partially resolved** — `trace_down` extracts the first qualifier in a chain (`db` from `db.Query()`). Chained GORM-style calls like `db.DB.Preload("Nodes").First(...)` are listed as unresolved rather than classified as `database` boundary.
-- **Rust macro syntax not caught by tree-sitter** — Post-patch syntax validation uses tree-sitter (fast) plus `cargo check` (thorough). For non-Rust languages, only tree-sitter runs; `go build`, `python3 -m py_compile`, and `tsc --noEmit` are used for Go, Python, and TypeScript respectively.
-- **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package will match all callers of any `parse`. Re-run `bake` after code changes to refresh the graph.
-- **Import updates not automated** — `graph_move` relocates a function body between files but does not add or remove `use`/`import` statements. Update those manually after moving.
+- **Route detection is partial** — `api_trace` and `crud_operations` work with the frameworks listed above. Axum, NestJS, Fastify, Django, and dynamic routers are not detected. See [#19](https://github.com/avirajkhare00/yoyo/issues/19).
+- **`health` false positives for HTTP handlers** — functions registered via a router (not via direct calls) are flagged as dead code because the static call graph can't see the registration. Tracked in [#30](https://github.com/avirajkhare00/yoyo/issues/30).
+- **`trace_down` is Rust + Go only** — call chain tracing doesn't work in TypeScript or Python yet.
+- **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
+- **`graph_move` doesn't update imports** — it relocates the function body but doesn't add or remove `use`/`import` statements.
+- **Common search terms explode** — `symbol` and `supersearch` return many matches for generic names like `parse` or `connect`. Use `--file` to scope to a directory and `--limit` to cap results.
 
 Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkhare00/yoyo/issues)
+
 ---
 
 ## Project layout
 
 ```
 src/
-  main.rs           binary entrypoint, CLI vs MCP switch
-  cli.rs            human-facing CLI (clap)
-  mcp.rs            MCP JSON-RPC server over stdio
+  main.rs        binary entrypoint, CLI vs MCP switch
+  cli.rs         CLI (clap)
+  mcp.rs         MCP JSON-RPC server over stdio
   engine/
-    mod.rs          public re-exports for all engine modules
-    index.rs        bake, shake, llm_instructions
-    search.rs       symbol, supersearch, file_functions
-    edit.rs         patch, patch_bytes, patch_by_symbol, multi_patch, slice
-    graph.rs        graph_rename, graph_add, graph_move
-    analysis.rs     blast_radius, find_docs
-    api.rs          all_endpoints, api_surface, api_trace, crud_operations
-    nav.rs          architecture_map, package_summary, suggest_placement
-    types.rs        shared payload structs
-    util.rs         resolve_project_root, load_bake_index, reindex_files
+    index.rs     bake, shake, llm_instructions
+    search.rs    symbol, supersearch, file_functions
+    edit.rs      patch, patch_bytes, multi_patch, slice
+    graph.rs     graph_rename, graph_add, graph_move
+    analysis.rs  blast_radius, find_docs, health, graph_delete
+    api.rs       all_endpoints, api_surface, api_trace, crud_operations
+    nav.rs       architecture_map, package_summary, suggest_placement
+    types.rs     shared payload structs
+    util.rs      resolve_project_root, load_bake_index, reindex_files
   lang/
-    mod.rs          LanguageAnalyzer trait, IndexedFunction (incl. calls graph), shared AST helpers
-    typescript.rs   TypeScript/JS — functions, arrow fns, Express routes, call extraction
-    rust.rs         Rust — functions, Actix/Rocket routes, call + method_call extraction
-    python.rs       Python — functions, Flask/FastAPI decorators, call extraction
-    go.rs           Go — functions, methods, gin/echo/net-http routes, call extraction
+    typescript.rs
+    rust.rs
+    python.rs
+    go.rs
 ```
 
 ---

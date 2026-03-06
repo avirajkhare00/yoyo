@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yoyo – Local Code Intelligence Engine</title>
+  <title>yoyo – Code search and editing tools for AI assistants</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -31,10 +31,8 @@
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
-    /* ── layout ── */
     .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
 
-    /* ── nav ── */
     nav {
       border-bottom: 1px solid var(--border);
       padding: 14px 0;
@@ -53,23 +51,9 @@
     nav ul a { color: var(--muted); font-size: 0.9rem; }
     nav ul a:hover { color: var(--text); text-decoration: none; }
 
-    /* ── hero ── */
     .hero {
-      padding: 72px 0 56px;
+      padding: 80px 0 60px;
       text-align: center;
-    }
-    .badge {
-      display: inline-block;
-      background: rgba(56, 139, 253, 0.15);
-      border: 1px solid rgba(56, 139, 253, 0.4);
-      color: var(--accent);
-      font-size: 0.78rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 4px 12px;
-      border-radius: 99px;
-      margin-bottom: 20px;
     }
     h1 {
       font-size: clamp(2rem, 5vw, 3.2rem);
@@ -78,12 +62,13 @@
       letter-spacing: -1px;
       margin-bottom: 20px;
     }
-    h1 .dim { color: var(--muted); font-weight: 400; }
+    h1 em { color: var(--accent); font-style: normal; }
     .subtitle {
       font-size: 1.15rem;
       color: var(--muted);
-      max-width: 560px;
+      max-width: 580px;
       margin: 0 auto 36px;
+      line-height: 1.65;
     }
     .cta-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
     .btn {
@@ -100,18 +85,13 @@
     }
     .btn:hover { opacity: 0.85; text-decoration: none; }
     .btn-primary { background: var(--accent); color: #0d1117; }
-    .btn-ghost {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
 
-    /* ── stat bar ── */
     .stat-bar {
       background: var(--surface);
       border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
-      padding: 24px 0;
+      padding: 28px 0;
     }
     .stat-bar .inner {
       max-width: 900px;
@@ -123,25 +103,44 @@
       gap: 24px;
     }
     .stat { text-align: center; }
-    .stat-num {
-      font-size: 2rem;
-      font-weight: 800;
-      color: var(--accent);
-      line-height: 1;
-    }
-    .stat-label { font-size: 0.82rem; color: var(--muted); margin-top: 4px; }
+    .stat-num { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; }
+    .stat-label { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
 
-    /* ── sections ── */
-    section { padding: 60px 0; }
-    h2 {
-      font-size: 1.6rem;
-      font-weight: 700;
-      margin-bottom: 8px;
-      letter-spacing: -0.4px;
-    }
-    .section-sub { color: var(--muted); margin-bottom: 36px; }
+    section { padding: 64px 0; }
+    h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.4px; }
+    .section-sub { color: var(--muted); margin-bottom: 36px; font-size: 0.97rem; }
 
-    /* ── strengths grid ── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: start;
+    }
+    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+    .problem-list, .benefit-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .problem-list li, .benefit-list li {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .problem-list li strong, .benefit-list li strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+    .benefit-list li { border-color: rgba(63,185,80,0.3); }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -153,11 +152,9 @@
       border-radius: var(--radius);
       padding: 24px;
     }
-    .card-icon { font-size: 1.5rem; margin-bottom: 12px; }
     .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
     .card p { font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
 
-    /* ── code blocks ── */
     pre, code {
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
     }
@@ -176,37 +173,6 @@
     .cmd { color: var(--accent2); }
     .kw  { color: var(--accent); }
 
-    /* ── install section ── */
-    .install-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-    .tab {
-      padding: 6px 16px;
-      border-radius: 99px;
-      border: 1px solid var(--border);
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      background: transparent;
-      color: var(--muted);
-      transition: all 0.15s;
-    }
-    .tab.active, .tab:hover { background: var(--accent); color: #0d1117; border-color: var(--accent); }
-
-    /* ── tool table ── */
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-    td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,0.5); }
-    tr:last-child td { border-bottom: none; }
-    .pill {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 99px;
-      font-size: 0.75rem;
-      font-weight: 600;
-    }
-    .pill-green { background: rgba(63,185,80,0.15); color: var(--accent2); }
-    .pill-yellow { background: rgba(210,153,34,0.15); color: var(--warn); }
-
-    /* ── mcp block ── */
     .mcp-block {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -219,13 +185,25 @@
     }
     .mcp-text { flex: 1; min-width: 200px; }
     .mcp-text h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
-    .mcp-text p { font-size: 0.9rem; color: var(--muted); margin-bottom: 16px; }
+    .mcp-text p { font-size: 0.9rem; color: var(--muted); margin-bottom: 14px; }
     .mcp-code { flex: 2; min-width: 280px; }
 
-    /* ── footer ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,0.5); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+    .pill-green { background: rgba(63,185,80,0.15); color: var(--accent2); }
+    .pill-yellow { background: rgba(210,153,34,0.15); color: var(--warn); }
+
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+    }
+
     footer {
       border-top: 1px solid var(--border);
-      padding: 24px 0;
+      padding: 28px 0;
       text-align: center;
       color: var(--muted);
       font-size: 0.82rem;
@@ -239,27 +217,24 @@
 </head>
 <body>
 
-<!-- ── nav ── -->
 <nav>
   <div class="inner">
     <span class="logo">yo<span>yo</span></span>
     <ul>
-      <li><a href="#strengths">Strengths</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#tools">Tools</a></li>
       <li><a href="#install">Install</a></li>
-      <li><a href="#mcp">MCP</a></li>
       <li><a href="https://github.com/avirajkhare00/yoyo">GitHub</a></li>
     </ul>
   </div>
 </nav>
 
-<!-- ── hero ── -->
 <section class="hero">
   <div class="container">
-    <div class="badge">Pure Rust &bull; TypeScript &bull; Rust &bull; Python &bull; Go &bull; Fully local</div>
-    <h1>Local code intelligence<br><span class="dim">for AI assistants &amp; developers</span></h1>
+    <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo indexes your TypeScript, Rust, Python, and Go codebases with Tree-sitter, exposes 22 tools
-      over CLI and MCP, and grounds AI answers in your actual code — not hallucinations.
+      yoyo parses your codebase into a searchable index and gives Claude or Cursor 24 tools to read and edit it.
+      No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
       <a class="btn btn-primary" href="#install">Download binary</a>
@@ -268,177 +243,190 @@
   </div>
 </section>
 
-<!-- ── stat bar ── -->
 <div class="stat-bar">
   <div class="inner">
     <div class="stat">
-      <div class="stat-num">30–40×</div>
-      <div class="stat-label">faster codebase onboarding</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">22</div>
-      <div class="stat-label">LLM-ready tools</div>
-    </div>
-    <div class="stat">
       <div class="stat-num">~30s</div>
-      <div class="stat-label">to understand 386 files</div>
+      <div class="stat-label">to index a 400-file codebase</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">30–40×</div>
+      <div class="stat-label">faster than manual file reading</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">24</div>
+      <div class="stat-label">tools over MCP</div>
     </div>
     <div class="stat">
       <div class="stat-num">0</div>
-      <div class="stat-label">API keys required</div>
+      <div class="stat-label">API keys, SaaS, or telemetry</div>
     </div>
   </div>
 </div>
 
-<!-- ── strengths ── -->
-<section id="strengths">
+<section id="how">
   <div class="container">
-    <h2>Why yoyo?</h2>
-    <p class="section-sub">Real strengths drawn from benchmarks on production codebases.</p>
+    <h2>The problem it solves</h2>
+    <p class="section-sub">When Claude doesn't have a tool to read your code, it guesses. yoyo stops the guessing.</p>
+    <div class="two-col">
+      <div>
+        <p style="font-size:0.82rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px;">Without yoyo</p>
+        <ul class="problem-list">
+          <li><strong>Wrong file paths</strong>Claude invents plausible-sounding paths that don't exist in your project.</li>
+          <li><strong>Stale function names</strong>Claude recalls function names from training data, not your current code.</li>
+          <li><strong>20-minute onboarding</strong>To understand a 400-file project, the AI reads dozens of files one by one.</li>
+          <li><strong>Missed call chains</strong>Without a call graph, Claude can't tell you what breaks when you rename a function.</li>
+        </ul>
+      </div>
+      <div>
+        <p style="font-size:0.82rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px;">With yoyo</p>
+        <ul class="benefit-list">
+          <li><strong>Exact file paths and line numbers</strong>Every answer comes from the AST. File, line, and byte offset are exact.</li>
+          <li><strong>Current function names</strong>yoyo reads your files on disk. The index is always in sync after every edit.</li>
+          <li><strong>30-second onboarding</strong>8 parallel tool calls replace 15–20 minutes of directory browsing and grepping.</li>
+          <li><strong>Full call graph</strong><code>blast_radius</code> finds every function that calls yours, transitively.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider">
+
+<section>
+  <div class="container">
+    <h2>What it does</h2>
+    <p class="section-sub">yoyo runs one command to parse your project, then serves the results over MCP.</p>
     <div class="grid">
 
       <div class="card">
-        <div class="card-icon">⚡</div>
-        <h3>Instant onboarding</h3>
-        <p>Run <code>bake</code> + <code>shake</code> and get the top-complex functions, language breakdown, and project structure in seconds — no reading required.</p>
+        <h3>Parses your code with Tree-sitter</h3>
+        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports TypeScript, JavaScript, Rust, Python, and Go.</p>
       </div>
 
       <div class="card">
-        <div class="card-icon">🔍</div>
-        <h3>Symbol-level search</h3>
-        <p><code>symbol</code> finds any function by name; use <code>--include-source</code> to get the body inline. <code>slice</code> reads exact line ranges. Jump to a 260-line function with one command, no IDE needed.</p>
+        <h3>Gives Claude exact answers</h3>
+        <p><code>symbol</code> returns the file, line number, and optionally the full function body. <code>supersearch</code> finds every call site across hundreds of files. No guessing.</p>
       </div>
 
       <div class="card">
-        <div class="card-icon">🕸️</div>
-        <h3>Call-chain tracing</h3>
-        <p><code>trace_down</code> follows a function's call chain to db/http/queue boundaries (Go + Rust). <code>supersearch</code> finds every usage across hundreds of files in one query.</p>
+        <h3>Traces call chains</h3>
+        <p><code>blast_radius</code> finds everything that calls a function, transitively. <code>trace_down</code> follows a function to its database, HTTP, or queue boundary (Rust + Go).</p>
       </div>
 
       <div class="card">
-        <div class="card-icon">📦</div>
-        <h3>Module deep-dives</h3>
-        <p><code>package_summary</code> surfaces the full function list and complexity map of any module — without opening a single file.</p>
+        <h3>Edits code safely</h3>
+        <p><code>patch</code> writes changes by symbol name, line range, or exact string match. Validates syntax after every write. Reindexes automatically so the next read is always fresh.</p>
       </div>
 
       <div class="card">
-        <div class="card-icon">🗺️</div>
-        <h3>Placement guidance</h3>
-        <p><code>suggest_placement</code> and <code>architecture_map</code> score candidate files for new code by path heuristics and proximity to related symbols.</p>
+        <h3>Audits dead code</h3>
+        <p><code>health</code> reports functions that are never called, functions with high complexity and high fan-out, and functions with duplicate names across files.</p>
       </div>
 
       <div class="card">
-        <div class="card-icon">🔒</div>
-        <h3>Fully local &amp; private</h3>
-        <p>No API keys, no SaaS, no telemetry. Your code never leaves your machine. The bake index is a plain JSON file in your project root.</p>
-      </div>
-
-      <div class="card">
-        <div class="card-icon">🤖</div>
-        <h3>AI-native (MCP)</h3>
-        <p>Connect to Claude Code, Cursor, or any MCP-compatible assistant. All 22 tools are available over stdio — grounding the AI in real code, not guesses.</p>
-      </div>
-
-      <div class="card">
-        <div class="card-icon">🦀</div>
-        <h3>Pure Rust performance</h3>
-        <p>Single static binary. No Node, no Python, no runtime. Ships as a pre-built binary for Linux x86_64 and macOS ARM64.</p>
+        <h3>Runs entirely on your machine</h3>
+        <p>Single static binary. No network requests, no API keys, no telemetry. The index is a plain JSON file in your project root.</p>
       </div>
 
     </div>
   </div>
 </section>
 
-<!-- ── tools ── -->
-<section>
+<hr class="section-divider">
+
+<section id="tools">
   <div class="container">
-    <h2>Tool effectiveness</h2>
-    <p class="section-sub">Benchmarked on real projects: a 24-file CLI tool and a 386-file ML library.</p>
+    <h2>All 24 tools</h2>
+    <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
-        <tr>
-          <th>Tool</th>
-          <th>Status</th>
-          <th>What it does</th>
-        </tr>
+        <tr><th>Tool</th><th>Status</th><th>What it returns</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>bake</code></td><td><span class="pill pill-green">Works great</span></td><td>Build Tree-sitter index for the project</td></tr>
-        <tr><td><code>shake</code></td><td><span class="pill pill-green">Works great</span></td><td>Repository overview: languages, complex functions, endpoints</td></tr>
-        <tr><td><code>symbol</code></td><td><span class="pill pill-green">Works great</span></td><td>Find any function by name; <code>include_source</code> returns body inline</td></tr>
-        <tr><td><code>slice</code></td><td><span class="pill pill-green">Works great</span></td><td>Read an exact line range from any file</td></tr>
-        <tr><td><code>file_functions</code></td><td><span class="pill pill-green">Works great</span></td><td>List all functions in a file with complexity ranks</td></tr>
-        <tr><td><code>package_summary</code></td><td><span class="pill pill-green">Works great</span></td><td>Deep-dive a module: files, functions, endpoints</td></tr>
-        <tr><td><code>supersearch</code></td><td><span class="pill pill-green">Works well</span></td><td>AST-aware search across TypeScript, Rust, Python, and Go files</td></tr>
-        <tr><td><code>trace_down</code></td><td><span class="pill pill-green">Works well</span></td><td>BFS call chain from a function to db/http/queue boundaries (Go + Rust)</td></tr>
-        <tr><td><code>blast_radius</code></td><td><span class="pill pill-green">Works well</span></td><td>All functions that transitively call a symbol + affected files</td></tr>
-        <tr><td><code>graph_rename</code></td><td><span class="pill pill-green">Works well</span></td><td>Rename a symbol at definition and all call sites atomically</td></tr>
-        <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Works well</span></td><td>Insert a new function scaffold at the right location</td></tr>
-        <tr><td><code>graph_move</code></td><td><span class="pill pill-green">Works well</span></td><td>Move a function from one file to another</td></tr>
-        <tr><td><code>suggest_placement</code></td><td><span class="pill pill-green">Works well</span></td><td>Score candidate files for placing new code</td></tr>
-        <tr><td><code>architecture_map</code></td><td><span class="pill pill-green">Works well</span></td><td>Directory tree with file counts and role hints</td></tr>
-        <tr><td><code>api_trace</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>Trace HTTP endpoint through handlers (Express/Actix/Flask/gin/echo)</td></tr>
-        <tr><td><code>crud_operations</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>Entity-level CRUD matrix from routes</td></tr>
-        <tr><td><code>find_docs</code></td><td><span class="pill pill-yellow">Large projects</span></td><td>Find README, .env, Dockerfile, config files</td></tr>
+        <tr><td><code>bake</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
+        <tr><td><code>shake</code></td><td><span class="pill pill-green">Stable</span></td><td>Language breakdown, file count, and the top-complexity functions.</td></tr>
+        <tr><td><code>symbol</code></td><td><span class="pill pill-green">Stable</span></td><td>Function lookup by name. Returns file, line range, and optionally the full body.</td></tr>
+        <tr><td><code>slice</code></td><td><span class="pill pill-green">Stable</span></td><td>Reads any line range from any file.</td></tr>
+        <tr><td><code>file_functions</code></td><td><span class="pill pill-green">Stable</span></td><td>Every function in a file with line ranges and complexity scores.</td></tr>
+        <tr><td><code>supersearch</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, identifiers across all files.</td></tr>
+        <tr><td><code>blast_radius</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions that transitively call a given symbol. Affected file list included.</td></tr>
+        <tr><td><code>trace_down</code></td><td><span class="pill pill-green">Stable</span></td><td>BFS call chain from a function to db/http/queue boundaries. Rust + Go only.</td></tr>
+        <tr><td><code>health</code></td><td><span class="pill pill-green">Stable</span></td><td>Dead code, high-complexity god functions, and duplicate function name hints.</td></tr>
+        <tr><td><code>package_summary</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions, endpoints, and complexity in a module path.</td></tr>
+        <tr><td><code>architecture_map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles (routes, services, models, etc.).</td></tr>
+        <tr><td><code>api_surface</code></td><td><span class="pill pill-green">Stable</span></td><td>Exported functions grouped by module.</td></tr>
+        <tr><td><code>suggest_placement</code></td><td><span class="pill pill-green">Stable</span></td><td>Ranked list of files to add a new function to.</td></tr>
+        <tr><td><code>find_docs</code></td><td><span class="pill pill-green">Stable</span></td><td>Locate README, .env, Dockerfile, and config files.</td></tr>
+        <tr><td><code>all_endpoints</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo).</td></tr>
+        <tr><td><code>api_trace</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>Trace a route path + method to its handler function.</td></tr>
+        <tr><td><code>crud_operations</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>Create/read/update/delete matrix inferred from routes.</td></tr>
+        <tr><td><code>patch</code></td><td><span class="pill pill-green">Stable</span></td><td>Write changes by symbol name, line range, or exact string match. Auto-reindexes.</td></tr>
+        <tr><td><code>patch_bytes</code></td><td><span class="pill pill-green">Stable</span></td><td>Write at exact byte offsets from the index.</td></tr>
+        <tr><td><code>multi_patch</code></td><td><span class="pill pill-green">Stable</span></td><td>Apply N edits across M files in one call, bottom-up so offsets stay valid.</td></tr>
+        <tr><td><code>graph_rename</code></td><td><span class="pill pill-green">Stable</span></td><td>Rename a symbol at its definition and every call site atomically.</td></tr>
+        <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Stable</span></td><td>Insert a new function scaffold into a file.</td></tr>
+        <tr><td><code>graph_move</code></td><td><span class="pill pill-green">Stable</span></td><td>Move a function from one file to another.</td></tr>
+        <tr><td><code>graph_delete</code></td><td><span class="pill pill-green">Stable</span></td><td>Remove a function by name. Confirms safety first with <code>blast_radius</code>.</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<!-- ── install ── -->
+<hr class="section-divider">
+
 <section id="install">
   <div class="container">
     <h2>Installation</h2>
-    <p class="section-sub">Download a pre-built binary or build from source with Cargo.</p>
+    <p class="section-sub">One binary, no runtime dependencies.</p>
 
-    <h3 style="font-size:1rem; color:var(--muted); margin-bottom:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Option 1 — Pre-built binary (recommended)</h3>
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:12px;">Pre-built binary (recommended)</p>
 
-    <p style="font-size:0.9rem; color:var(--muted); margin-bottom:12px;">Download from the <a href="https://github.com/avirajkhare00/yoyo/releases/latest">latest GitHub release</a>:</p>
-
-    <pre><span class="comment"># macOS (Apple Silicon)</span>
+    <pre><span class="comment"># macOS Apple Silicon</span>
 <span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz \
   | tar xz
 <span class="cmd">sudo mv</span> yoyo-aarch64-apple-darwin /usr/local/bin/yoyo</pre>
 
-    <pre><span class="comment"># Linux (x86_64)</span>
+    <pre><span class="comment"># Linux x86_64</span>
 <span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz \
   | tar xz
 <span class="cmd">sudo mv</span> yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo</pre>
 
-    <h3 style="font-size:1rem; color:var(--muted); margin:28px 0 12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Option 2 — Build from source</h3>
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Build from source</p>
 
-    <pre><span class="comment"># requires Rust stable (https://rustup.rs)</span>
-<span class="cmd">git</span> clone https://github.com/avirajkhare00/yoyo.git
-<span class="cmd">cd</span> yoyo
-<span class="cmd">cargo build</span> --release
+    <pre><span class="cmd">git</span> clone https://github.com/avirajkhare00/yoyo.git
+<span class="cmd">cd</span> yoyo && <span class="cmd">cargo build</span> --release
 <span class="cmd">sudo cp</span> target/release/yoyo /usr/local/bin/yoyo</pre>
 
-    <h3 style="font-size:1rem; color:var(--muted); margin:28px 0 12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Quick start</h3>
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Quick start</p>
 
-    <pre><span class="comment"># 1. index your project</span>
+    <pre><span class="comment"># index your project</span>
 <span class="cmd">yoyo bake</span> --path /path/to/your/project
 
-<span class="comment"># 2. get an instant overview</span>
+<span class="comment"># overview: languages, file counts, most complex functions</span>
 <span class="cmd">yoyo shake</span> --path /path/to/your/project
 
-<span class="comment"># 3. find a function by name</span>
+<span class="comment"># find a function by name</span>
 <span class="cmd">yoyo symbol</span> --path /path/to/your/project --name myFunction
 
-<span class="comment"># 4. search across all files</span>
-<span class="cmd">yoyo supersearch</span> --path /path/to/your/project --query prisma</pre>
+<span class="comment"># search across all files</span>
+<span class="cmd">yoyo supersearch</span> --path /path/to/your/project --query myFunction</pre>
   </div>
 </section>
 
-<!-- ── mcp ── -->
+<hr class="section-divider">
+
 <section id="mcp">
   <div class="container">
-    <h2>Use with AI assistants (MCP)</h2>
-    <p class="section-sub">Connect yoyo to Claude Code, Cursor, or any MCP-compatible assistant.</p>
+    <h2>Connect to Claude or Cursor</h2>
+    <p class="section-sub">Add yoyo as an MCP server. Claude calls the tools automatically — you don't manage it.</p>
     <div class="mcp-block">
       <div class="mcp-text">
-        <h3>MCP server mode</h3>
-        <p>Run yoyo as a stdio MCP server. The AI can call all 22 tools directly — grounding its answers in your actual code instead of guessing at structure.</p>
-        <p>Add this to your <code>~/.claude/settings.json</code> (Claude Code) or Cursor MCP config:</p>
+        <h3>Claude Code</h3>
+        <p>Add to <code>~/.claude/settings.json</code>:</p>
+        <h3 style="margin-top:20px;">Cursor</h3>
+        <p>Add to your Cursor MCP settings file using the same JSON block.</p>
+        <p>Once added, restart the editor. Claude will call <code>llm_instructions</code> on first contact, then pick tools as needed.</p>
       </div>
       <div class="mcp-code">
         <pre>{
@@ -452,53 +440,36 @@
 }</pre>
       </div>
     </div>
-
-    <div style="margin-top:28px;">
-      <p style=”font-size:0.9rem; color:var(--muted); margin-bottom:10px;”>
-        Once configured, your assistant sees yoyo as a toolbox of 22 MCP methods (all take a
-        <code>path</code> plus a few arguments):
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>Tool (MCP method)</th>
-            <th>Signature</th>
-            <th>What it does</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td><code>bake</code></td><td><code>bake(path)</code></td><td>Build the Tree-sitter index. Required before most other tools.</td></tr>
-          <tr><td><code>shake</code></td><td><code>shake(path)</code></td><td>Repo overview: languages, file counts, top-complex functions, endpoints.</td></tr>
-          <tr><td><code>symbol</code></td><td><code>symbol(path, name, include_source, file?, limit?)</code></td><td>Find a function by name; optionally return the full body inline.</td></tr>
-          <tr><td><code>slice</code></td><td><code>slice(path, file, start, end)</code></td><td>Read an exact line range from any file.</td></tr>
-          <tr><td><code>supersearch</code></td><td><code>supersearch(path, query, file?, limit?)</code></td><td>AST-aware search across TypeScript, Rust, Python, and Go files.</td></tr>
-          <tr><td><code>file_functions</code></td><td><code>file_functions(path, file)</code></td><td>List all functions in a file with complexity ranks.</td></tr>
-          <tr><td><code>api_surface</code></td><td><code>api_surface(path, package?)</code></td><td>Exported/public API grouped by module.</td></tr>
-          <tr><td><code>package_summary</code></td><td><code>package_summary(path, package)</code></td><td>Deep-dive a module: files, functions, endpoints, complexity.</td></tr>
-          <tr><td><code>architecture_map</code></td><td><code>architecture_map(path, intent?)</code></td><td>Directory tree with role hints and optional intent string.</td></tr>
-          <tr><td><code>suggest_placement</code></td><td><code>suggest_placement(path, function_name, function_type, related_to?)</code></td><td>Scored candidates for where new code should live.</td></tr>
-          <tr><td><code>all_endpoints</code></td><td><code>all_endpoints(path)</code></td><td>List all detected HTTP endpoints (Express/Actix/Flask/FastAPI/gin/echo).</td></tr>
-          <tr><td><code>api_trace</code></td><td><code>api_trace(path, endpoint, method)</code></td><td>Trace a single route through its handler.</td></tr>
-          <tr><td><code>crud_operations</code></td><td><code>crud_operations(path, entity?)</code></td><td>CRUD matrix from routes, optionally filtered by entity.</td></tr>
-          <tr><td><code>find_docs</code></td><td><code>find_docs(path, doc_type)</code></td><td>Find README, .env, Dockerfile, and other config/docs.</td></tr>
-          <tr><td><code>patch</code></td><td><code>patch(path, ...)</code></td><td>Apply edits by symbol or file + line range. Validates syntax and auto-syncs index.</td></tr>
-          <tr><td><code>blast_radius</code></td><td><code>blast_radius(path, symbol, depth?)</code></td><td>All functions that transitively call a symbol + affected files.</td></tr>
-          <tr><td><code>graph_rename</code></td><td><code>graph_rename(path, name, new_name)</code></td><td>Rename a symbol at definition and every call site atomically.</td></tr>
-          <tr><td><code>graph_add</code></td><td><code>graph_add(path, entity_type, name, file, after_symbol?)</code></td><td>Insert a new function scaffold at the right location.</td></tr>
-          <tr><td><code>graph_move</code></td><td><code>graph_move(path, name, to_file)</code></td><td>Move a function from one file to another.</td></tr>
-          <tr><td><code>trace_down</code></td><td><code>trace_down(path, name, depth?, file?)</code></td><td>BFS call chain from a function to db/http/queue boundaries. Go + Rust.</td></tr>
-          <tr><td><code>llm_instructions</code></td><td><code>llm_instructions(path)</code></td><td>Compact JSON prime directive — call this first on any new project.</td></tr>
-        </tbody>
-      </table>
-    </div>
   </div>
 </section>
 
-<!-- ── footer ── -->
+<hr class="section-divider">
+
+<section>
+  <div class="container">
+    <h2>Benchmark</h2>
+    <p class="section-sub">Tested on two real projects: a 24-file CLI tool and a 386-file ML library.</p>
+
+    <p style="font-size:0.92rem; color:var(--muted); margin-bottom:16px;">
+      With yoyo, Claude ran 8 tool calls in 3 parallel batches and had a complete picture of the 386-file codebase in
+      <strong style="color:var(--text);">~30 seconds</strong>. Without yoyo, the same task took
+      <strong style="color:var(--text);">15–20 minutes</strong> of directory browsing and file reading.
+    </p>
+
+    <pre><span class="comment"># 8 calls, 3 batches, ~30 seconds total</span>
+Batch 1:  <span class="cmd">bake</span> + <span class="cmd">shake</span>
+Batch 2:  <span class="cmd">architecture_map</span> + <span class="cmd">find_docs</span> + <span class="cmd">api_surface</span>
+Batch 3:  <span class="cmd">package_summary</span>(globalApi) + <span class="cmd">package_summary</span>(mtcnn) + <span class="cmd">supersearch</span>(detectAllFaces)</pre>
+
+    <p style="font-size:0.88rem; color:var(--muted); margin-top:12px;">
+      Full report: <a href="https://github.com/avirajkhare00/yoyo/blob/main/reports/benchmark-face-api-js-2026-03-03.md">reports/benchmark-face-api-js-2026-03-03.md</a>
+    </p>
+  </div>
+</section>
+
 <footer>
   <div class="container">
-    <p>yoyo — pure Rust, runs locally, no telemetry &bull; <a href="https://github.com/avirajkhare00/yoyo">github.com/avirajkhare00/yoyo</a></p>
-    <p style="margin-top:8px;">Made with love using <a href="https://claude.ai">Claude</a></p>
+    <p>yoyo — runs locally, no telemetry &bull; <a href="https://github.com/avirajkhare00/yoyo">github.com/avirajkhare00/yoyo</a> &bull; MIT license</p>
   </div>
 </footer>
 
