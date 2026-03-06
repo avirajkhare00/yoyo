@@ -31,6 +31,25 @@ pub fn symbol(
         .map(|f| f.name.to_lowercase())
         .collect();
 
+    // Common single-word Rust/Go/Python identifiers that are overwhelmingly stdlib/trait
+    // methods even when a project happens to define a function with the same name.
+    // Using a denylist is the most reliable signal without AST type-resolution.
+    const STDLIB_NOISE: &[&str] = &[
+        "clone", "map", "filter", "from", "into", "len", "is_empty", "push",
+        "pop", "contains", "get", "set", "default", "unwrap", "expect",
+        "is_dir", "is_file", "is_symlink", "metadata", "path", "send", "recv",
+        "iter", "iter_mut", "into_iter", "collect", "fold", "any", "all",
+        "find", "flatten", "chain", "zip", "enumerate", "take", "skip",
+        "to_string", "as_str", "as_bytes", "trim", "split", "join",
+        "chars", "lines", "parse", "is_some", "is_none", "is_ok", "is_err",
+        "ok", "err", "and_then", "or_else", "map_err", "unwrap_or",
+        "write", "flush", "read", "open", "seek", "lock", "drop",
+        "fmt", "hash", "eq", "cmp", "partial_cmp", "borrow", "deref",
+        "index", "add", "sub", "mul", "div", "rem", "neg", "not",
+        "run", "new", "close", "insert", "remove", "clear", "retain",
+        "extend", "append", "drain", "sort", "dedup", "reverse",
+    ];
+
     // Count incoming calls per callee name — used to rank primary match (#46).
     let mut incoming: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for f in &bake.functions {
@@ -45,9 +64,13 @@ pub fn symbol(
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
-                // Filter calls to project-defined callees only.
+                // Filter calls to project-defined callees, excluding common
+                // stdlib/trait method names that produce false positives (#47).
                 let calls: Vec<_> = f.calls.iter()
-                    .filter(|c| project_fns.contains(&c.callee.to_lowercase()))
+                    .filter(|c| {
+                        let lc = c.callee.to_lowercase();
+                        project_fns.contains(&lc) && !STDLIB_NOISE.contains(&lc.as_str())
+                    })
                     .cloned()
                     .collect();
                 Some(SymbolMatch {

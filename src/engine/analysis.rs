@@ -218,7 +218,9 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         .flat_map(|f| f.calls.iter().map(|c| c.callee.to_lowercase()))
         .collect();
 
-    // Dead code: indexed but never called; skip main, tests, HTTP handlers, very short names.
+    // Dead code: indexed but never called; skip main, tests, examples, benches,
+    // HTTP handlers, and very short names.
+    // Examples/benches are entry points — not called by the project itself.
     // HTTP handlers are registered via router (dynamic dispatch) — static call graph can't see them.
     let mut dead_code: Vec<DeadFunction> = bake
         .functions
@@ -231,6 +233,8 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
                 && !lc.starts_with("test")
                 && !lc.ends_with("_test")
                 && !f.file.contains("test")
+                && !file_lc.contains("example")
+                && !file_lc.contains("/bench")
                 && !lc.starts_with("handle_")  // HTTP handlers registered via router
                 && !file_lc.contains("handler") // handler files — same reason
                 && f.name.len() > 2

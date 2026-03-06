@@ -35,10 +35,10 @@
     {
       "id": "rg-004",
       "type": "fan_out",
-      "question": "How many project-defined functions does the primary `search_path` in `crates/core/search.rs` call?",
+      "question": "How many entries are in the `calls` array of the primary `search_path` match in `crates/core/search.rs`? Count the array length exactly.",
       "file_hint": "crates/core/search.rs",
       "ground_truth": {
-        "calls_count": 7
+        "calls_count": 4
       }
     },
     {
@@ -80,10 +80,10 @@
     {
       "id": "rg-009",
       "type": "fan_out",
-      "question": "How many project-defined functions does the primary `from_low_args` in `crates/core/flags/hiargs.rs` call?",
+      "question": "How many entries are in the `calls` array of the primary `from_low_args` match in `crates/core/flags/hiargs.rs`? Count the array length exactly.",
       "file_hint": "crates/core/flags/hiargs.rs",
       "ground_truth": {
-        "calls_count": 21
+        "calls_count": 14
       }
     },
     {
@@ -106,10 +106,10 @@
     {
       "id": "rg-012",
       "type": "fan_out",
-      "question": "How many project-defined functions does `generate_work` in `crates/ignore/src/walk.rs` call?",
+      "question": "How many entries are in the `calls` array of the primary `generate_work` match in `crates/ignore/src/walk.rs`? Count the array length exactly.",
       "file_hint": "crates/ignore/src/walk.rs",
       "ground_truth": {
-        "calls_count": 18
+        "calls_count": 11
       }
     },
     {
@@ -132,10 +132,10 @@
     {
       "id": "rg-015",
       "type": "fan_out",
-      "question": "How many project-defined functions does the public `build` function in `crates/ignore/src/walk.rs` call?",
+      "question": "How many entries are in the `calls` array of the primary `build` match in `crates/ignore/src/walk.rs`? Count the array length exactly.",
       "file_hint": "crates/ignore/src/walk.rs",
       "ground_truth": {
-        "calls_count": 22
+        "calls_count": 9
       }
     },
     {
@@ -159,10 +159,10 @@
     {
       "id": "rg-018",
       "type": "health_dead_code",
-      "question": "Approximately how many dead (uncalled) functions does the ripgrep codebase have according to static analysis?",
+      "question": "How many items are in the `dead_code` array returned by the health tool on ripgrep? Give the exact count.",
       "ground_truth": {
-        "dead_code_count": 92,
-        "tolerance": 10
+        "dead_code_count": 84,
+        "tolerance": 5
       }
     },
     {
