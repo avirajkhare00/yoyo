@@ -193,7 +193,7 @@ fn list_tools() -> Value {
         tool("llm_instructions", "Prime directive and usage instructions for yoyo.", json!({"path": p()})),
         tool("shake", "Generate a high-level repository overview (languages, size, basic stats).", json!({"path": p()})),
         tool("bake", "Build and persist a bake index under the project root.", json!({"path": p()})),
-        tool("symbol", "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline. Use file to scope to one module and limit to cap result size.", json!({
+        tool("symbol", "Detailed lookup of functions, structs, enums, traits, and type aliases from the bake index. When include_source is true, each match includes the body inline. Methods include parent_type. Use file to scope to one module and limit to cap result size.", json!({
             "path": p(),
             "name": s("Symbol (function) name to look up"),
             "include_source": b("If true, include the function body (source code) in each match"),

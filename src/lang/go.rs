@@ -192,6 +192,7 @@ fn walk_go(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
+                    parent_type: None,
                 });
             }
         }
@@ -215,6 +216,7 @@ fn walk_go(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
+                    parent_type: None, // TODO: extract receiver type — see GitHub issue
                 });
             }
         }

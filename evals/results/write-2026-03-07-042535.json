@@ -1,0 +1,167 @@
+{
+  "run_id": "2026-03-07-042535",
+  "codebase": "ripgrep",
+  "compile": false,
+  "totals": {
+    "cc": {
+      "pass": 6,
+      "total": 11
+    },
+    "yoyo": {
+      "pass": 9,
+      "total": 12
+    }
+  },
+  "tasks": [
+    {
+      "id": "rw-001",
+      "cc": [
+        {
+          "label": "files changed",
+          "passed": false,
+          "detail": "changed 3, expected 1"
+        },
+        {
+          "label": "defining file changed",
+          "passed": true,
+          "detail": "changed: ['crates/core/search.rs', 'crates/grep/examples/simplegrep.rs', 'crates/searcher/src/searcher/mod.rs']"
+        },
+        {
+          "label": "scope: file-only (private)",
+          "passed": false,
+          "detail": "CC changed 3 files \u2014 no scope awareness"
+        }
+      ],
+      "yoyo": [
+        {
+          "label": "rename succeeded",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "label": "files changed",
+          "passed": false,
+          "detail": "changed 4, expected 1"
+        },
+        {
+          "label": "scope: file-only",
+          "passed": false,
+          "detail": "scope=project"
+        }
+      ]
+    },
+    {
+      "id": "rw-002",
+      "cc": [
+        {
+          "label": "word-boundary safe",
+          "passed": false,
+          "detail": "corrupted: ['is_match_candidate', 'is_match_at']"
+        },
+        {
+          "label": "no partial match corruption",
+          "passed": false,
+          "detail": "CC corrupted 2 partial matches as expected"
+        }
+      ],
+      "yoyo": [
+        {
+          "label": "rename succeeded",
+          "passed": true,
+          "detail": ""
+        },
+        {
+          "label": "word-boundary safe",
+          "passed": true,
+          "detail": "clean"
+        },
+        {
+          "label": "partial matches preserved",
+          "passed": true,
+          "detail": "is_match_candidate, is_match_at untouched"
+        }
+      ]
+    },
+    {
+      "id": "rw-003",
+      "cc": [
+        {
+          "label": "preflight blocked",
+          "passed": true,
+          "detail": "CC proceeded without checking callers: deleted lines 342-351 (no preflight check)"
+        },
+        {
+          "label": "callers still compile",
+          "passed": false,
+          "detail": "deleted function body \u2014 callers will fail to compile"
+        }
+      ],
+      "yoyo": [
+        {
+          "label": "preflight blocked",
+          "passed": true,
+          "detail": "blocked with: Error: Symbol \"search_path\" has 3 active caller(s): search (crates/core/search.rs), search_decompress (crates/core/searc"
+        },
+        {
+          "label": "codebase unchanged",
+          "passed": true,
+          "detail": "no files modified \u2014 safe"
+        }
+      ]
+    },
+    {
+      "id": "rw-004",
+      "cc": [
+        {
+          "label": "deletion attempted",
+          "passed": true,
+          "detail": "deleted lines 975-976 (no preflight check)"
+        },
+        {
+          "label": "blank lines cleaned",
+          "passed": true,
+          "detail": "max blank run: 1 (CC leaves orphan blanks)"
+        }
+      ],
+      "yoyo": [
+        {
+          "label": "not blocked (dead function)",
+          "passed": true,
+          "detail": "correctly identified as dead"
+        },
+        {
+          "label": "blank lines cleaned",
+          "passed": true,
+          "detail": "max blank run: 1"
+        }
+      ]
+    },
+    {
+      "id": "rw-005",
+      "cc": [
+        {
+          "label": "patch applied",
+          "passed": true,
+          "detail": "at line 342"
+        },
+        {
+          "label": "required line number lookup",
+          "passed": true,
+          "detail": "CC must grep first to find the line \u2014 2 tool calls"
+        }
+      ],
+      "yoyo": [
+        {
+          "label": "patch applied",
+          "passed": false,
+          "detail": ""
+        },
+        {
+          "label": "no line number lookup needed",
+          "passed": true,
+          "detail": "symbol name sufficient \u2014 1 tool call"
+        }
+      ]
+    }
+  ]
+}

@@ -65,12 +65,20 @@ impl LanguageAnalyzer for RustAnalyzer {
         let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&rel_file, "rust");
 
-        scan_children(&source, root, file, root_node, &mod_path, &mut functions, &mut endpoints, &mut types);
+        scan_children(&source, root, file, root_node, &mod_path, None, &mut functions, &mut endpoints, &mut types);
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "impl_item" {
+                // Extract the concrete type being implemented (the `type` field, not `trait`).
+                // For `impl Trait for Type`, tree-sitter puts Type in `type` field.
+                // For `impl Type { ... }`, same field.
+                let impl_type = child
+                    .child_by_field_name("type")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
                 if let Some(body) = child.child_by_field_name("body") {
-                    scan_children(&source, root, file, body, &mod_path, &mut functions, &mut endpoints, &mut types);
+                    scan_children(&source, root, file, body, &mod_path, impl_type.as_deref(), &mut functions, &mut endpoints, &mut types);
                 }
             }
         }
@@ -118,6 +126,7 @@ fn scan_children(
     file: &Path,
     parent: Node,
     mod_path: &str,
+    parent_type: Option<&str>,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -153,6 +162,7 @@ fn scan_children(
                             module_path: mod_path.to_string(),
                             qualified_name: qname,
                             visibility: vis,
+                            parent_type: parent_type.map(str::to_string),
                         });
                         if let Some((method, path)) = pending_http.take() {
                             endpoints.push(IndexedEndpoint {

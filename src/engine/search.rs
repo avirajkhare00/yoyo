@@ -86,6 +86,7 @@ pub fn symbol(
                     module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
                     qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
                     calls,
+                    parent_type: f.parent_type.clone(),
                 })
             } else {
                 None
@@ -107,6 +108,7 @@ pub fn symbol(
                     module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
                     qualified_name: None,
                     calls: vec![],
+                    parent_type: None,
                 })
             } else {
                 None
