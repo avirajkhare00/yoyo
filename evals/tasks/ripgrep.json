@@ -44,9 +44,9 @@
     {
       "id": "rg-005",
       "type": "caller_count",
-      "question": "How many functions directly call `search_path` in ripgrep?",
+      "question": "Which distinct function names (excluding self-recursion) directly call `search_path` in ripgrep? List them and give the count.",
       "ground_truth": {
-        "caller_count": 4,
+        "caller_count": 2,
         "callers": ["search", "search_decompress"]
       }
     },
