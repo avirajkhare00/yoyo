@@ -19,7 +19,13 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
 
     let max_depth = depth.unwrap_or(2);
 
-    // Build reverse call index: callee_name → vec of (caller_name, caller_file)
+    // Build complexity lookup and reverse call index: callee_name → vec of (caller_name, caller_file)
+    let complexity_map: std::collections::HashMap<String, u32> = bake
+        .functions
+        .iter()
+        .map(|f| (f.name.clone(), f.complexity))
+        .collect();
+
     let mut called_by: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
     for f in &bake.functions {
@@ -49,10 +55,12 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
             for (caller_name, caller_file) in entries {
                 let key = (caller_name.clone(), caller_file.clone());
                 if seen_callers.insert(key) {
+                    let complexity = complexity_map.get(caller_name).copied().unwrap_or(0);
                     callers.push(serde_json::json!({
                         "caller": caller_name,
                         "file": caller_file,
                         "depth": d + 1,
+                        "complexity": complexity,
                     }));
                     affected_files.insert(caller_file.clone());
                 }
@@ -63,6 +71,17 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
             }
         }
     }
+
+    // Sort: depth ascending (closest callers first), then complexity descending (highest impact first)
+    callers.sort_by(|a, b| {
+        let da = a["depth"].as_u64().unwrap_or(0);
+        let db = b["depth"].as_u64().unwrap_or(0);
+        da.cmp(&db).then_with(|| {
+            let ca = b["complexity"].as_u64().unwrap_or(0);
+            let cb = a["complexity"].as_u64().unwrap_or(0);
+            ca.cmp(&cb)
+        })
+    });
 
     let affected_files: Vec<String> = affected_files.into_iter().collect();
     let total_callers = callers.len();
@@ -169,17 +188,21 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         .flat_map(|f| f.calls.iter().map(|c| c.callee.to_lowercase()))
         .collect();
 
-    // Dead code: indexed but never called; skip main, tests, very short names.
+    // Dead code: indexed but never called; skip main, tests, HTTP handlers, very short names.
+    // HTTP handlers are registered via router (dynamic dispatch) — static call graph can't see them.
     let mut dead_code: Vec<DeadFunction> = bake
         .functions
         .iter()
         .filter(|f| {
             let lc = f.name.to_lowercase();
+            let file_lc = f.file.to_lowercase();
             !all_callees.contains(&lc)
                 && lc != "main"
                 && !lc.starts_with("test")
                 && !lc.ends_with("_test")
                 && !f.file.contains("test")
+                && !lc.starts_with("handle_")  // HTTP handlers registered via router
+                && !file_lc.contains("handler") // handler files — same reason
                 && f.name.len() > 2
         })
         .map(|f| DeadFunction {

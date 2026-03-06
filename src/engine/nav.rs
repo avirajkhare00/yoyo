@@ -192,6 +192,17 @@ pub fn suggest_placement(
         let mut score = 0u32;
         let path_lc = path_str.to_lowercase();
 
+        // Skip test files unless explicitly placing a test function
+        if fn_type != "test"
+            && (path_lc.contains("/test")
+                || path_lc.contains("/spec")
+                || path_lc.contains("__tests__")
+                || path_lc.contains(".test.")
+                || path_lc.contains(".spec."))
+        {
+            continue;
+        }
+
         match fn_type.as_str() {
             "handler" => {
                 if path_lc.contains("route") || path_lc.contains("controller") {

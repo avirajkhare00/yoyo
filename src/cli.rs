@@ -46,6 +46,10 @@ pub enum Command {
     GraphMove(GraphMoveArgs),
     /// Trace a function's call chain downward to external boundaries.
     TraceDown(TraceDownArgs),
+    /// Audit dead code, god functions, and duplicate hints.
+    Health(HealthArgs),
+    /// Remove a function from a file by name.
+    GraphDelete(GraphDeleteArgs),
 }
 
 #[derive(Args, Debug)]
@@ -388,6 +392,8 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::GraphAdd(args)) => run_graph_add(args).await?,
         Some(Command::GraphMove(args)) => run_graph_move(args).await?,
         Some(Command::TraceDown(args)) => run_trace_down(args).await?,
+        Some(Command::Health(args)) => run_health(args).await?,
+        Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
         None => {
             eprintln!(
                 "No command provided. Run `yoyo --help` for available commands."
@@ -567,6 +573,44 @@ pub struct TraceDownArgs {
 
 async fn run_trace_down(args: TraceDownArgs) -> anyhow::Result<()> {
     let json = crate::engine::trace_down(args.path, args.name, args.depth, args.file)?;
+    println!("{json}");
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct HealthArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Max results per category (default 10).
+    #[arg(long)]
+    pub top: Option<usize>,
+}
+
+async fn run_health(args: HealthArgs) -> anyhow::Result<()> {
+    let json = crate::engine::health(args.path, args.top)?;
+    println!("{json}");
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct GraphDeleteArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Exact function name to delete.
+    #[arg(long)]
+    pub name: String,
+
+    /// Optional file path substring to disambiguate when multiple functions share the same name.
+    #[arg(long)]
+    pub file: Option<String>,
+}
+
+async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
+    let json = crate::engine::graph_delete(args.path, args.name, args.file)?;
     println!("{json}");
     Ok(())
 }
