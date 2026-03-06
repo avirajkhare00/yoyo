@@ -7,6 +7,8 @@ mod nav;
 mod search;
 pub(crate) mod types;
 mod util;
+#[cfg(test)]
+mod e2e_tests;
 
 pub use analysis::{blast_radius, find_docs, graph_delete, health};
 pub use api::{all_endpoints, api_surface, api_trace, crud_operations};
