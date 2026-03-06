@@ -1,9 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
-/// Minimal JSON-RPC 2.0 request.
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
     #[allow(dead_code)]
@@ -14,7 +13,6 @@ struct JsonRpcRequest {
     pub params: Value,
 }
 
-/// Minimal JSON-RPC 2.0 response.
 #[derive(Debug, Serialize)]
 struct JsonRpcResponse {
     pub jsonrpc: &'static str,
@@ -46,24 +44,20 @@ pub async fn run_stdio_server() -> Result<()> {
         let mut line = String::new();
         let n = reader.read_line(&mut line).await?;
         if n == 0 {
-            // EOF
             return Ok(());
         }
 
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
-            // Skip empty lines.
             continue;
         }
 
         if let Some(rest) = trimmed.strip_prefix("Content-Length:") {
-            // Content-Length framed request.
             let mut content_length: Option<usize> = None;
             if let Ok(len) = rest.trim().parse::<usize>() {
                 content_length = Some(len);
             }
 
-            // Consume remaining headers until blank line.
             loop {
                 let mut hdr = String::new();
                 let n = reader.read_line(&mut hdr).await?;
@@ -110,8 +104,6 @@ pub async fn run_stdio_server() -> Result<()> {
             writer.write_all(bytes).await?;
             writer.flush().await?;
         } else if trimmed.starts_with('{') || trimmed.starts_with('[') {
-            // Line-delimited JSON-RPC (no framing). This is what Claude Desktop
-            // currently sends/accepts over stdio.
             let body = trimmed.to_string();
 
             let req: JsonRpcRequest = match serde_json::from_str(&body) {
@@ -132,7 +124,6 @@ pub async fn run_stdio_server() -> Result<()> {
             writer.write_all(b"\n").await?;
             writer.flush().await?;
         } else {
-            // Unknown prefix; ignore and continue.
             continue;
         }
     }
@@ -141,24 +132,16 @@ pub async fn run_stdio_server() -> Result<()> {
 async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     match req.method.as_str() {
         "initialize" => {
-            // Minimal MCP initialize handshake.
             let protocol_version = req
                 .params
                 .get("protocolVersion")
                 .and_then(|v| v.as_str())
                 .unwrap_or("2025-11-25");
 
-            let result = serde_json::json!({
+            let result = json!({
                 "protocolVersion": protocol_version,
-                "capabilities": {
-                    "tools": {
-                        "listChanged": true
-                    }
-                },
-                "serverInfo": {
-                    "name": "yoyo",
-                    "version": env!("CARGO_PKG_VERSION"),
-                },
+                "capabilities": {"tools": {"listChanged": true}},
+                "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
                 "instructions": "You have access to yoyo, a code intelligence MCP server. \
                     Always call `llm_instructions` first on any new project to learn available tools and workflows. \
                     Call `bake` to build or refresh the index before using index-dependent tools. \
@@ -168,581 +151,171 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                     Use `patch` or `patch_by_symbol` to write changes back."
             });
 
-            JsonRpcResponse {
+            JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(result), error: None }
+        }
+        "list_tools" | "tools/list" => JsonRpcResponse {
+            jsonrpc: "2.0",
+            id: req.id,
+            result: Some(list_tools()),
+            error: None,
+        },
+        "call_tool" | "tools/call" => match call_tool(req.params).await {
+            Ok(v) => JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(v), error: None },
+            Err(e) => JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: req.id,
-                result: Some(result),
-                error: None,
-            }
-        }
-        "list_tools" | "tools/list" => {
-            let tools = list_tools();
-            JsonRpcResponse {
-                jsonrpc: "2.0",
-                id: req.id,
-                result: Some(tools),
-                error: None,
-            }
-        }
-        "call_tool" | "tools/call" => {
-            let result = call_tool(req.params).await;
-            match result {
-                Ok(v) => JsonRpcResponse {
-                    jsonrpc: "2.0",
-                    id: req.id,
-                    result: Some(v),
-                    error: None,
-                },
-                Err(e) => JsonRpcResponse {
-                    jsonrpc: "2.0",
-                    id: req.id,
-                    result: None,
-                    error: Some(JsonRpcError {
-                        code: -32000,
-                        message: e.to_string(),
-                    }),
-                },
-            }
-        }
+                result: None,
+                error: Some(JsonRpcError { code: -32000, message: e.to_string() }),
+            },
+        },
         _ => JsonRpcResponse {
             jsonrpc: "2.0",
             id: req.id,
             result: None,
-            error: Some(JsonRpcError {
-                code: -32601,
-                message: "Method not found".to_string(),
-            }),
+            error: Some(JsonRpcError { code: -32601, message: "Method not found".to_string() }),
         },
     }
 }
 
 fn list_tools() -> Value {
-    // Minimal MCP tools list with core CLI-equivalent tools for yoyo.
-    // Include an explicit null nextCursor to match MCP tools/list shape.
-    serde_json::json!({
-        "tools": [
-            {
-                "name": "llm_instructions",
-                "description": "Prime directive and usage instructions for yoyo.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "shake",
-                "description": "Generate a high-level repository overview (languages, size, basic stats).",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "bake",
-                "description": "Build and persist a bake index under the project root.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "symbol",
-                "description": "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline. Use file to scope to one module and limit to cap result size.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Symbol (function) name to look up"
-                        },
-                        "include_source": {
-                            "type": "boolean",
-                            "description": "If true, include the function body (source code) in each match"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Max matches to return (default 20). Lower when include_source=true to stay within context limits."
-                        }
-                    }
-                }
-            },
-            {
-                "name": "all_endpoints",
-                "description": "List all detected API endpoints from the bake index.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "slice",
-                "description": "Read a specific line range of a file.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path relative to the project root"
-                        },
-                        "start": {
-                            "type": "integer",
-                            "description": "1-based start line (inclusive)"
-                        },
-                        "end": {
-                            "type": "integer",
-                            "description": "1-based end line (inclusive)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "api_surface",
-                "description": "Exported API summary grouped by module (TypeScript-only for now).",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "package": {
-                            "type": "string",
-                            "description": "Optional package/module filter (substring match on module or file paths)"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of functions per module (default 20)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "file_functions",
-                "description": "Per-file function overview from the bake index.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path relative to the project root"
-                        },
-                        "include_summaries": {
-                            "type": "boolean",
-                            "description": "Whether to include summaries (currently a no-op placeholder)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "supersearch",
-                "description": "AST-aware search over TypeScript, Rust, Python, and Go source files. Prefer over grep. Use file to restrict scope and limit to cap noisy results.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "query": {
-                            "type": "string",
-                            "description": "Search query text"
-                        },
-                        "context": {
-                            "type": "string",
-                            "description": "Search context: all | strings | comments | identifiers"
-                        },
-                        "pattern": {
-                            "type": "string",
-                            "description": "Pattern: all | call | assign | return"
-                        },
-                        "exclude_tests": {
-                            "type": "boolean",
-                            "description": "Whether to exclude likely test files"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Max matches to return (default 200). Reduce for large codebases with common terms."
-                        }
-                    }
-                }
-            },
-            {
-                "name": "package_summary",
-                "description": "Deep-dive summary of a package/module directory.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "package": {
-                            "type": "string",
-                            "description": "Package/module name or directory substring"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "architecture_map",
-                "description": "Project structure map and placement hints.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "intent": {
-                            "type": "string",
-                            "description": "Intent description, e.g. \"user handler\" or \"auth service\""
-                        }
-                    }
-                }
-            },
-            {
-                "name": "suggest_placement",
-                "description": "Suggest where to place a new function.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "function_name": {
-                            "type": "string",
-                            "description": "Name of the function to add"
-                        },
-                        "function_type": {
-                            "type": "string",
-                            "description": "Function type: handler | service | repository | model | util | test"
-                        },
-                        "related_to": {
-                            "type": "string",
-                            "description": "Existing related symbol or substring (optional)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "crud_operations",
-                "description": "Entity-level CRUD matrix inferred from endpoints.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "entity": {
-                            "type": "string",
-                            "description": "Optional entity filter (e.g. \"user\")"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "api_trace",
-                "description": "Trace an API endpoint through backend handlers.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "endpoint": {
-                            "type": "string",
-                            "description": "Endpoint path (or substring), e.g. \"/users\""
-                        },
-                        "method": {
-                            "type": "string",
-                            "description": "Optional HTTP method (GET, POST, etc.)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "find_docs",
-                "description": "Find documentation/config files.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "doc_type": {
-                            "type": "string",
-                            "description": "Documentation type: readme | env | config | docker | all"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "patch",
-                "description": "Apply a patch to a file. Either by symbol name (resolves file and line range from bake index) or by explicit file and line range. Requires new_content.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."
-                        },
-                        "match_index": {
-                            "type": "integer",
-                            "description": "0-based index when multiple symbols match name (default 0)"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path relative to project root (for range-based patch)"
-                        },
-                        "start": {
-                            "type": "integer",
-                            "description": "1-based start line (inclusive), for range-based patch"
-                        },
-                        "end": {
-                            "type": "integer",
-                            "description": "1-based end line (inclusive), for range-based patch"
-                        },
-                        "new_content": {
-                            "type": "string",
-                            "description": "Replacement content for the patched range"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "patch_bytes",
-                "description": "Splice at exact byte offsets in a file. Use byte_start/byte_end from the bake index (IndexedFunction.byte_start / byte_end) for precise single-node replacement.",
-                "inputSchema": {
+    fn s(desc: &str) -> Value { json!({"type": "string", "description": desc}) }
+    fn i(desc: &str) -> Value { json!({"type": "integer", "description": desc}) }
+    fn b(desc: &str) -> Value { json!({"type": "boolean", "description": desc}) }
+    fn p() -> Value { s("Optional path to project directory") }
+    fn tool(name: &str, desc: &str, props: Value) -> Value {
+        json!({"name": name, "description": desc, "inputSchema": {"type": "object", "properties": props}})
+    }
+    fn tool_req(name: &str, desc: &str, req: &[&str], props: Value) -> Value {
+        json!({"name": name, "description": desc, "inputSchema": {"type": "object", "required": req, "properties": props}})
+    }
+
+    json!({ "tools": [
+        tool("llm_instructions", "Prime directive and usage instructions for yoyo.", json!({"path": p()})),
+        tool("shake", "Generate a high-level repository overview (languages, size, basic stats).", json!({"path": p()})),
+        tool("bake", "Build and persist a bake index under the project root.", json!({"path": p()})),
+        tool("symbol", "Detailed lookup of a function symbol from the bake index. When include_source is true, each match includes the function body inline. Use file to scope to one module and limit to cap result size.", json!({
+            "path": p(),
+            "name": s("Symbol (function) name to look up"),
+            "include_source": b("If true, include the function body (source code) in each match"),
+            "file": s("Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"),
+            "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
+        })),
+        tool("all_endpoints", "List all detected API endpoints from the bake index.", json!({"path": p()})),
+        tool("slice", "Read a specific line range of a file.", json!({
+            "path": p(),
+            "file": s("File path relative to the project root"),
+            "start": i("1-based start line (inclusive)"),
+            "end": i("1-based end line (inclusive)")
+        })),
+        tool("api_surface", "Exported API summary grouped by module (TypeScript-only for now).", json!({
+            "path": p(),
+            "package": s("Optional package/module filter (substring match on module or file paths)"),
+            "limit": i("Maximum number of functions per module (default 20)")
+        })),
+        tool("file_functions", "Per-file function overview from the bake index.", json!({
+            "path": p(),
+            "file": s("File path relative to the project root"),
+            "include_summaries": b("Whether to include summaries (currently a no-op placeholder)")
+        })),
+        tool("supersearch", "AST-aware search over TypeScript, Rust, Python, and Go source files. Prefer over grep. Use file to restrict scope and limit to cap noisy results.", json!({
+            "path": p(),
+            "query": s("Search query text"),
+            "context": s("Search context: all | strings | comments | identifiers"),
+            "pattern": s("Pattern: all | call | assign | return"),
+            "exclude_tests": b("Whether to exclude likely test files"),
+            "file": s("Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"),
+            "limit": i("Max matches to return (default 200). Reduce for large codebases with common terms.")
+        })),
+        tool("package_summary", "Deep-dive summary of a package/module directory.", json!({
+            "path": p(),
+            "package": s("Package/module name or directory substring")
+        })),
+        tool("architecture_map", "Project structure map and placement hints.", json!({
+            "path": p(),
+            "intent": s("Intent description, e.g. \"user handler\" or \"auth service\"")
+        })),
+        tool("suggest_placement", "Suggest where to place a new function.", json!({
+            "path": p(),
+            "function_name": s("Name of the function to add"),
+            "function_type": s("Function type: handler | service | repository | model | util | test"),
+            "related_to": s("Existing related symbol or substring (optional)")
+        })),
+        tool("crud_operations", "Entity-level CRUD matrix inferred from endpoints.", json!({
+            "path": p(),
+            "entity": s("Optional entity filter (e.g. \"user\")")
+        })),
+        tool("api_trace", "Trace an API endpoint through backend handlers.", json!({
+            "path": p(),
+            "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
+            "method": s("Optional HTTP method (GET, POST, etc.)")
+        })),
+        tool("find_docs", "Find documentation/config files.", json!({
+            "path": p(),
+            "doc_type": s("Documentation type: readme | env | config | docker | all")
+        })),
+        tool("patch", "Apply a patch to a file. Either by symbol name (resolves file and line range from bake index) or by explicit file and line range. Requires new_content.", json!({
+            "path": p(),
+            "name": s("Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."),
+            "match_index": i("0-based index when multiple symbols match name (default 0)"),
+            "file": s("File path relative to project root (for range-based patch)"),
+            "start": i("1-based start line (inclusive), for range-based patch"),
+            "end": i("1-based end line (inclusive), for range-based patch"),
+            "new_content": s("Replacement content for the patched range")
+        })),
+        tool_req("patch_bytes", "Splice at exact byte offsets in a file. Use byte_start/byte_end from the bake index (IndexedFunction.byte_start / byte_end) for precise single-node replacement.", &["file", "byte_start", "byte_end", "new_content"], json!({
+            "path": p(),
+            "file": s("File path relative to project root"),
+            "byte_start": i("Inclusive start byte offset"),
+            "byte_end": i("Exclusive end byte offset"),
+            "new_content": s("Replacement text")
+        })),
+        tool_req("multi_patch", "Apply N byte-level edits across M files atomically. Edits are applied bottom-up per file so offsets remain valid. Each file is written exactly once. Use for graph-level mutations such as renaming a symbol across all call sites.", &["edits"], json!({
+            "path": p(),
+            "edits": json!({
+                "type": "array",
+                "description": "Array of edit operations",
+                "items": {
                     "type": "object",
                     "required": ["file", "byte_start", "byte_end", "new_content"],
                     "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path relative to project root"
-                        },
-                        "byte_start": {
-                            "type": "integer",
-                            "description": "Inclusive start byte offset"
-                        },
-                        "byte_end": {
-                            "type": "integer",
-                            "description": "Exclusive end byte offset"
-                        },
-                        "new_content": {
-                            "type": "string",
-                            "description": "Replacement text"
-                        }
+                        "file": {"type": "string"},
+                        "byte_start": {"type": "integer"},
+                        "byte_end": {"type": "integer"},
+                        "new_content": {"type": "string"}
                     }
                 }
-            },
-            {
-                "name": "multi_patch",
-                "description": "Apply N byte-level edits across M files atomically. Edits are applied bottom-up per file so offsets remain valid. Each file is written exactly once. Use for graph-level mutations such as renaming a symbol across all call sites.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["edits"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "edits": {
-                            "type": "array",
-                            "description": "Array of edit operations",
-                            "items": {
-                                "type": "object",
-                                "required": ["file", "byte_start", "byte_end", "new_content"],
-                                "properties": {
-                                    "file": { "type": "string" },
-                                    "byte_start": { "type": "integer" },
-                                    "byte_end": { "type": "integer" },
-                                    "new_content": { "type": "string" }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                "name": "blast_radius",
-                "description": "Analyse the blast radius of a symbol: find all functions that (transitively) call it, and the set of affected files. Requires a prior bake.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["symbol"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "symbol": {
-                            "type": "string",
-                            "description": "Function name to analyse (exact match on the callee name)"
-                        },
-                        "depth": {
-                            "type": "integer",
-                            "description": "Maximum call-graph depth to traverse (default 2)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "graph_rename",
-                "description": "Rename a symbol everywhere — definition + all call sites — atomically. Uses word-boundary matching so partial identifier names are not affected. Reindexes affected files automatically.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["name", "new_name"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Current identifier name to rename"
-                        },
-                        "new_name": {
-                            "type": "string",
-                            "description": "New identifier name"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "graph_add",
-                "description": "Insert a new function or struct scaffold into a file. Optionally place it after an existing symbol (resolved from the bake index). Reindexes the file automatically.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["entity_type", "name", "file"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "entity_type": {
-                            "type": "string",
-                            "description": "Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Name for the new function/entity"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "File path relative to project root"
-                        },
-                        "after_symbol": {
-                            "type": "string",
-                            "description": "Optional: insert after this existing symbol (name or substring)"
-                        },
-                        "language": {
-                            "type": "string",
-                            "description": "Optional: override language detection (rust | typescript | python | go)"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "graph_move",
-                "description": "Move a function from its current file to another file. Removes from source, appends to destination, reindexes both. Requires a prior bake.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["name", "to_file"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Exact function name to move (matched case-insensitively in bake index)"
-                        },
-                        "to_file": {
-                            "type": "string",
-                            "description": "Destination file path relative to project root"
-                        }
-                    }
-                }
-            },
-            {
-                "name": "trace_down",
-                "description": "Trace a function's call chain downward to its leaves and external boundaries (database, http_client, queue). Scoped to Go and Rust. Requires a prior bake.",
-                "inputSchema": {
-                    "type": "object",
-                    "required": ["name"],
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Optional path to project directory"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Function name to start the trace from"
-                        },
-                        "depth": {
-                            "type": "integer",
-                            "description": "Maximum call depth to follow (default 5)"
-                        },
-                        "file": {
-                            "type": "string",
-                            "description": "Optional file path substring to disambiguate when multiple functions share the same name"
-                        }
-                    }
-                }
-            }
-        ]
-    })
+            })
+        })),
+        tool_req("blast_radius", "Analyse the blast radius of a symbol: find all functions that (transitively) call it, and the set of affected files. Requires a prior bake.", &["symbol"], json!({
+            "path": p(),
+            "symbol": s("Function name to analyse (exact match on the callee name)"),
+            "depth": i("Maximum call-graph depth to traverse (default 2)")
+        })),
+        tool_req("graph_rename", "Rename a symbol everywhere — definition + all call sites — atomically. Uses word-boundary matching so partial identifier names are not affected. Reindexes affected files automatically.", &["name", "new_name"], json!({
+            "path": p(),
+            "name": s("Current identifier name to rename"),
+            "new_name": s("New identifier name")
+        })),
+        tool_req("graph_add", "Insert a new function or struct scaffold into a file. Optionally place it after an existing symbol (resolved from the bake index). Reindexes the file automatically.", &["entity_type", "name", "file"], json!({
+            "path": p(),
+            "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
+            "name": s("Name for the new function/entity"),
+            "file": s("File path relative to project root"),
+            "after_symbol": s("Optional: insert after this existing symbol (name or substring)"),
+            "language": s("Optional: override language detection (rust | typescript | python | go)")
+        })),
+        tool_req("graph_move", "Move a function from its current file to another file. Removes from source, appends to destination, reindexes both. Requires a prior bake.", &["name", "to_file"], json!({
+            "path": p(),
+            "name": s("Exact function name to move (matched case-insensitively in bake index)"),
+            "to_file": s("Destination file path relative to project root")
+        })),
+        tool_req("trace_down", "Trace a function's call chain downward to its leaves and external boundaries (database, http_client, queue). Scoped to Go and Rust. Requires a prior bake.", &["name"], json!({
+            "path": p(),
+            "name": s("Function name to start the trace from"),
+            "depth": i("Maximum call depth to follow (default 5)"),
+            "file": s("Optional file path substring to disambiguate when multiple functions share the same name")
+        })),
+    ]})
 }
 
 #[derive(Debug, Deserialize)]
@@ -753,654 +326,144 @@ struct CallToolParams {
     pub arguments: Value,
 }
 
-async fn call_tool(params: Value) -> Result<Value> {
-    let p: CallToolParams = serde_json::from_value(params)?;
+struct Args(Value);
 
-    match p.name.as_str() {
-        "llm_instructions" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::llm_instructions(path)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "shake" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::shake(path)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "bake" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::bake(path)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "symbol" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let name = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for symbol"))?;
-            let include_source = p
-                .arguments
-                .get("include_source")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let limit = p
-                .arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let json = crate::engine::symbol(path, name, include_source, file, limit)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "all_endpoints" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::all_endpoints(path)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "slice" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for slice"))?;
-            let start = p
-                .arguments
-                .get("start")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'start' argument for slice"))?
-                as u32;
-            let end = p
-                .arguments
-                .get("end")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'end' argument for slice"))?
-                as u32;
-            let json = crate::engine::slice(path, file, start, end)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "api_surface" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let package = p
-                .arguments
-                .get("package")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let limit = p
-                .arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let json = crate::engine::api_surface(path, package, limit)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "file_functions" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for file_functions"))?;
-            let include_summaries = p
-                .arguments
-                .get("include_summaries")
-                .and_then(|v| v.as_bool());
-            let json = crate::engine::file_functions(path, file, include_summaries)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "supersearch" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let query = p
-                .arguments
-                .get("query")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'query' argument for supersearch"))?;
-            let context = p
-                .arguments
-                .get("context")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "all".to_string());
-            let pattern = p
-                .arguments
-                .get("pattern")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "all".to_string());
-            let exclude_tests = p
-                .arguments
-                .get("exclude_tests")
-                .and_then(|v| v.as_bool());
-            let file_filter = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let limit = p
-                .arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let json = crate::engine::supersearch(
-                path, query, context, pattern, exclude_tests, file_filter, limit,
-            )?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "package_summary" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let package = p
-                .arguments
-                .get("package")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'package' argument for package_summary"))?;
-            let json = crate::engine::package_summary(path, package)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "architecture_map" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let intent = p
-                .arguments
-                .get("intent")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::architecture_map(path, intent)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "suggest_placement" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let function_name = p
-                .arguments
-                .get("function_name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'function_name' argument for suggest_placement"))?;
-            let function_type = p
-                .arguments
-                .get("function_type")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'function_type' argument for suggest_placement"))?;
-            let related_to = p
-                .arguments
-                .get("related_to")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::suggest_placement(path, function_name, function_type, related_to)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "crud_operations" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let entity = p
-                .arguments
-                .get("entity")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::crud_operations(path, entity)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "api_trace" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let endpoint = p
-                .arguments
-                .get("endpoint")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'endpoint' argument for api_trace"))?;
-            let method = p
-                .arguments
-                .get("method")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let json = crate::engine::api_trace(path, endpoint, method)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "find_docs" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let doc_type = p
-                .arguments
-                .get("doc_type")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'doc_type' argument for find_docs"))?;
-            let limit = p.arguments.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
-            let json = crate::engine::find_docs(path, doc_type, limit)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "patch" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let new_content = p
-                .arguments
-                .get("new_content")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'new_content' argument for patch"))?;
-            let json = if let Some(name) = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-            {
-                let match_index = p
-                    .arguments
-                    .get("match_index")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize);
-                crate::engine::patch_by_symbol(path, name, new_content, match_index)?
-            } else {
-                let file = p
-                    .arguments
-                    .get("file")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| anyhow::anyhow!("Patch requires either 'name' (patch by symbol) or 'file', 'start', 'end' (patch by range)"))?;
-                let start = p
-                    .arguments
-                    .get("start")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'start' for range-based patch"))?
-                    as u32;
-                let end = p
-                    .arguments
-                    .get("end")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Missing 'end' for range-based patch"))?
-                    as u32;
-                crate::engine::patch(path, file, start, end, new_content)?
-            };
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "patch_bytes" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for patch_bytes"))?;
-            let byte_start = p
-                .arguments
-                .get("byte_start")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'byte_start' argument for patch_bytes"))?
-                as usize;
-            let byte_end = p
-                .arguments
-                .get("byte_end")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'byte_end' argument for patch_bytes"))?
-                as usize;
-            let new_content = p
-                .arguments
-                .get("new_content")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'new_content' argument for patch_bytes"))?;
-            let json = crate::engine::patch_bytes(path, file, byte_start, byte_end, new_content)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        "multi_patch" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let edits_val = p
-                .arguments
-                .get("edits")
-                .and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for multi_patch"))?;
-            let mut edits = Vec::new();
-            for item in edits_val {
-                let file = item
-                    .get("file")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?
-                    .to_string();
-                let byte_start = item
-                    .get("byte_start")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))?
-                    as usize;
-                let byte_end = item
-                    .get("byte_end")
-                    .and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))?
-                    as usize;
-                let new_content = item
-                    .get("new_content")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?
-                    .to_string();
-                edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
-            }
-            let json = crate::engine::multi_patch(path, edits)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        "blast_radius" => {
-            let path = p
-                .arguments
-                .get("path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let symbol = p
-                .arguments
-                .get("symbol")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'symbol' argument for blast_radius"))?;
-            let depth = p
-                .arguments
-                .get("depth")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
-            let json = crate::engine::blast_radius(path, symbol, depth)?;
-            Ok(serde_json::json!({
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json
-                    }
-                ],
-                "isError": false
-            }))
-        }
-        "graph_rename" => {
-            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let name = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_rename"))?;
-            let new_name = p
-                .arguments
-                .get("new_name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'new_name' argument for graph_rename"))?;
-            let json = crate::engine::graph_rename(path, name, new_name)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        "graph_add" => {
-            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let entity_type = p
-                .arguments
-                .get("entity_type")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'entity_type' argument for graph_add"))?;
-            let name = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_add"))?;
-            let file = p
-                .arguments
-                .get("file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'file' argument for graph_add"))?;
-            let after_symbol = p.arguments.get("after_symbol").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let language = p.arguments.get("language").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let json = crate::engine::graph_add(path, entity_type, name, file, after_symbol, language)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        "graph_move" => {
-            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let name = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for graph_move"))?;
-            let to_file = p
-                .arguments
-                .get("to_file")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'to_file' argument for graph_move"))?;
-            let json = crate::engine::graph_move(path, name, to_file)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        "trace_down" => {
-            let path = p.arguments.get("path").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let name = p
-                .arguments
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'name' argument for trace_down"))?;
-            let depth = p.arguments.get("depth").and_then(|v| v.as_u64()).map(|n| n as usize);
-            let file = p.arguments.get("file").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let json = crate::engine::trace_down(path, name, depth, file)?;
-            Ok(serde_json::json!({
-                "content": [{"type": "text", "text": json}],
-                "isError": false
-            }))
-        }
-        other => Err(anyhow::anyhow!("Unknown tool: {other}")),
+impl Args {
+    fn str_opt(&self, key: &str) -> Option<String> {
+        self.0.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    }
+    fn str_req(&self, key: &str, tool: &str) -> Result<String> {
+        self.str_opt(key)
+            .ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
+    }
+    fn bool_opt(&self, key: &str) -> Option<bool> {
+        self.0.get(key).and_then(|v| v.as_bool())
+    }
+    fn uint_opt(&self, key: &str) -> Option<usize> {
+        self.0.get(key).and_then(|v| v.as_u64()).map(|n| n as usize)
+    }
+    fn uint_req(&self, key: &str, tool: &str) -> Result<u64> {
+        self.0.get(key).and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
     }
 }
 
+fn ok_text(text: String) -> Result<Value> {
+    Ok(json!({"content": [{"type": "text", "text": text}], "isError": false}))
+}
+
+async fn call_tool(params: Value) -> Result<Value> {
+    let p: CallToolParams = serde_json::from_value(params)?;
+    let a = Args(p.arguments);
+    let path = a.str_opt("path");
+
+    match p.name.as_str() {
+        "llm_instructions" => ok_text(crate::engine::llm_instructions(path)?),
+        "shake"            => ok_text(crate::engine::shake(path)?),
+        "bake"             => ok_text(crate::engine::bake(path)?),
+        "all_endpoints"    => ok_text(crate::engine::all_endpoints(path)?),
+        "symbol" => ok_text(crate::engine::symbol(
+            path,
+            a.str_req("name", "symbol")?,
+            a.bool_opt("include_source").unwrap_or(false),
+            a.str_opt("file"),
+            a.uint_opt("limit"),
+        )?),
+        "slice" => ok_text(crate::engine::slice(
+            path,
+            a.str_req("file", "slice")?,
+            a.uint_req("start", "slice")? as u32,
+            a.uint_req("end", "slice")? as u32,
+        )?),
+        "api_surface" => ok_text(crate::engine::api_surface(
+            path, a.str_opt("package"), a.uint_opt("limit"),
+        )?),
+        "file_functions" => ok_text(crate::engine::file_functions(
+            path, a.str_req("file", "file_functions")?, a.bool_opt("include_summaries"),
+        )?),
+        "supersearch" => ok_text(crate::engine::supersearch(
+            path,
+            a.str_req("query", "supersearch")?,
+            a.str_opt("context").unwrap_or_else(|| "all".to_string()),
+            a.str_opt("pattern").unwrap_or_else(|| "all".to_string()),
+            a.bool_opt("exclude_tests"),
+            a.str_opt("file"),
+            a.uint_opt("limit"),
+        )?),
+        "package_summary"  => ok_text(crate::engine::package_summary(path, a.str_req("package", "package_summary")?)?),
+        "architecture_map" => ok_text(crate::engine::architecture_map(path, a.str_opt("intent"))?),
+        "suggest_placement" => ok_text(crate::engine::suggest_placement(
+            path,
+            a.str_req("function_name", "suggest_placement")?,
+            a.str_req("function_type", "suggest_placement")?,
+            a.str_opt("related_to"),
+        )?),
+        "crud_operations" => ok_text(crate::engine::crud_operations(path, a.str_opt("entity"))?),
+        "api_trace" => ok_text(crate::engine::api_trace(
+            path, a.str_req("endpoint", "api_trace")?, a.str_opt("method"),
+        )?),
+        "find_docs" => ok_text(crate::engine::find_docs(
+            path, a.str_req("doc_type", "find_docs")?, a.uint_opt("limit"),
+        )?),
+        "patch" => {
+            let new_content = a.str_req("new_content", "patch")?;
+            let json = if let Some(name) = a.str_opt("name") {
+                crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))?
+            } else {
+                crate::engine::patch(
+                    path,
+                    a.str_req("file", "patch")?,
+                    a.uint_req("start", "patch")? as u32,
+                    a.uint_req("end", "patch")? as u32,
+                    new_content,
+                )?
+            };
+            ok_text(json)
+        }
+        "patch_bytes" => ok_text(crate::engine::patch_bytes(
+            path,
+            a.str_req("file", "patch_bytes")?,
+            a.uint_req("byte_start", "patch_bytes")? as usize,
+            a.uint_req("byte_end", "patch_bytes")? as usize,
+            a.str_req("new_content", "patch_bytes")?,
+        )?),
+        "multi_patch" => {
+            let edits_val = a.0.get("edits").and_then(|v| v.as_array())
+                .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for multi_patch"))?;
+            let mut edits = Vec::new();
+            for item in edits_val {
+                let file = item.get("file").and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?.to_string();
+                let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))? as usize;
+                let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))? as usize;
+                let new_content = item.get("new_content").and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?.to_string();
+                edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
+            }
+            ok_text(crate::engine::multi_patch(path, edits)?)
+        }
+        "blast_radius" => ok_text(crate::engine::blast_radius(
+            path, a.str_req("symbol", "blast_radius")?, a.uint_opt("depth"),
+        )?),
+        "graph_rename" => ok_text(crate::engine::graph_rename(
+            path, a.str_req("name", "graph_rename")?, a.str_req("new_name", "graph_rename")?,
+        )?),
+        "graph_add" => ok_text(crate::engine::graph_add(
+            path,
+            a.str_req("entity_type", "graph_add")?,
+            a.str_req("name", "graph_add")?,
+            a.str_req("file", "graph_add")?,
+            a.str_opt("after_symbol"),
+            a.str_opt("language"),
+        )?),
+        "graph_move" => ok_text(crate::engine::graph_move(
+            path, a.str_req("name", "graph_move")?, a.str_req("to_file", "graph_move")?,
+        )?),
+        "trace_down" => ok_text(crate::engine::trace_down(
+            path, a.str_req("name", "trace_down")?, a.uint_opt("depth"), a.str_opt("file"),
+        )?),
+        other => Err(anyhow::anyhow!("Unknown tool: {other}")),
+    }
+}
