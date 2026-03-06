@@ -119,6 +119,8 @@ pub fn supersearch(
     file_filter: Option<String>,
     limit: Option<usize>,
 ) -> Result<String> {
+    use rayon::prelude::*;
+
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
@@ -127,7 +129,6 @@ pub fn supersearch(
     let q = query.to_lowercase();
     let ff = file_filter.as_deref().map(str::to_lowercase);
 
-    // Normalize context/pattern to known values; fall back to "all" if unknown.
     let context_norm = match context.as_str() {
         "all" | "strings" | "comments" | "identifiers" => context.clone(),
         _ => "all".to_string(),
@@ -137,69 +138,67 @@ pub fn supersearch(
         _ => "all".to_string(),
     };
 
-    let mut matches = Vec::new();
-
-    // Cache analyzers by language to avoid reallocating all 4 boxed analyzers per file.
-    let mut analyzer_cache: std::collections::HashMap<&str, Option<Box<dyn crate::lang::LanguageAnalyzer>>> =
-        std::collections::HashMap::new();
-
-    for file in &bake.files {
-        let lang = file.language.as_str();
-        if !matches!(lang, "typescript" | "javascript" | "rust" | "python" | "go") {
-            continue;
-        }
-
-        let path_str = file.path.to_string_lossy();
-        if exclude_tests && (path_str.contains("test") || path_str.contains("spec")) {
-            continue;
-        }
-        if let Some(ref f) = ff {
-            if !path_str.to_lowercase().contains(f.as_str()) {
-                continue;
+    let mut matches: Vec<SupersearchMatch> = bake
+        .files
+        .par_iter()
+        .filter(|file| {
+            let lang = file.language.as_str();
+            if !matches!(lang, "typescript" | "javascript" | "rust" | "python" | "go") {
+                return false;
             }
-        }
-
-        let full_path = root.join(&file.path);
-        let content = match fs::read_to_string(&full_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let file_rel = file.path.to_string_lossy().into_owned();
-
-        let mut used_ast = false;
-        let analyzer = analyzer_cache
-            .entry(lang)
-            .or_insert_with(|| crate::lang::find_analyzer(lang));
-        if let Some(analyzer) = analyzer {
-            if analyzer.supports_ast_search() {
-                let mut file_matches =
-                    analyzer.ast_search(&content, &q, &context_norm, &pattern_norm);
-                // Deduplicate by line — the AST walk can emit multiple nodes per line.
-                file_matches.sort_by_key(|m| m.line);
-                file_matches.dedup_by_key(|m| m.line);
-                for m in file_matches {
-                    matches.push(SupersearchMatch {
-                        file: file_rel.clone(),
-                        line: m.line,
-                        snippet: m.snippet,
-                    });
-                }
-                used_ast = true;
+            let path_str = file.path.to_string_lossy();
+            if exclude_tests && (path_str.contains("test") || path_str.contains("spec")) {
+                return false;
             }
-        }
-        if !used_ast {
-            // Fallback: line-oriented text search for unsupported languages (html, yaml, etc.).
-            for (idx, line) in content.lines().enumerate() {
-                if line.to_lowercase().contains(&q) {
-                    matches.push(SupersearchMatch {
-                        file: file_rel.clone(),
-                        line: (idx + 1) as u32,
-                        snippet: line.trim().to_string(),
-                    });
+            if let Some(ref f) = ff {
+                if !path_str.to_lowercase().contains(f.as_str()) {
+                    return false;
                 }
             }
-        }
-    }
+            true
+        })
+        .flat_map(|file| {
+            let lang = file.language.as_str();
+            let full_path = root.join(&file.path);
+            let content = match fs::read_to_string(&full_path) {
+                Ok(c) => c,
+                Err(_) => return vec![],
+            };
+            let file_rel = file.path.to_string_lossy().into_owned();
+            let mut file_matches = Vec::new();
+
+            let analyzer = crate::lang::find_analyzer(lang);
+            let mut used_ast = false;
+            if let Some(analyzer) = analyzer {
+                if analyzer.supports_ast_search() {
+                    let mut ast_matches =
+                        analyzer.ast_search(&content, &q, &context_norm, &pattern_norm);
+                    ast_matches.sort_by_key(|m| m.line);
+                    ast_matches.dedup_by_key(|m| m.line);
+                    for m in ast_matches {
+                        file_matches.push(SupersearchMatch {
+                            file: file_rel.clone(),
+                            line: m.line,
+                            snippet: m.snippet,
+                        });
+                    }
+                    used_ast = true;
+                }
+            }
+            if !used_ast {
+                for (idx, line) in content.lines().enumerate() {
+                    if line.to_lowercase().contains(&q) {
+                        file_matches.push(SupersearchMatch {
+                            file: file_rel.clone(),
+                            line: (idx + 1) as u32,
+                            snippet: line.trim().to_string(),
+                        });
+                    }
+                }
+            }
+            file_matches
+        })
+        .collect();
 
     matches.truncate(limit.unwrap_or(200));
 
@@ -214,8 +213,7 @@ pub fn supersearch(
         matches,
     };
 
-    let json = serde_json::to_string_pretty(&payload)?;
-    Ok(json)
+    Ok(serde_json::to_string_pretty(&payload)?)
 }
 
 /// Public entrypoint for the `file_functions` tool: per-file function overview.

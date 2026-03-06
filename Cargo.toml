@@ -9,6 +9,7 @@ clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.49", features = ["rt-multi-thread", "io-util", "io-std", "macros"] }
+rayon = "1.10"
 tree-sitter = "0.26.6"
 tree-sitter-go = "0.25.0"
 tree-sitter-python = "0.25.0"
