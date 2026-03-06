@@ -150,6 +150,7 @@ fn walk_ts(
                                 module_path: mod_path.to_string(),
                                 qualified_name: qname,
                                 visibility: Visibility::Public,
+                                parent_type: None,
                             });
                         }
                     }
@@ -178,6 +179,7 @@ fn walk_ts(
                                 module_path: mod_path.to_string(),
                                 qualified_name: qname,
                                 visibility: Visibility::Public,
+                                parent_type: None,
                             });
                         }
                     }
@@ -296,6 +298,7 @@ fn push_function(
         module_path: mod_path.to_string(),
         qualified_name: qname,
         visibility: Visibility::Public,
+        parent_type: None,
     });
 }
 

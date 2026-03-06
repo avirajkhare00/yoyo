@@ -142,6 +142,9 @@ pub(crate) struct SymbolMatch {
     /// Calls to other project-defined functions only (stdlib/built-ins excluded).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) calls: Vec<crate::lang::CallSite>,
+    /// For methods: the struct/enum/trait this is defined on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_type: Option<String>,
 }
 
 #[derive(Serialize)]

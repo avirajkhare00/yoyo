@@ -54,6 +54,10 @@ pub struct IndexedFunction {
     pub qualified_name: String,
     #[serde(default)]
     pub visibility: Visibility,
+    /// For methods: the struct/enum/trait this is defined on (e.g. "SearchWorker").
+    /// None for free functions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -156,6 +156,7 @@ fn walk_py(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
+                    parent_type: None,
                 });
             }
         }
@@ -190,6 +191,7 @@ fn walk_py(
                             module_path: mod_path.to_string(),
                             qualified_name: qname,
                             visibility: vis,
+                            parent_type: None,
                         });
                         if let Some((method, path)) = method_path {
                             endpoints.push(IndexedEndpoint {
