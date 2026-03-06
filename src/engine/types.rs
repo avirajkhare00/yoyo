@@ -130,6 +130,14 @@ pub(crate) struct SymbolMatch {
     pub(crate) kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<crate::lang::Visibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) module_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) qualified_name: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) calls: Vec<crate::lang::CallSite>,
 }
 
 #[derive(Serialize)]

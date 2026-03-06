@@ -38,6 +38,10 @@ pub fn symbol(
                     complexity: f.complexity,
                     kind: None,
                     source: None,
+                    visibility: Some(f.visibility.clone()),
+                    module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
+                    qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
+                    calls: f.calls.clone(),
                 })
             } else {
                 None
@@ -54,6 +58,10 @@ pub fn symbol(
                     complexity: 0,
                     kind: Some(t.kind.clone()),
                     source: None,
+                    visibility: Some(t.visibility.clone()),
+                    module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
+                    qualified_name: None,
+                    calls: vec![],
                 })
             } else {
                 None
