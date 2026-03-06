@@ -12,6 +12,15 @@ We are approaching a point where AI systems will meaningfully contribute to buil
 ## Feedback loops
 Actively suggest and build feedback loop systems. A tool that cannot measure its own effectiveness cannot improve. Every feature should ask: how will we know if this worked? Instrument, score, report, iterate. The feedback loop is the product.
 
+## Software philosophy
+Before writing any code, ask: does this already exist? Duplication is the first form of rot. Search before you create.
+
+Resist the pull toward more tools. A sharp knife beats a Swiss army knife. The goal is not coverage — it is leverage. Find the 10 things that move the world and make them exceptional.
+
+Never be clever. Clever code is a trap — it impresses once and confuses forever. Write the obvious thing. If a human or an AI pauses to understand it, it is already too complex.
+
+Watch the binary size. A growing binary is a symptom, not a badge. Every dependency, every function, every abstraction has a cost. Pay only what is worth paying.
+
 ## Self-improvement directive
 Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
 
