@@ -110,20 +110,17 @@ fn parse_semver(v: &str) -> (u32, u32, u32) {
 }
 
 pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
+    use rayon::prelude::*;
+
+    // Phase 1: collect file metadata (sequential directory walk — fast).
     let mut languages = BTreeSet::new();
-    let mut files = Vec::new();
-    let mut functions = Vec::new();
-    let mut endpoints = Vec::new();
-    let mut types = Vec::new();
+    let mut files: Vec<BakeFile> = Vec::new();
 
     fn walk(
         dir: &Path,
         root: &Path,
         languages: &mut BTreeSet<String>,
         files: &mut Vec<BakeFile>,
-        functions: &mut Vec<crate::lang::IndexedFunction>,
-        endpoints: &mut Vec<crate::lang::IndexedEndpoint>,
-        types: &mut Vec<crate::lang::IndexedType>,
     ) -> Result<()> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -137,7 +134,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                         continue;
                     }
                 }
-                walk(&path, root, languages, files, functions, endpoints, types)?;
+                walk(&path, root, languages, files)?;
             } else if path.is_file() {
                 let meta = entry.metadata()?;
                 let bytes = meta.len();
@@ -151,31 +148,32 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                     language: lang.to_string(),
                     bytes,
                 });
-
-                if let Some(analyzer) = crate::lang::find_analyzer(lang) {
-                    match analyzer.analyze_file(root, &path) {
-                        Ok((funcs, eps, typs)) => {
-                            functions.extend(funcs);
-                            endpoints.extend(eps);
-                            types.extend(typs);
-                        }
-                        Err(_) => {} // skip files that fail to parse
-                    }
-                }
             }
         }
         Ok(())
     }
 
-    walk(
-        root.as_path(),
-        root.as_path(),
-        &mut languages,
-        &mut files,
-        &mut functions,
-        &mut endpoints,
-        &mut types,
-    )?;
+    walk(root.as_path(), root.as_path(), &mut languages, &mut files)?;
+
+    // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
+    let results: Vec<_> = files
+        .par_iter()
+        .filter_map(|file| {
+            let lang = file.language.as_str();
+            let analyzer = crate::lang::find_analyzer(lang)?;
+            let full_path = root.join(&file.path);
+            analyzer.analyze_file(root, &full_path).ok()
+        })
+        .collect();
+
+    let mut functions = Vec::new();
+    let mut endpoints = Vec::new();
+    let mut types = Vec::new();
+    for (funcs, eps, typs) in results {
+        functions.extend(funcs);
+        endpoints.extend(eps);
+        types.extend(typs);
+    }
 
     Ok(BakeIndex {
         version: env!("CARGO_PKG_VERSION").to_string(),
