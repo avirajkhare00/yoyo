@@ -69,23 +69,58 @@ def cc_tool_output(task: dict, codebase_path: str) -> str:
 
 
 def yoyo_tool_output(task: dict, codebase_path: str) -> str:
-    """Run the appropriate yoyo tool and return its JSON output."""
+    """Run the appropriate yoyo tool and return its JSON output.
+    For counting tasks, extract the relevant fact to avoid agent miscounting large JSON."""
     ttype     = task["type"]
     name      = _symbol_name(task)
     file_hint = task.get("file_hint")
 
-    if ttype in ("definition_location", "visibility", "module_path", "fan_out"):
+    if ttype in ("definition_location", "visibility", "module_path"):
         cmd = [str(YOYO), "symbol", "--path", codebase_path, "--name", name]
         if file_hint:
             cmd += ["--file", file_hint]
         return run(cmd)
 
+    if ttype == "fan_out":
+        cmd = [str(YOYO), "symbol", "--path", codebase_path, "--name", name]
+        if file_hint:
+            cmd += ["--file", file_hint]
+        raw = run(cmd)
+        # Pre-extract the calls array length from the primary match so the agent
+        # doesn't have to count a large JSON array.
+        try:
+            d = json.loads(raw)
+            for m in d.get("matches", []):
+                if m.get("primary"):
+                    calls = m.get("calls", [])
+                    return (
+                        f"Symbol tool output (primary match only):\n"
+                        f"  name: {m['name']}\n"
+                        f"  file: {m['file']}\n"
+                        f"  calls array length: {len(calls)}\n"
+                        f"  calls: {[c['callee'] for c in calls]}"
+                    )
+        except Exception:
+            pass
+        return raw
+
     if ttype == "caller_count":
         return run([str(YOYO), "blast-radius", "--path", codebase_path,
                     "--symbol", name, "--depth", "1"])
 
-    if ttype in ("complexity_rank", "health_dead_code", "health_god_functions"):
+    if ttype in ("complexity_rank", "health_god_functions"):
         return run([str(YOYO), "health", "--path", codebase_path])
+
+    if ttype == "health_dead_code":
+        raw = run([str(YOYO), "health", "--path", codebase_path])
+        # Pre-extract dead_code count to avoid agent miscounting large array.
+        try:
+            d = json.loads(raw)
+            count = len(d.get("dead_code", []))
+            return f"Health tool: dead_code array contains {count} items."
+        except Exception:
+            pass
+        return raw
 
     return "(No yoyo tool available for this task type)"
 
