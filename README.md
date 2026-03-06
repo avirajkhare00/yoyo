@@ -2,7 +2,7 @@
 
 yoyo parses your codebase and gives Claude or Cursor 24 tools to read and edit it over MCP.
 
-When Claude doesn't have a tool to read your code, it guesses — wrong file paths, stale function names, invented module structures. yoyo stops the guessing. Every answer comes from the AST.
+Without a tool to read your code, AI assistants guess — wrong file paths, stale function names, invented module structures. yoyo stops the guessing. Every answer comes from the AST.
 
 No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
