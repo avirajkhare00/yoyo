@@ -30,6 +30,34 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         &["ts", "tsx"]
     }
 
+    fn extract_imports(&self, source: &str) -> Vec<String> {
+        let mut imports = Vec::new();
+        for line in source.lines() {
+            let t = line.trim();
+            // import ... from 'path' or "path"
+            if t.starts_with("import ") {
+                if let Some(from_idx) = t.rfind(" from ") {
+                    let raw = t[from_idx + 6..].trim().trim_matches(&['\'', '"', ';'][..]);
+                    if !raw.is_empty() { imports.push(raw.to_string()); }
+                }
+            }
+            // require('path') or require("path")
+            if let Some(s) = t.find("require(") {
+                let rest = t[s + 8..].trim();
+                if let Some(q) = rest.chars().next() {
+                    if q == '\'' || q == '"' {
+                        let inner = &rest[1..];
+                        if let Some(end) = inner.find(q) {
+                            let path = &inner[..end];
+                            if !path.is_empty() { imports.push(path.to_string()); }
+                        }
+                    }
+                }
+            }
+        }
+        imports
+    }
+
     fn analyze_file(
         &self,
         root: &Path,

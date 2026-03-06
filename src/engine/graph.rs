@@ -522,3 +522,149 @@ pub fn trace_down(
 
     Ok(serde_json::to_string_pretty(&payload)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn write_file(root: &TempDir, rel: &str, content: &str) {
+        let p = root.path().join(rel);
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(p, content).unwrap();
+    }
+
+    fn bake_dir(root: &TempDir) {
+        crate::engine::bake(Some(root.path().to_string_lossy().into_owned())).unwrap();
+    }
+
+    // ── graph_rename ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn rename_renames_identifier_in_source_file() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn old_name() {}\nfn caller() { old_name(); }\n",
+        );
+
+        let result = graph_rename(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "old_name".into(),
+            "new_name".into(),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["occurrences_renamed"], 2);
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn new_name()"));
+        assert!(content.contains("new_name()"));
+        assert!(!content.contains("old_name"));
+    }
+
+    #[test]
+    fn rename_returns_error_for_identical_names() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn foo() {}\n");
+
+        let err = graph_rename(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "foo".into(),
+            "foo".into(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("identical"));
+    }
+
+    #[test]
+    fn rename_returns_error_when_symbol_not_found() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn foo() {}\n");
+
+        let err = graph_rename(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "nonexistent".into(),
+            "whatever".into(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("No occurrences"));
+    }
+
+    // ── graph_add ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn add_appends_function_scaffold_to_file() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn existing() {}\n");
+        bake_dir(&dir);
+
+        let result = graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "function".into(),
+            "new_helper".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "graph_add");
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("new_helper"));
+    }
+
+    // ── graph_move ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn move_relocates_function_body_to_destination() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "src/a.rs",
+            "fn helper() {\n    let x = 1;\n}\n",
+        );
+        write_file(&dir, "src/b.rs", "fn other() {}\n");
+        bake_dir(&dir);
+
+        let result = graph_move(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "helper".into(),
+            "src/b.rs".into(),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "graph_move");
+        assert_eq!(v["from_file"], "src/a.rs");
+        assert_eq!(v["to_file"], "src/b.rs");
+
+        let src_content = fs::read_to_string(dir.path().join("src/a.rs")).unwrap();
+        assert!(!src_content.contains("fn helper"));
+
+        let dst_content = fs::read_to_string(dir.path().join("src/b.rs")).unwrap();
+        assert!(dst_content.contains("fn helper"));
+    }
+
+    #[test]
+    fn move_errors_when_source_and_dest_are_same() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/a.rs", "fn foo() {}\n");
+        bake_dir(&dir);
+
+        let err = graph_move(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "foo".into(),
+            "src/a.rs".into(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("same"));
+    }
+}

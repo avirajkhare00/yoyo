@@ -30,6 +30,19 @@ impl LanguageAnalyzer for RustAnalyzer {
         &["rs"]
     }
 
+    fn extract_imports(&self, source: &str) -> Vec<String> {
+        source.lines()
+            .filter_map(|line| {
+                let t = line.trim();
+                if t.starts_with("use ") {
+                    Some(t.trim_start_matches("use ").trim_end_matches(';').trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     fn analyze_file(
         &self,
         root: &Path,

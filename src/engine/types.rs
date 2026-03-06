@@ -24,6 +24,8 @@ pub(crate) struct BakeFile {
     pub(crate) path: PathBuf,
     pub(crate) language: String,
     pub(crate) bytes: u64,
+    #[serde(default)]
+    pub(crate) imports: Vec<String>,
 }
 
 // ── Consolidated shared structs ───────────────────────────────────────────────

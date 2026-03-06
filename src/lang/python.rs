@@ -30,6 +30,24 @@ impl LanguageAnalyzer for PythonAnalyzer {
         &["py"]
     }
 
+    fn extract_imports(&self, source: &str) -> Vec<String> {
+        source.lines()
+            .filter_map(|line| {
+                let t = line.trim();
+                if t.starts_with("from ") {
+                    // from X import Y  →  X
+                    t.split_whitespace().nth(1).map(|s| s.to_string())
+                } else if t.starts_with("import ") {
+                    // import X, Y  →  X (first module)
+                    t[7..].split(',').next().map(|s| s.trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
     fn analyze_file(
         &self,
         root: &Path,

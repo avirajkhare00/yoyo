@@ -147,6 +147,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
                     path: rel,
                     language: lang.to_string(),
                     bytes,
+                    imports: vec![],
                 });
             }
         }
@@ -154,25 +155,30 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     }
 
     walk(root.as_path(), root.as_path(), &mut languages, &mut files)?;
-
     // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
+    // Returns (index, functions, endpoints, types, imports) per file.
     let results: Vec<_> = files
         .par_iter()
-        .filter_map(|file| {
+        .enumerate()
+        .filter_map(|(idx, file)| {
             let lang = file.language.as_str();
             let analyzer = crate::lang::find_analyzer(lang)?;
             let full_path = root.join(&file.path);
-            analyzer.analyze_file(root, &full_path).ok()
+            let source = std::fs::read_to_string(&full_path).ok()?;
+            let imports = analyzer.extract_imports(&source);
+            let (funcs, eps, typs) = analyzer.analyze_file(root, &full_path).ok()?;
+            Some((idx, funcs, eps, typs, imports))
         })
         .collect();
 
     let mut functions = Vec::new();
     let mut endpoints = Vec::new();
     let mut types = Vec::new();
-    for (funcs, eps, typs) in results {
+    for (idx, funcs, eps, typs, imports) in results {
         functions.extend(funcs);
         endpoints.extend(eps);
         types.extend(typs);
+        files[idx].imports = imports;
     }
 
     Ok(BakeIndex {
@@ -185,7 +191,6 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         types,
     })
 }
-
 
 pub(crate) fn detect_language(path: &Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
