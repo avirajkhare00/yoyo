@@ -166,6 +166,43 @@ mod tests {
         assert!(!utils.contains("add(add("), "old call site still present in utils.rs");
     }
 
+    // ── graph_move ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn e2e_graph_move_injects_needed_imports_into_destination() {
+        let dir = setup();
+        // sum_three (utils.rs) calls add() which is imported from crate::math.
+        // Moving sum_three to math.rs should NOT need to add any imports
+        // (add is in the same file). But moving it to a new file would.
+        // Instead: move `clamp` from utils.rs to a new file that has no imports.
+        fs::write(dir.path().join("src/extra.rs"), "// extra module\n").unwrap();
+        // Rebake to register extra.rs
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        // clamp has no external imports needed — pure primitive ops.
+        // But sum_three uses `add` from crate::math — moving it to extra.rs
+        // should inject `use crate::math::add;`
+        let out = crate::engine::graph_move(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "sum_three".into(),
+            "src/extra.rs".into(),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "graph_move");
+
+        let extra = fs::read_to_string(dir.path().join("src/extra.rs")).unwrap();
+        // The function body should be present
+        assert!(extra.contains("fn sum_three"), "sum_three not moved to extra.rs");
+        // The import for add should have been injected
+        assert!(
+            extra.contains("use crate::math::add") || extra.contains("use crate::math"),
+            "expected import for crate::math::add in extra.rs, got:\n{}",
+            extra
+        );
+    }
+
     // ── graph_delete ──────────────────────────────────────────────────────────
 
     #[test]

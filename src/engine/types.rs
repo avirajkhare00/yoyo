@@ -344,6 +344,7 @@ pub(crate) struct GraphMovePayload {
     pub(crate) name: String,
     pub(crate) from_file: String,
     pub(crate) to_file: String,
+    pub(crate) imports_added: Vec<String>,
 }
 
 #[derive(Serialize)]

@@ -240,6 +240,123 @@ pub fn graph_add(
 
 // ── graph_move ───────────────────────────────────────────────────────────────
 
+/// Scan the moved function body for identifiers that match `use` statements in
+/// the source file, and return the ones not already present in the destination.
+///
+/// Strategy: extract word tokens from the function body, then for each `use`
+/// statement in the source file extract the "exposed" identifier (last path
+/// segment, alias, or brace-list members) and check if it appears in the body.
+fn inject_needed_imports(body: &str, src_content: &str, dst_content: &str) -> Vec<String> {
+    // Word tokens present in the function body.
+    let body_words: std::collections::HashSet<&str> = body
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut needed = Vec::new();
+    for line in src_content.lines() {
+        let t = line.trim();
+        if !t.starts_with("use ") && !t.starts_with("import ") && !t.starts_with("from ") {
+            continue;
+        }
+        // Skip relative imports — `use self::`, `use super::` are module-local
+        // and won't be valid in the destination file.
+        if t.starts_with("use self::") || t.starts_with("use super::") {
+            continue;
+        }
+        // Skip if the destination already has this import line.
+        if dst_content.contains(t) {
+            continue;
+        }
+        let exposed = exposed_idents_from_import(t);
+        // Wildcard imports are always included if source has them.
+        let matches = exposed.iter().any(|id| id == "*" || body_words.contains(id.as_str()));
+        if matches {
+            needed.push(t.to_string());
+        }
+    }
+    needed
+}
+
+/// Extract the set of identifiers a single import statement exposes.
+/// Works for Rust (`use`), TypeScript/JS (`import`), Python (`from`/`import`).
+fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
+    let t = stmt.trim();
+
+    // Rust: `use path::to::{A, B as C};` or `use path::to::D;`
+    if t.starts_with("use ") {
+        let inner = t.trim_start_matches("use ").trim_end_matches(';').trim();
+        if let Some(brace) = inner.find('{') {
+            let rest = &inner[brace + 1..];
+            let close = rest.find('}').unwrap_or(rest.len());
+            return rest[..close]
+                .split(',')
+                .map(|s| {
+                    let s = s.trim();
+                    // handle `Name as Alias`
+                    s.split(" as ").last().unwrap_or(s)
+                        .split("::")
+                        .last()
+                        .unwrap_or(s)
+                        .trim()
+                        .to_string()
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        if let Some(as_pos) = inner.rfind(" as ") {
+            return vec![inner[as_pos + 4..].trim().to_string()];
+        }
+        if inner == "*" || inner.ends_with("::*") {
+            return vec!["*".to_string()];
+        }
+        if let Some(last) = inner.split("::").last() {
+            return vec![last.trim_end_matches(';').trim().to_string()];
+        }
+    }
+
+    // TypeScript/JS: `import { A, B } from '...'` or `import X from '...'`
+    if t.starts_with("import ") {
+        if let Some(brace) = t.find('{') {
+            if let Some(close) = t.find('}') {
+                return t[brace + 1..close]
+                    .split(',')
+                    .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        }
+        // `import X from ...` — X is the default import identifier
+        let after_import = t.trim_start_matches("import ").trim();
+        if let Some(from_pos) = after_import.find(" from ") {
+            let name = after_import[..from_pos].trim();
+            if !name.is_empty() {
+                return vec![name.to_string()];
+            }
+        }
+    }
+
+    // Python: `from module import A, B` or `import module`
+    if t.starts_with("from ") {
+        if let Some(import_pos) = t.find(" import ") {
+            return t[import_pos + 8..]
+                .split(',')
+                .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    if t.starts_with("import ") {
+        return t[7..]
+            .split(',')
+            .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().split('.').last().unwrap_or("").to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
+    vec![]
+}
+
 /// Move a function from one file to another.
 pub fn graph_move(
     path: Option<String>,
@@ -308,7 +425,24 @@ pub fn graph_move(
         dst_bytes.push(b'\n');
     }
 
-    fs::write(&dst_full, &dst_bytes)
+    // Import fixup: inject any `use` statements the moved function needs into the destination.
+    let src_content = String::from_utf8_lossy(&src_bytes).into_owned();
+    let dst_content = String::from_utf8_lossy(&dst_bytes).into_owned();
+    let func_body_str = String::from_utf8_lossy(&func_body).into_owned();
+    let imports_added = inject_needed_imports(&func_body_str, &src_content, &dst_content);
+
+    let final_dst = if imports_added.is_empty() {
+        dst_bytes
+    } else {
+        let import_block = imports_added.iter()
+            .map(|s| format!("{}\n", s))
+            .collect::<String>();
+        let mut out = import_block.into_bytes();
+        out.extend_from_slice(&dst_bytes);
+        out
+    };
+
+    fs::write(&dst_full, &final_dst)
         .with_context(|| format!("Failed to write dest {}", to_file))?;
 
     let _ = reindex_files(&root, &[from_file.as_str(), to_file.as_str()]);
@@ -320,6 +454,7 @@ pub fn graph_move(
         name,
         from_file,
         to_file,
+        imports_added,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
