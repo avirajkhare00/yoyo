@@ -348,7 +348,8 @@ fn collapse_blank_lines(s: &str) -> String {
 }
 
 /// Remove a function from a file by name. Requires a prior bake.
-pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) -> Result<String> {
+/// Pre-flight: refuses to delete if active callers exist, unless `force` is true.
+pub fn graph_delete(path: Option<String>, name: String, file: Option<String>, force: bool) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow::anyhow!("No bake index. Run `bake` first."))?;
@@ -367,6 +368,29 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) ->
                     .unwrap_or(true)
         })
         .ok_or_else(|| anyhow::anyhow!("Symbol {:?} not found in bake index.", name))?;
+
+    // Pre-flight: find any callers of this symbol in the index.
+    let callers: Vec<String> = bake
+        .functions
+        .iter()
+        .filter(|f| f.name.to_lowercase() != name_lc)
+        .filter(|f| f.calls.iter().any(|c| c.callee.to_lowercase() == name_lc))
+        .map(|f| format!("{} ({})", f.name, f.file))
+        .collect();
+
+    if !callers.is_empty() && !force {
+        return Err(anyhow::anyhow!(
+            "Symbol {:?} has {} active caller(s): {}. \
+             Run blast_radius to investigate, or pass force=true to delete anyway.",
+            name, callers.len(), callers.join(", ")
+        ));
+    }
+
+    let warnings: Vec<String> = if !callers.is_empty() {
+        vec![format!("Deleted with {} active caller(s): {}", callers.len(), callers.join(", "))]
+    } else {
+        vec![]
+    };
 
     let rel_file = func.file.clone();
     let byte_start = func.byte_start;
@@ -405,6 +429,7 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) ->
         name,
         file: rel_file,
         bytes_removed,
+        warnings,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
@@ -443,6 +468,7 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "remove_me".into(),
             None,
+            false,
         )
         .unwrap();
 
@@ -465,6 +491,7 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "no_such_fn".into(),
             None,
+            false,
         )
         .unwrap_err();
         assert!(err.to_string().contains("not found"));

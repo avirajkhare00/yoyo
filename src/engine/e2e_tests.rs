@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn e2e_graph_delete_removes_function_and_leaves_rest_intact() {
         let dir = setup();
-        let out = crate::engine::graph_delete(root(&dir), "clamp".into(), None).unwrap();
+        let out = crate::engine::graph_delete(root(&dir), "clamp".into(), None, false).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(v["bytes_removed"].as_u64().unwrap() > 0);
 

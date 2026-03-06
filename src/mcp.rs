@@ -321,10 +321,11 @@ fn list_tools() -> Value {
             "path": p(),
             "top": i("Max results per category (default 10)")
         })),
-        tool_req("graph_delete", "Remove a function from a file by name. Erases its byte range and reindexes. Use health or blast_radius to confirm it is safe to delete.", &["name"], json!({
+        tool_req("graph_delete", "Remove a function from a file by name. Pre-flight check refuses deletion if active callers exist (use force=true to override). Reindexes automatically.", &["name"], json!({
             "path": p(),
             "name": s("Exact function name to delete (matched case-insensitively in bake index)"),
-            "file": s("Optional file path substring to disambiguate when multiple functions share the same name")
+            "file": s("Optional file path substring to disambiguate when multiple functions share the same name"),
+            "force": b("Delete even if active callers exist (default false)")
         })),
     ]})
 }
@@ -483,6 +484,7 @@ async fn call_tool(params: Value) -> Result<Value> {
         "health" => ok_text(crate::engine::health(path, a.uint_opt("top"))?),
         "graph_delete" => ok_text(crate::engine::graph_delete(
             path, a.str_req("name", "graph_delete")?, a.str_opt("file"),
+            a.bool_opt("force").unwrap_or(false),
         )?),
         other => Err(anyhow::anyhow!("Unknown tool: {other}")),
     }

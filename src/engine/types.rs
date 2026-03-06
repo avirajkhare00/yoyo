@@ -321,8 +321,11 @@ pub(crate) struct GraphRenamePayload {
     pub(crate) project_root: PathBuf,
     pub(crate) old_name: String,
     pub(crate) new_name: String,
+    pub(crate) scope: String,
     pub(crate) files_changed: usize,
     pub(crate) occurrences_renamed: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -474,4 +477,6 @@ pub(crate) struct GraphDeletePayload {
     pub(crate) name: String,
     pub(crate) file: String,
     pub(crate) bytes_removed: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) warnings: Vec<String>,
 }

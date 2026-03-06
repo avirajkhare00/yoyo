@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context, Result};
 
 use super::types::{GraphAddPayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
 use super::util::{detect_language, load_bake_index, reindex_files, resolve_project_root};
+use crate::lang::Visibility;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,10 @@ fn generate_scaffold(entity_type: &str, name: &str, lang: &str) -> String {
 // ── graph_rename ─────────────────────────────────────────────────────────────
 
 /// Rename a symbol everywhere — definition + all call sites — atomically.
+/// Scope is determined by the symbol's visibility in the bake index:
+///   Private  → rename only within the defining file (safe, no external callers)
+///   Module   → rename within all files in the same directory (same package)
+///   Public   → rename project-wide + emit a warning (external callers may exist)
 pub fn graph_rename(
     path: Option<String>,
     name: String,
@@ -97,8 +102,56 @@ pub fn graph_rename(
     }
     let root = resolve_project_root(path)?;
     let name_bytes = name.as_bytes().to_vec();
+    let name_lc = name.to_lowercase();
 
-    let source_files = collect_source_files(&root);
+    // Determine rename scope from bake index visibility.
+    let bake = load_bake_index(&root)?;
+    let (source_files, scope_label, warnings) = if let Some(ref bake) = bake {
+        if let Some(func) = bake.functions.iter().find(|f| f.name.to_lowercase() == name_lc) {
+            match func.visibility {
+                Visibility::Private => {
+                    // Private: safe to rename only the defining file.
+                    let scoped = vec![root.join(&func.file)];
+                    (scoped, "file".to_string(), vec![])
+                }
+                Visibility::Module => {
+                    // Module-visible (pub(crate) / Go package): scope to files in the same dir.
+                    let def_dir = std::path::Path::new(&func.file)
+                        .parent()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let scoped: Vec<PathBuf> = bake.files.iter()
+                        .filter(|f| {
+                            let fdir = std::path::Path::new(&f.path)
+                                .parent()
+                                .map(|p| p.to_string_lossy().into_owned())
+                                .unwrap_or_default();
+                            fdir == def_dir
+                        })
+                        .map(|f| root.join(&f.path))
+                        .collect();
+                    (scoped, "package".to_string(), vec![])
+                }
+                Visibility::Public => {
+                    // Public: rename project-wide but warn that callers outside the
+                    // call graph (dynamic dispatch, reflection) may also need updating.
+                    (collect_source_files(&root), "project".to_string(), vec![
+                        format!("'{}' is public — callers outside the call graph (dynamic dispatch, FFI) may need manual review after rename", name),
+                    ])
+                }
+            }
+        } else {
+            // Symbol not in index (unbaked or unsupported language) — fall back to project-wide.
+            (collect_source_files(&root), "project".to_string(), vec![
+                format!("'{}' not in bake index — run `bake` first for visibility-scoped rename; falling back to project-wide search", name),
+            ])
+        }
+    } else {
+        // No bake index at all — project-wide fallback.
+        (collect_source_files(&root), "project".to_string(), vec![
+            "No bake index — run `bake` first for visibility-scoped rename; falling back to project-wide search".to_string(),
+        ])
+    };
 
     // Collect (rel_path, occurrences) for each file that contains the identifier.
     let mut edits_by_file: Vec<(String, Vec<(usize, usize)>)> = Vec::new();
@@ -159,8 +212,10 @@ pub fn graph_rename(
         project_root: root,
         old_name: name,
         new_name,
+        scope: scope_label,
         files_changed,
         occurrences_renamed: total_occurrences,
+        warnings,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }

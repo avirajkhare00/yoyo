@@ -607,10 +607,14 @@ pub struct GraphDeleteArgs {
     /// Optional file path substring to disambiguate when multiple functions share the same name.
     #[arg(long)]
     pub file: Option<String>,
+
+    /// Delete even if active callers exist (default: refuse).
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
 }
 
 async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
-    let json = crate::engine::graph_delete(args.path, args.name, args.file)?;
+    let json = crate::engine::graph_delete(args.path, args.name, args.file, args.force)?;
     println!("{json}");
     Ok(())
 }
