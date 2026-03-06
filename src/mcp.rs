@@ -253,14 +253,16 @@ fn list_tools() -> Value {
             "path": p(),
             "doc_type": s("Documentation type: readme | env | config | docker | all")
         })),
-        tool("patch", "Apply a patch to a file. Either by symbol name (resolves file and line range from bake index) or by explicit file and line range. Requires new_content.", json!({
+        tool("patch", "Apply a patch to a file. Three modes: (1) by symbol name — pass 'name'; (2) by line range — pass 'file'+'start'+'end'; (3) by content match — pass 'file'+'old_string'+'new_string'. Mode 3 is immune to line drift and preferred for large edits.", json!({
             "path": p(),
             "name": s("Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."),
             "match_index": i("0-based index when multiple symbols match name (default 0)"),
-            "file": s("File path relative to project root (for range-based patch)"),
+            "file": s("File path relative to project root (for range-based or content-match patch)"),
             "start": i("1-based start line (inclusive), for range-based patch"),
             "end": i("1-based end line (inclusive), for range-based patch"),
-            "new_content": s("Replacement content for the patched range")
+            "new_content": s("Replacement content for range-based patch"),
+            "old_string": s("Exact string to find and replace (content-match mode — immune to line drift)"),
+            "new_string": s("Replacement string for content-match mode")
         })),
         tool_req("patch_bytes", "Splice at exact byte offsets in a file. Use byte_start/byte_end from the bake index (IndexedFunction.byte_start / byte_end) for precise single-node replacement.", &["file", "byte_start", "byte_end", "new_content"], json!({
             "path": p(),
@@ -415,19 +417,24 @@ async fn call_tool(params: Value) -> Result<Value> {
             path, a.str_req("doc_type", "find_docs")?, a.uint_opt("limit"),
         )?),
         "patch" => {
-            let new_content = a.str_req("new_content", "patch")?;
-            let json = if let Some(name) = a.str_opt("name") {
-                crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))?
+            if let Some(old_string) = a.str_opt("old_string") {
+                let new_string = a.str_req("new_string", "patch")?;
+                ok_text(crate::engine::patch_string(path, a.str_req("file", "patch")?, old_string, new_string)?)
             } else {
-                crate::engine::patch(
-                    path,
-                    a.str_req("file", "patch")?,
-                    a.uint_req("start", "patch")? as u32,
-                    a.uint_req("end", "patch")? as u32,
-                    new_content,
-                )?
-            };
-            ok_text(json)
+                let new_content = a.str_req("new_content", "patch")?;
+                let json = if let Some(name) = a.str_opt("name") {
+                    crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))?
+                } else {
+                    crate::engine::patch(
+                        path,
+                        a.str_req("file", "patch")?,
+                        a.uint_req("start", "patch")? as u32,
+                        a.uint_req("end", "patch")? as u32,
+                        new_content,
+                    )?
+                };
+                ok_text(json)
+            }
         }
         "patch_bytes" => ok_text(crate::engine::patch_bytes(
             path,

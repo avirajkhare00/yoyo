@@ -294,6 +294,54 @@ pub fn patch(
     Ok(json)
 }
 
+/// Content-match patch: find `old_string` in `file`, replace with `new_string`.
+/// Immune to line number drift — works by content, not position.
+pub fn patch_string(
+    path: Option<String>,
+    file: String,
+    old_string: String,
+    new_string: String,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let full_path = root.join(&file);
+    let content = fs::read_to_string(&full_path)
+        .with_context(|| format!("Failed to read {}", file))?;
+
+    let pos = content
+        .find(&old_string)
+        .ok_or_else(|| anyhow!("old_string not found in {}. Check exact whitespace and content.", file))?;
+
+    let new_content = format!(
+        "{}{}{}",
+        &content[..pos],
+        new_string,
+        &content[pos + old_string.len()..]
+    );
+
+    let start_line = (content[..pos].lines().count() + 1) as u32;
+    let end_line = start_line + old_string.lines().count().saturating_sub(1) as u32;
+    let total_lines = new_content.lines().count() as u32;
+
+    fs::write(&full_path, &new_content)
+        .with_context(|| format!("Failed to write {}", file))?;
+
+    let _ = reindex_files(&root, &[file.as_str()]);
+    let syntax_errors = syntax_check(&root, &file);
+
+    let payload = PatchPayload {
+        tool: "patch",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        file,
+        start: start_line,
+        end: end_line,
+        total_lines,
+        syntax_errors,
+    };
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+
 /// Public entrypoint for the `patch` tool (by symbol name). Resolves the symbol from the bake
 /// index, then replaces its line range with `new_content`. Use `match_index` (0-based) when
 /// multiple symbols match the name; default 0.
