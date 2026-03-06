@@ -413,6 +413,8 @@ pub(crate) struct FileFunctionSummary {
     pub(crate) complexity: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_type: Option<String>,
 }
 
 #[derive(Serialize)]

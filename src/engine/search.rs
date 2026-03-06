@@ -300,8 +300,8 @@ pub fn file_functions(
             start_line: f.start_line,
             end_line: f.end_line,
             complexity: f.complexity,
-            // For now we do not compute summaries; this can be extended later.
             summary: None,
+            parent_type: f.parent_type.clone(),
         })
         .collect();
 
