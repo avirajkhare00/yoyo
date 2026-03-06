@@ -415,3 +415,59 @@ pub(crate) struct TraceDownPayload {
     pub(crate) chain: Vec<TraceNode>,
     pub(crate) unresolved: Vec<String>,
 }
+
+// ── health ────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct HealthPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) dead_code: Vec<DeadFunction>,
+    pub(crate) god_functions: Vec<GodFunction>,
+    pub(crate) duplicate_hints: Vec<DuplicateGroup>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct DeadFunction {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) end_line: u32,
+    pub(crate) lines: u32,
+}
+
+#[derive(Serialize)]
+pub(crate) struct GodFunction {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) complexity: u32,
+    pub(crate) fan_out: usize,
+    pub(crate) score: u32,
+}
+
+#[derive(Serialize)]
+pub(crate) struct DuplicateGroup {
+    pub(crate) stem: String,
+    pub(crate) functions: Vec<DuplicateEntry>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct DuplicateEntry {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+}
+
+// ── graph_delete ──────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct GraphDeletePayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) bytes_removed: usize,
+}
