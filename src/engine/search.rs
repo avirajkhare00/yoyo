@@ -24,24 +24,45 @@ pub fn symbol(
     let needle = name.to_lowercase();
     let file_filter = file.as_deref().map(str::to_lowercase);
 
+    // Build set of project-defined function names for call filtering (#47).
+    let project_fns: std::collections::HashSet<String> = bake
+        .functions
+        .iter()
+        .map(|f| f.name.to_lowercase())
+        .collect();
+
+    // Count incoming calls per callee name — used to rank primary match (#46).
+    let mut incoming: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for f in &bake.functions {
+        for c in &f.calls {
+            *incoming.entry(c.callee.to_lowercase()).or_insert(0) += 1;
+        }
+    }
+
     let mut matches: Vec<SymbolMatch> = bake
         .functions
         .iter()
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
+                // Filter calls to project-defined callees only.
+                let calls: Vec<_> = f.calls.iter()
+                    .filter(|c| project_fns.contains(&c.callee.to_lowercase()))
+                    .cloned()
+                    .collect();
                 Some(SymbolMatch {
                     name: f.name.clone(),
                     file: f.file.clone(),
                     start_line: f.start_line,
                     end_line: f.end_line,
                     complexity: f.complexity,
+                    primary: false, // set below after sorting
                     kind: None,
                     source: None,
                     visibility: Some(f.visibility.clone()),
                     module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
                     qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
-                    calls: f.calls.clone(),
+                    calls,
                 })
             } else {
                 None
@@ -56,6 +77,7 @@ pub fn symbol(
                     start_line: t.start_line,
                     end_line: t.end_line,
                     complexity: 0,
+                    primary: false,
                     kind: Some(t.kind.clone()),
                     source: None,
                     visibility: Some(t.visibility.clone()),
@@ -75,14 +97,22 @@ pub fn symbol(
     }
 
     matches.sort_by(|a, b| {
-        // Prefer exact matches, then higher complexity.
+        // Prefer exact name match, then most-called (incoming), then complexity.
         let a_exact = (a.name.to_lowercase() == needle) as i32;
         let b_exact = (b.name.to_lowercase() == needle) as i32;
+        let a_in = incoming.get(&a.name.to_lowercase()).copied().unwrap_or(0);
+        let b_in = incoming.get(&b.name.to_lowercase()).copied().unwrap_or(0);
         b_exact
             .cmp(&a_exact)
+            .then(b_in.cmp(&a_in))
             .then(b.complexity.cmp(&a.complexity))
             .then(a.file.cmp(&b.file))
     });
+
+    // Mark the first exact-name match as primary.
+    if let Some(m) = matches.iter_mut().find(|m| m.name.to_lowercase() == needle) {
+        m.primary = true;
+    }
 
     matches.truncate(limit.unwrap_or(20));
 

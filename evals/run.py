@@ -46,12 +46,15 @@ def run(cmd: list[str]) -> str:
 
 def cc_tool_output(task: dict, codebase_path: str) -> str:
     """Simulate what Claude Code native tools return for a given task type."""
-    ttype = task["type"]
-    name  = _symbol_name(task)
-    path  = codebase_path
+    ttype     = task["type"]
+    name      = _symbol_name(task)
+    file_hint = task.get("file_hint")
+    path      = codebase_path
 
     if ttype in ("definition_location", "visibility", "module_path", "fan_out"):
-        grep = run(["grep", "-rn", f"fn {name}", path, "--include=*.rs"])
+        # If file_hint given, grep only that file (CC can do this with Read after Grep)
+        target = f"{path}/{file_hint}" if file_hint else path
+        grep = run(["grep", "-rn", f"fn {name}", target, "--include=*.rs"])
         return f"Grep output for 'fn {name}':\n{grep or '(no results)'}"
 
     if ttype == "caller_count":
@@ -67,11 +70,15 @@ def cc_tool_output(task: dict, codebase_path: str) -> str:
 
 def yoyo_tool_output(task: dict, codebase_path: str) -> str:
     """Run the appropriate yoyo tool and return its JSON output."""
-    ttype = task["type"]
-    name  = _symbol_name(task)
+    ttype     = task["type"]
+    name      = _symbol_name(task)
+    file_hint = task.get("file_hint")
 
     if ttype in ("definition_location", "visibility", "module_path", "fan_out"):
-        return run([str(YOYO), "symbol", "--path", codebase_path, "--name", name])
+        cmd = [str(YOYO), "symbol", "--path", codebase_path, "--name", name]
+        if file_hint:
+            cmd += ["--file", file_hint]
+        return run(cmd)
 
     if ttype == "caller_count":
         return run([str(YOYO), "blast-radius", "--path", codebase_path,

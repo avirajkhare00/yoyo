@@ -6,7 +6,8 @@
     {
       "id": "rg-001",
       "type": "definition_location",
-      "question": "Where is `search_path` defined in the ripgrep codebase? Give the file path and line number.",
+      "question": "Where is the primary definition of `search_path` in `crates/core/search.rs`? Give the line number.",
+      "file_hint": "crates/core/search.rs",
       "ground_truth": {
         "file": "crates/core/search.rs",
         "line": 380
@@ -15,7 +16,8 @@
     {
       "id": "rg-002",
       "type": "visibility",
-      "question": "Is the function `search_path` in ripgrep public, module-level, or private?",
+      "question": "Is the `search_path` function in `crates/core/search.rs` public, module-level, or private?",
+      "file_hint": "crates/core/search.rs",
       "ground_truth": {
         "visibility": "private"
       }
@@ -23,7 +25,8 @@
     {
       "id": "rg-003",
       "type": "module_path",
-      "question": "What module does `search_path` belong to in ripgrep? Give the full module path.",
+      "question": "What module does `search_path` in `crates/core/search.rs` belong to? Give the full module path.",
+      "file_hint": "crates/core/search.rs",
       "ground_truth": {
         "module_path": "crates::core",
         "qualified_name": "crates::core::search_path"
@@ -32,9 +35,10 @@
     {
       "id": "rg-004",
       "type": "fan_out",
-      "question": "How many functions does `search_path` call in ripgrep? Give the exact count.",
+      "question": "How many project-defined functions does the primary `search_path` in `crates/core/search.rs` call?",
+      "file_hint": "crates/core/search.rs",
       "ground_truth": {
-        "calls_count": 9
+        "calls_count": 7
       }
     },
     {
@@ -76,9 +80,10 @@
     {
       "id": "rg-009",
       "type": "fan_out",
-      "question": "How many functions does `from_low_args` call in ripgrep?",
+      "question": "How many project-defined functions does the primary `from_low_args` in `crates/core/flags/hiargs.rs` call?",
+      "file_hint": "crates/core/flags/hiargs.rs",
       "ground_truth": {
-        "calls_count": 33
+        "calls_count": 21
       }
     },
     {
@@ -101,9 +106,10 @@
     {
       "id": "rg-012",
       "type": "fan_out",
-      "question": "How many functions does `generate_work` call in ripgrep?",
+      "question": "How many project-defined functions does `generate_work` in `crates/ignore/src/walk.rs` call?",
+      "file_hint": "crates/ignore/src/walk.rs",
       "ground_truth": {
-        "calls_count": 25
+        "calls_count": 18
       }
     },
     {
@@ -126,15 +132,17 @@
     {
       "id": "rg-015",
       "type": "fan_out",
-      "question": "How many functions does the `build` function in `crates/ignore/src/walk.rs` call?",
+      "question": "How many project-defined functions does the public `build` function in `crates/ignore/src/walk.rs` call?",
+      "file_hint": "crates/ignore/src/walk.rs",
       "ground_truth": {
-        "calls_count": 30
+        "calls_count": 22
       }
     },
     {
       "id": "rg-016",
       "type": "definition_location",
-      "question": "Where is `is_match` defined in ripgrep (the one in the globset crate)? Give file and line.",
+      "question": "Where is `is_match` defined in `crates/globset/src/lib.rs`? Give the line number.",
+      "file_hint": "crates/globset/src/lib.rs",
       "ground_truth": {
         "file": "crates/globset/src/lib.rs",
         "line": 860
@@ -171,7 +179,8 @@
     {
       "id": "rg-020",
       "type": "definition_location",
-      "question": "In which file and at which line is the function `search` defined in ripgrep's core crate (not examples)?",
+      "question": "Where is `search` defined in `crates/core/search.rs`? Give the line number.",
+      "file_hint": "crates/core/search.rs",
       "ground_truth": {
         "file": "crates/core/search.rs",
         "line": 245

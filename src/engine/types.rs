@@ -126,6 +126,9 @@ pub(crate) struct SymbolMatch {
     pub(crate) start_line: u32,
     pub(crate) end_line: u32,
     pub(crate) complexity: u32,
+    /// True on the single most-likely definition when the name is ambiguous
+    /// (multiple files define it). Ranked by incoming call count, then complexity.
+    pub(crate) primary: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kind: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -136,6 +139,7 @@ pub(crate) struct SymbolMatch {
     pub(crate) module_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) qualified_name: Option<String>,
+    /// Calls to other project-defined functions only (stdlib/built-ins excluded).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) calls: Vec<crate::lang::CallSite>,
 }
