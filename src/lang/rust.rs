@@ -6,8 +6,9 @@ use tree_sitter::{Node, Parser};
 use tree_sitter_rust::LANGUAGE;
 
 use super::{
-    byte_range, line_range, relative, walk_supersearch, AstMatch, IndexedEndpoint, IndexedFunction,
-    IndexedType, LanguageAnalyzer, NodeKinds,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
+    AstMatch, IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
+    Visibility,
 };
 
 pub struct RustAnalyzer;
@@ -61,13 +62,15 @@ impl LanguageAnalyzer for RustAnalyzer {
         let mut endpoints = Vec::new();
         let mut types = Vec::new();
         let root_node = tree.root_node();
+        let rel_file = relative(root, file);
+        let mod_path = module_path_from_file(&rel_file, "rust");
 
-        scan_children(&source, root, file, root_node, &mut functions, &mut endpoints, &mut types);
+        scan_children(&source, root, file, root_node, &mod_path, &mut functions, &mut endpoints, &mut types);
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "impl_item" {
                 if let Some(body) = child.child_by_field_name("body") {
-                    scan_children(&source, root, file, body, &mut functions, &mut endpoints, &mut types);
+                    scan_children(&source, root, file, body, &mod_path, &mut functions, &mut endpoints, &mut types);
                 }
             }
         }
@@ -98,11 +101,23 @@ impl LanguageAnalyzer for RustAnalyzer {
     }
 }
 
+fn rust_visibility(node: Node, source: &str) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "visibility_modifier" {
+            let text = child.utf8_text(source.as_bytes()).unwrap_or("");
+            return if text == "pub" { Visibility::Public } else { Visibility::Module };
+        }
+    }
+    Visibility::Private
+}
+
 fn scan_children(
     source: &str,
     root_path: &Path,
     file: &Path,
     parent: Node,
+    mod_path: &str,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -123,6 +138,8 @@ fn scan_children(
                     if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
                         let (start_line, end_line) = line_range(&child);
                         let (byte_start, byte_end) = byte_range(&child);
+                        let vis = rust_visibility(child, source);
+                        let qname = qualified_name(mod_path, name, "rust");
                         functions.push(IndexedFunction {
                             name: name.to_string(),
                             file: relative(root_path, file),
@@ -133,6 +150,9 @@ fn scan_children(
                             calls: collect_calls(child, source),
                             byte_start,
                             byte_end,
+                            module_path: mod_path.to_string(),
+                            qualified_name: qname,
+                            visibility: vis,
                         });
                         if let Some((method, path)) = pending_http.take() {
                             endpoints.push(IndexedEndpoint {
@@ -158,6 +178,7 @@ fn scan_children(
                             "trait_item"  => "trait",
                             _             => "type",
                         };
+                        let vis = rust_visibility(child, source);
                         types.push(IndexedType {
                             name: name.to_string(),
                             file: relative(root_path, file),
@@ -165,6 +186,8 @@ fn scan_children(
                             start_line,
                             end_line,
                             kind: kind.to_string(),
+                            module_path: mod_path.to_string(),
+                            visibility: vis,
                         });
                     }
                 }

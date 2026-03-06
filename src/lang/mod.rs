@@ -17,6 +17,20 @@ pub struct CallSite {
     pub line: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Visibility {
+    #[serde(rename = "public")]
+    Public,
+    #[serde(rename = "module")]
+    Module, // pub(crate), pub(super), Go package-level
+    #[serde(rename = "private")]
+    Private,
+}
+
+impl Default for Visibility {
+    fn default() -> Self { Visibility::Private }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedFunction {
     pub name: String,
@@ -31,6 +45,15 @@ pub struct IndexedFunction {
     pub byte_start: usize,
     #[serde(default)]
     pub byte_end: usize,
+    /// Dot/colon-separated module path derived from file path or package declaration.
+    /// e.g. "crates::core::flags", "flask.sansio", "src/router"
+    #[serde(default)]
+    pub module_path: String,
+    /// Fully qualified name: module_path + separator + name.
+    #[serde(default)]
+    pub qualified_name: String,
+    #[serde(default)]
+    pub visibility: Visibility,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +74,10 @@ pub struct IndexedType {
     pub start_line: u32,
     pub end_line: u32,
     pub kind: String, // "struct" | "enum" | "trait" | "type" | "class" | "interface"
+    #[serde(default)]
+    pub module_path: String,
+    #[serde(default)]
+    pub visibility: Visibility,
 }
 
 #[derive(Debug)]
@@ -84,6 +111,59 @@ pub trait LanguageAnalyzer: Send + Sync {
     ) -> Vec<AstMatch> {
         vec![]
     }
+}
+
+/// Derive a module path from a relative file path and language.
+///
+/// Rust:  `crates/core/flags/parse.rs`  → `crates::core::flags`
+/// Python: `src/flask/sansio/app.py`    → `flask.sansio`  (strips leading `src/`)
+/// Go:    `cmd/server/main.go`          → `cmd/server`
+/// TS/JS: `src/router/index.ts`         → `src/router`
+pub fn module_path_from_file(file: &str, lang: &str) -> String {
+    let path = std::path::Path::new(file);
+    let dir = path.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+
+    // Strip common source roots for Python
+    let dir = if lang == "python" {
+        let stripped = dir
+            .strip_prefix("src/").unwrap_or(&dir)
+            .strip_prefix("lib/").unwrap_or(&dir);
+        stripped.to_string()
+    } else {
+        dir
+    };
+
+    if dir.is_empty() {
+        return String::new();
+    }
+
+    let sep = match lang {
+        "rust" => "::",
+        "python" => ".",
+        _ => "/",
+    };
+
+    // Strip `src/` prefix for Rust
+    let dir = if lang == "rust" {
+        dir.strip_prefix("src/").unwrap_or(&dir).to_string()
+    } else {
+        dir
+    };
+
+    dir.replace('/', sep)
+}
+
+/// Build a qualified name from module path, name, and language.
+pub fn qualified_name(module_path: &str, name: &str, lang: &str) -> String {
+    if module_path.is_empty() {
+        return name.to_string();
+    }
+    let sep = match lang {
+        "rust" => "::",
+        "python" => ".",
+        _ => "/",
+    };
+    format!("{}{}{}", module_path, sep, name)
 }
 
 /// Registry — one place to add new languages.
