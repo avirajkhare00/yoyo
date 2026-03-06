@@ -1,0 +1,71 @@
+{
+  "codebase": "ripgrep",
+  "codebase_path": "/tmp/ripgrep",
+  "pinned_commit": "master",
+  "tasks": [
+    {
+      "id": "rw-001",
+      "type": "rename_scope",
+      "description": "Rename private function — should only touch defining file",
+      "operation": { "old_name": "generate_work", "new_name": "produce_work" },
+      "ground_truth": {
+        "files_changed": 1,
+        "defining_file": "crates/ignore/src/walk.rs",
+        "scope": "file",
+        "compiles": true
+      }
+    },
+    {
+      "id": "rw-002",
+      "type": "rename_word_boundary",
+      "description": "Rename is_match → is_hit — naive replace corrupts is_match_candidate, is_match_at",
+      "operation": { "old_name": "is_match", "new_name": "is_hit" },
+      "ground_truth": {
+        "false_positives": ["is_match_candidate", "is_match_at"],
+        "cc_corrupts_partials": true,
+        "yoyo_corrupts_partials": false
+      }
+    },
+    {
+      "id": "rw-003",
+      "type": "delete_blocked",
+      "description": "Delete search_path — has active callers, should be blocked pre-flight",
+      "operation": { "name": "search_path" },
+      "ground_truth": {
+        "should_block": true,
+        "caller_count": 4,
+        "cc_blocks": false,
+        "yoyo_blocks": true
+      }
+    },
+    {
+      "id": "rw-004",
+      "type": "delete_clean",
+      "description": "Delete a dead function — should succeed with no blank line debris",
+      "operation": {
+        "name": "fill_multi_line_buffer_from_reader",
+        "file": "crates/searcher/src/searcher/mod.rs"
+      },
+      "ground_truth": {
+        "should_block": false,
+        "blank_lines_after": 1,
+        "compiles": true
+      }
+    },
+    {
+      "id": "rw-005",
+      "type": "patch_by_symbol",
+      "description": "Patch search_path body — CC needs line number, yoyo uses symbol name",
+      "operation": {
+        "name": "search_path",
+        "file": "crates/core/search.rs",
+        "insert_comment": "// patched by eval"
+      },
+      "ground_truth": {
+        "cc_needs_line_lookup": true,
+        "yoyo_needs_line_lookup": false,
+        "patch_applied": true
+      }
+    }
+  ]
+}
