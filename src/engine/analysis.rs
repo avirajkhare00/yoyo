@@ -324,6 +324,29 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
 
 // ── graph_delete ──────────────────────────────────────────────────────────────
 
+/// Collapse runs of 3+ consecutive newlines to 2, and trim trailing blank lines.
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut blank_run = 0u32;
+    for line in s.split('\n') {
+        if line.trim().is_empty() {
+            blank_run += 1;
+            if blank_run <= 1 {
+                out.push('\n');
+            }
+        } else {
+            blank_run = 0;
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    // Ensure exactly one trailing newline.
+    let trimmed = out.trim_end_matches('\n');
+    let mut result = trimmed.to_string();
+    result.push('\n');
+    result
+}
+
 /// Remove a function from a file by name. Requires a prior bake.
 pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
@@ -362,6 +385,13 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>) ->
 
     let bytes_removed = byte_end - byte_start;
     bytes.drain(byte_start..byte_end);
+
+    // Collapse orphan blank lines left at the deletion site: any run of 3+
+    // consecutive newlines → 2 (one blank line between neighbours).
+    // Also trim trailing whitespace-only lines at EOF down to a single newline.
+    let content = String::from_utf8_lossy(&bytes).into_owned();
+    let cleaned = collapse_blank_lines(&content);
+    let bytes = cleaned.into_bytes();
 
     std::fs::write(&full_path, &bytes)
         .map_err(|e| anyhow::anyhow!("Failed to write {}: {}", rel_file, e))?;
