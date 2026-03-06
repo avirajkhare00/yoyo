@@ -57,6 +57,7 @@ pub(crate) struct LlmInstructionsPayload {
     pub(crate) languages: Vec<String>,
     pub(crate) files_indexed: usize,
     pub(crate) tools: Vec<ToolDescription>,
+    pub(crate) prime_directives: Vec<&'static str>,
     pub(crate) concurrency_rules: Vec<&'static str>,
     pub(crate) workflows: Vec<Workflow>,
 }

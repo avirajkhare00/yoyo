@@ -20,6 +20,13 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         languages: snapshot.languages.into_iter().collect(),
         files_indexed: snapshot.files_indexed,
         tools: tool_catalog(),
+        prime_directives: vec![
+            "Before adding any new function or tool, search the codebase first — it may already exist. Duplication is the first form of rot.",
+            "Before writing, read. Use symbol or supersearch to understand existing code before proposing changes.",
+            "Prefer extending or refactoring an existing function over creating a new one.",
+            "Dead code is waste. Use health to identify unused functions and graph_delete to remove them.",
+            "Write tools are destructive and irreversible. Always confirm safety with blast_radius or health before deleting.",
+        ],
         concurrency_rules: vec![
             "Always call bake first and wait for completion before any read-indexed tool.",
             "llm_instructions can be called in parallel with bake on first contact.",
@@ -54,13 +61,14 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "package_summary",  description: "Deep-dive into a package/module: files, functions, and endpoints matching a path substring.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "blast_radius",     description: "Find all functions that transitively call a given symbol. Returns callers and affected files.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "trace_down",       description: "Trace a function's call chain downward to external boundaries (db, http, queue). BFS up to max depth. Go + Rust only.", requires_bake: true, category: "read-indexed", parallelisable: true },
-        ToolDescription { name: "patch",            description: "Replace a line range in a file with new content.", requires_bake: false, category: "write",        parallelisable: false },
-        ToolDescription { name: "patch_by_symbol",  description: "Replace a function body by symbol name. Resolves location from the bake index.", requires_bake: true, category: "write",        parallelisable: false },
+        ToolDescription { name: "patch",            description: "Apply a patch to a file. Three modes: (1) by symbol name — pass 'name'; (2) by line range — pass 'file'+'start'+'end'; (3) content-match — pass 'file'+'old_string'+'new_string'. Mode 3 is immune to line drift and preferred for large edits.", requires_bake: false, category: "write", parallelisable: false },
         ToolDescription { name: "patch_bytes",      description: "Splice at exact byte offsets.", requires_bake: true, category: "write",        parallelisable: false },
         ToolDescription { name: "multi_patch",      description: "Apply N byte-level edits across M files in one call.", requires_bake: true, category: "write",        parallelisable: false },
         ToolDescription { name: "graph_rename",     description: "Rename a symbol everywhere (definition + all call sites) atomically.", requires_bake: false, category: "write",        parallelisable: false },
         ToolDescription { name: "graph_add",        description: "Insert a new function scaffold into a file, optionally after an existing symbol.", requires_bake: false, category: "write",        parallelisable: false },
         ToolDescription { name: "graph_move",       description: "Move a function from one file to another.", requires_bake: true, category: "write",        parallelisable: false },
+        ToolDescription { name: "graph_delete",     description: "Remove a function from a file by name. Erases its byte range and reindexes. Confirm safety with health or blast_radius first.", requires_bake: true, category: "write", parallelisable: false },
+        ToolDescription { name: "health",           description: "Audit the codebase for dead code, god functions, and duplicate hints. Use before graph_delete to confirm a function is safe to remove.", requires_bake: true, category: "read-indexed", parallelisable: true },
     ]
 }
 
@@ -90,7 +98,7 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "architecture_map",  hint: "Understand directory roles; pass your intent (e.g. 'user handler')" },
                 WorkflowStep { tool: "suggest_placement", hint: "Get ranked file suggestions for the new function" },
                 WorkflowStep { tool: "graph_add",         hint: "Insert a scaffold at the right location (optionally after_symbol); index auto-updates" },
-                WorkflowStep { tool: "patch_by_symbol",   hint: "Fill in the scaffold body with real implementation" },
+                WorkflowStep { tool: "patch",   hint: "Fill in the scaffold body — use name mode (pass symbol name) or old_string/new_string mode" },
             ],
         },
         Workflow {
@@ -134,7 +142,7 @@ fn workflow_catalog() -> Vec<Workflow> {
             description: "Read a function and replace its body.",
             steps: vec![
                 WorkflowStep { tool: "symbol",           hint: "Fetch the current body with include_source=true" },
-                WorkflowStep { tool: "patch_by_symbol",  hint: "Write the new body; use match_index if multiple symbols match" },
+                WorkflowStep { tool: "patch",  hint: "Write the new body — pass name + new_content, or use old_string/new_string for content-match mode" },
             ],
         },
         Workflow {
@@ -167,7 +175,7 @@ fn workflow_catalog() -> Vec<Workflow> {
             description: "Insert a new empty function body at the right location, then fill it in.",
             steps: vec![
                 WorkflowStep { tool: "graph_add",        hint: "Specify entity_type (fn/function/def/func), name, file, and optionally after_symbol" },
-                WorkflowStep { tool: "patch_by_symbol",  hint: "Fill in the generated scaffold with real implementation" },
+                WorkflowStep { tool: "patch",  hint: "Fill in the generated scaffold — use name mode or old_string/new_string" },
             ],
         },
         Workflow {
