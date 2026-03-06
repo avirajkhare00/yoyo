@@ -1,0 +1,78 @@
+{
+  "run_id": "2026-03-07-040530",
+  "codebase": "ripgrep",
+  "yoyo_version": "0.16.3",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 1,
+  "totals": {
+    "cc": {
+      "correct": 0,
+      "total": 2
+    },
+    "yoyo": {
+      "correct": 3,
+      "total": 3
+    }
+  },
+  "tasks": [
+    {
+      "id": "rg-005",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the tool output, here are the distinct function names that directly call `search_path` (excluding self-recursion):\n\n1. **SearchWorker::search_path** (calls `search_path` function at lines 347, 349)\n2. **search_path** (calls `searcher.search_path` at lines 389, 397, 405)\n3. **main** (or example code in simplegrep.rs, calls `searcher.search_path` at line 58)\n\n**Count: 3 distinct function names** call `search_path` (not counting the `search_path` functions themselves to avoid self-recursion).\n\nNote: The `SearchWorker::search_path` method and the module-level `search_path` function are separate entities. The `SearchWorker::search_path` method calls the standalone `search_path` function, and the standalone `search_path` function calls `searcher.search_path` method.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent claims 3 callers, ground truth is 2"
+            },
+            "caller_names": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent lists main, search_path, SearchWorker::search_path; should be search, search_decompress"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent incorrectly identified 3 function callers with wrong names; correct answer is 2 (search, search_decompress)."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output for `search_path`, the distinct function names that directly call `search_path` (excluding self-recursion) are:\n\n1. **search**\n2. **search_decompress**\n\n**Count: 2**",
+        "score": {
+          "scores": {
+            "caller_identification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Both callers identified: search and search_decompress"
+            },
+            "count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Count of 2 is accurate"
+            },
+            "self_recursion_exclusion": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly excludes self-recursion as instructed"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Answer correctly identifies both callers and provides accurate count of 2, matching ground truth exactly."
+          }
+        }
+      }
+    }
+  ]
+}

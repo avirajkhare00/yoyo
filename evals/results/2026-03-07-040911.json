@@ -1,0 +1,224 @@
+{
+  "run_id": "2026-03-07-040911",
+  "codebase": "ripgrep",
+  "yoyo_version": "0.16.3",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 3,
+  "totals": {
+    "cc": {
+      "correct": 0,
+      "total": 9
+    },
+    "yoyo": {
+      "correct": 10,
+      "total": 11
+    }
+  },
+  "tasks": [
+    {
+      "id": "rg-005",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the tool output, here are the distinct function names that directly call `search_path` (excluding self-recursion):\n\n1. `search_path` (in `/tmp/ripgrep/crates/core/search.rs:342`) - calls `search_path` function at lines 347 and 349\n2. `search_path` (module-level function in `/tmp/ripgrep/crates/core/search.rs:380`) - calls `searcher.search_path` at lines 389, 397, and 405\n\nHowever, if we're looking for distinct **callers** of `search_path` (excluding the `search_path` functions calling themselves or other variants):\n\n1. The `search` method/function in `/tmp/ripgrep/crates/core/search.rs` (lines 265 and 331 call `self.search_path`)\n2. The `search_path` function in `/tmp/ripgrep/crates/core/search.rs:380` (calls `searcher.search_path`)\n3. The example in `/tmp/ripgrep/crates/grep/examples/simplegrep.rs:58` (calls `searcher.search_path`)\n\n**Count: 3 distinct function names** that directly call `search_path` (the `search` method, the module-level `search_path` function, and the simplegrep example code).",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent claims 3 callers; ground truth is 2"
+            },
+            "caller_names": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent lists 'search_path' and 'simplegrep' example; should be 'search' and 'search_decompress'"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent provided incorrect caller count (3 vs 2) and missed 'search_decompress' while incorrectly including self-recursion and example code."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output for `search_path`:\n\n**Distinct function names that directly call `search_path` (excluding self-recursion):**\n1. `search`\n2. `search_decompress`\n\n**Count:** 2",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified count of 2 callers"
+            },
+            "caller_list": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Both 'search' and 'search_decompress' correctly identified and match ground truth"
+            },
+            "exclusion_of_self_recursion": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent properly excluded self-recursive calls as instructed"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified both distinct callers of search_path and provided accurate count of 2."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-006",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native code analysis tool is available, and manual analysis of all files in the ripgrep codebase would be required to calculate and compare complexity scores across all functions.\n\nTo answer this question accurately, you would need to:\n1. Use a code complexity analysis tool (like `cargo clippy`, `rust-code-analysis`, or similar)\n2. Run it against the ripgrep repository\n3. Compare the complexity metrics across all functions\n\nAlternatively, you could manually inspect the ripgrep source code on GitHub to identify functions with high cyclomatic complexity.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, stated tools unavailable"
+            },
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, stated tools unavailable"
+            },
+            "complexity_score": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, stated tools unavailable"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 3,
+            "summary": "Agent refused to answer all dimensions, citing lack of available tools rather than attempting analysis."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "I cannot determine this from the available output. The tool output only shows one function (`from_low_args` in `crates/core/flags/hiargs.rs` with a complexity score of 493) and labels it as the \"top god function\" with a \"Health tool\" prefix. However, this doesn't necessarily mean it has the highest complexity score in the entire ripgrep codebase \u2014 it may just be the top result from a specific analysis or search. To definitively answer which function has the highest complexity score in ripgrep, I would need a complete ranking or analysis of all functions.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'from_low_args' as the function"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'crates/core/flags/hiargs.rs' as the file"
+            },
+            "complexity_score": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly stated the score is 493"
+            },
+            "confidence_in_answer": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "hallucinated",
+              "note": "Agent expressed doubt despite having correct information; over-hedged valid answer"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 4,
+            "summary": "Agent provided all correct facts but undermined answer with excessive uncertainty about conclusions already supported by the evidence presented."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-019",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. \n\nThe tool output indicates that no native code analysis tool is available, and would require manual analysis of all files in the ripgrep codebase. To answer your question about the top 2 most complex \"god functions\" in ripgrep, I would need:\n\n1. Access to actual code files from the ripgrep repository\n2. Complexity metrics (cyclomatic complexity, lines of code, number of parameters, etc.)\n3. A way to analyze and compare functions across the codebase\n\nWithout this information, I cannot provide an accurate answer about which functions are the most complex or their locations.",
+        "score": {
+          "scores": {
+            "top_2_god_functions_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming insufficient tools/access, but ground truth exists."
+            },
+            "from_low_args_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not identify this function as one of the top 2."
+            },
+            "generate_work_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not identify this function as one of the top 2."
+            },
+            "correct_files_provided": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not provide file locations for either function."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 4,
+            "summary": "Agent refused to answer, failing to identify either of the two most complex functions in ripgrep despite verifiable ground truth."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top 2 god functions (most complex) in ripgrep are:\n\n1. **from_low_args** - located in `crates/core/flags/hiargs.rs` (score: 493)\n2. **generate_work** - located in `crates/ignore/src/walk.rs` (score: 336)",
+        "score": {
+          "scores": {
+            "top_1_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "from_low_args correctly identified"
+            },
+            "top_1_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "crates/core/flags/hiargs.rs correctly identified"
+            },
+            "top_2_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "generate_work correctly identified"
+            },
+            "top_2_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "crates/ignore/src/walk.rs correctly identified"
+            }
+          },
+          "overall": {
+            "correct_count": 4,
+            "total": 4,
+            "summary": "Agent correctly identified both top 2 god functions and their file locations with exact matches."
+          }
+        }
+      }
+    }
+  ]
+}

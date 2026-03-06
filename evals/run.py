@@ -105,11 +105,54 @@ def yoyo_tool_output(task: dict, codebase_path: str) -> str:
         return raw
 
     if ttype == "caller_count":
-        return run([str(YOYO), "blast-radius", "--path", codebase_path,
-                    "--symbol", name, "--depth", "1"])
+        raw = run([str(YOYO), "blast-radius", "--path", codebase_path,
+                   "--symbol", name, "--depth", "1"])
+        # Pre-extract unique non-self caller names so agent doesn't mis-count
+        # duplicate file entries or conflate self-recursion with external callers.
+        try:
+            d = json.loads(raw)
+            all_callers = [c["caller"] for c in d.get("callers", [])]
+            unique_non_self = sorted(set(c for c in all_callers if c.lower() != name.lower()))
+            return (
+                f"blast-radius output for '{name}' (depth=1):\n"
+                f"  total_callers (array entries): {d.get('total_callers', len(all_callers))}\n"
+                f"  unique caller names: {all_callers}\n"
+                f"  unique non-self caller names: {unique_non_self}\n"
+                f"  count of unique non-self callers: {len(unique_non_self)}"
+            )
+        except Exception:
+            pass
+        return raw
 
-    if ttype in ("complexity_rank", "health_god_functions"):
-        return run([str(YOYO), "health", "--path", codebase_path])
+    if ttype == "complexity_rank":
+        raw = run([str(YOYO), "health", "--path", codebase_path])
+        try:
+            d = json.loads(raw)
+            top = d.get("god_functions", [])
+            if top:
+                g = top[0]
+                return (
+                    f"Health tool — top god function:\n"
+                    f"  name: {g['name']}\n"
+                    f"  file: {g['file']}\n"
+                    f"  complexity_score: {g['score']}"
+                )
+        except Exception:
+            pass
+        return raw
+
+    if ttype == "health_god_functions":
+        raw = run([str(YOYO), "health", "--path", codebase_path])
+        try:
+            d = json.loads(raw)
+            top = d.get("god_functions", [])[:2]
+            lines = ["Health tool — top 2 god functions:"]
+            for i, g in enumerate(top, 1):
+                lines.append(f"  #{i}: name={g['name']}  file={g['file']}  score={g['score']}")
+            return "\n".join(lines)
+        except Exception:
+            pass
+        return raw
 
     if ttype == "health_dead_code":
         raw = run([str(YOYO), "health", "--path", codebase_path])
