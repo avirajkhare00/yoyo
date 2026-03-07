@@ -1,6 +1,7 @@
 mod analysis;
 mod api;
 mod edit;
+pub(crate) mod embed;
 mod graph;
 mod index;
 mod nav;
