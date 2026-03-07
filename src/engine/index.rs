@@ -3,8 +3,8 @@ use std::fs;
 use anyhow::Result;
 
 use super::types::{
-    BakeSummary, EndpointSummary, FunctionSummary, LlmInstructionsPayload, ShakePayload,
-    ToolDescription, Workflow, WorkflowStep,
+    BakeSummary, DecisionEntry, EndpointSummary, FunctionSummary, LlmInstructionsPayload,
+    ShakePayload, ToolDescription, Workflow, WorkflowStep,
 };
 use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
 
@@ -21,9 +21,10 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         files_indexed: snapshot.files_indexed,
         tools: tool_catalog(),
         prime_directives: vec![
+            "grep, cat, and read-file are text tools. They find strings. They cannot answer structural questions about code.",
+            "For any question about visibility, module path, callers, callees, methods, fields, or trait implementations — use yoyo tools, not grep.",
             "Before adding any new function or tool, search the codebase first — it may already exist. Duplication is the first form of rot.",
             "Before writing, read. Use symbol or supersearch to understand existing code before proposing changes.",
-            "Prefer extending or refactoring an existing function over creating a new one.",
             "Dead code is waste. Use health to identify unused functions and graph_delete to remove them.",
             "Write tools are destructive and irreversible. Always confirm safety with blast_radius or health before deleting.",
         ],
@@ -36,10 +37,125 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
             "After any write, do not call read-indexed tools on the same file until the write response is received.",
         ],
         workflows: workflow_catalog(),
+        decision_map: decision_map(),
+        antipatterns: vec![
+            "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use blast_radius.",
+            "grep to find a definition: returns all files containing the string, not the canonical definition. Use symbol.",
+            "reading raw source to determine visibility: pub/pub(crate)/nothing requires inference and is error-prone. Use symbol — visibility field is an exact enum.",
+            "inferring module path from file path: conventions vary by language and project. Use symbol — module_path field is authoritative.",
+            "str.replace to rename: corrupts partial matches (e.g. renaming is_match also renames is_match_candidate). Use graph_rename.",
+            "deleting a function without checking callers: leaves the codebase broken. Use graph_delete — it blocks if callers exist.",
+            "grep to list methods of a struct: returns all fn definitions in the file, not grouped by type. Use file_functions filtered by parent_type.",
+            "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use symbol — implementors field on trait matches.",
+            "reading struct source to get field types: works but is unstructured. Use symbol with include_source=true — fields array is parsed and typed.",
+        ],
     };
 
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
+}
+
+fn decision_map() -> Vec<DecisionEntry> {
+    vec![
+        DecisionEntry {
+            question: "Where is function/struct/enum/trait X defined?",
+            wrong_tool: "grep 'fn X' or 'struct X'",
+            wrong_because: "Returns every file containing the string — comments, tests, re-exports, partials. 21 hits when answer is 1.",
+            right_tool: "symbol",
+            right_field: "file + start_line",
+        },
+        DecisionEntry {
+            question: "Is X public, private, or crate-visible?",
+            wrong_tool: "read raw source and infer from pub/pub(crate)/nothing",
+            wrong_because: "Inference is error-prone and inconsistent across languages.",
+            right_tool: "symbol",
+            right_field: "visibility (exact enum: public | module | private)",
+        },
+        DecisionEntry {
+            question: "What module or package does X belong to?",
+            wrong_tool: "infer from file path",
+            wrong_because: "Path conventions vary. mod re-exports and workspace layouts break naive inference.",
+            right_tool: "symbol",
+            right_field: "module_path",
+        },
+        DecisionEntry {
+            question: "What functions does X call?",
+            wrong_tool: "grep for names inside the function body",
+            wrong_because: "Cannot isolate calls *by* a specific function. Returns all occurrences in the file.",
+            right_tool: "symbol",
+            right_field: "calls[] (project-defined callees only, stdlib filtered)",
+        },
+        DecisionEntry {
+            question: "Who calls X? How many callers?",
+            wrong_tool: "grep for X and count lines",
+            wrong_because: "Overcounts — hits comments, docs, string literals, partial names. 244 grep hits vs 29 real callers in tokio.",
+            right_tool: "blast_radius",
+            right_field: "callers[] (deduplicated, non-self, no false positives)",
+        },
+        DecisionEntry {
+            question: "What methods does struct X have?",
+            wrong_tool: "grep 'fn' in the struct's file",
+            wrong_because: "Returns all functions in the file with no grouping by impl block.",
+            right_tool: "file_functions",
+            right_field: "functions[] filtered by parent_type == X",
+        },
+        DecisionEntry {
+            question: "What fields does struct X have?",
+            wrong_tool: "read struct source body",
+            wrong_because: "Works but returns unstructured text — field types not queryable.",
+            right_tool: "symbol with include_source=true",
+            right_field: "fields[{name, type_str, visibility}] (Rust only)",
+        },
+        DecisionEntry {
+            question: "What traits does struct X implement?",
+            wrong_tool: "grep 'impl.*X'",
+            wrong_because: "Matches loosely — hits impl blocks for other types, misses generic impls.",
+            right_tool: "symbol",
+            right_field: "implements[] on struct/enum matches",
+        },
+        DecisionEntry {
+            question: "Which types implement trait X?",
+            wrong_tool: "grep 'impl X for'",
+            wrong_because: "Misses blanket impls, generic impls, re-exports. Requires manual deduplication.",
+            right_tool: "symbol",
+            right_field: "implementors[] on trait matches (deduplicated)",
+        },
+        DecisionEntry {
+            question: "Which function is most complex / hardest to maintain?",
+            wrong_tool: "none — no text tool can answer this",
+            wrong_because: "Complexity requires parsing AST and counting branches across the whole codebase.",
+            right_tool: "health",
+            right_field: "god_functions[{name, file, score}]",
+        },
+        DecisionEntry {
+            question: "What code is unused / dead?",
+            wrong_tool: "none — no text tool can answer this",
+            wrong_because: "Dead code detection requires a full call graph, not string search.",
+            right_tool: "health",
+            right_field: "dead_code[]",
+        },
+        DecisionEntry {
+            question: "Rename X everywhere safely",
+            wrong_tool: "str.replace / sed",
+            wrong_because: "Corrupts partial matches — renaming is_match also renames is_match_candidate, is_match_at.",
+            right_tool: "graph_rename",
+            right_field: "word-boundary safe, scope-aware (file | package | project), atomic",
+        },
+        DecisionEntry {
+            question: "Is it safe to delete X?",
+            wrong_tool: "just delete it",
+            wrong_because: "Leaves callers broken with no warning. spawn_blocking has 31 callers in tokio.",
+            right_tool: "graph_delete",
+            right_field: "blocks with caller list if callers exist; proceeds only when dead",
+        },
+        DecisionEntry {
+            question: "Edit / patch function X by name",
+            wrong_tool: "grep for line number, then Edit at that line",
+            wrong_because: "Requires two tool calls. Line numbers drift after edits — stale lookups corrupt the wrong region.",
+            right_tool: "patch with name= parameter",
+            right_field: "resolves location from index — one call, immune to line drift",
+        },
+    ]
 }
 
 fn tool_catalog() -> Vec<ToolDescription> {
