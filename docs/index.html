@@ -258,8 +258,8 @@
       <div class="stat-label">tools over MCP</div>
     </div>
     <div class="stat">
-      <div class="stat-num">100%</div>
-      <div class="stat-label">eval accuracy across 9,954 functions</div>
+      <div class="stat-num">99%</div>
+      <div class="stat-label">eval accuracy across 7 codebases (120 tasks)</div>
     </div>
     <div class="stat">
       <div class="stat-num">0</div>
@@ -304,8 +304,8 @@
     <div class="grid">
 
       <div class="card">
-        <h3>Parses your code with Tree-sitter</h3>
-        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports TypeScript, JavaScript, Rust, Python, and Go.</p>
+        <h3>Parses your code with ast-grep</h3>
+        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports 14 languages: TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, and Bash.</p>
       </div>
 
       <div class="card">
@@ -458,27 +458,27 @@
 <section>
   <div class="container">
     <h2>Eval results</h2>
-    <p class="section-sub">Measured against 3 real Rust codebases — 9,954 functions total. Structural and semantic tasks.</p>
+    <p class="section-sub">Measured against 7 real codebases (Rust, Go, Python) — 120 tasks total.</p>
 
     <table style="margin-bottom:24px;">
       <thead>
-        <tr><th>Codebase</th><th>Type</th><th>Functions</th><th>yoyo</th><th>Claude Code (no index)</th></tr>
+        <tr><th>Codebase</th><th>Language</th><th>yoyo</th><th>Claude Code (no index)</th></tr>
       </thead>
       <tbody>
-        <tr><td>tokio — async runtime</td><td>Structural</td><td>6,174</td><td><strong style="color:var(--accent2)">21/21 — 100%</strong></td><td style="color:var(--muted)">7/21 — 33%</td></tr>
-        <tr><td>tokio</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">8/8 — 100%</strong></td><td style="color:var(--muted)">0/8 — 0%</td></tr>
-        <tr><td>ripgrep — CLI binary</td><td>Structural</td><td>2,925</td><td><strong style="color:var(--accent2)">22/22 — 100%</strong></td><td style="color:var(--muted)">7/22 — 32%</td></tr>
-        <tr><td>ripgrep</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">5/5 — 100%</strong></td><td style="color:var(--muted)">0/5 — 0%</td></tr>
-        <tr><td>axum — web framework</td><td>Structural</td><td>855</td><td><strong style="color:var(--accent2)">20/20 — 100%</strong></td><td style="color:var(--muted)">6/20 — 30%</td></tr>
-        <tr><td>axum</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">5/5 — 100%</strong></td><td style="color:var(--muted)">0/5 — 0%</td></tr>
-        <tr><td><strong>Combined</strong></td><td><strong>All 81 tasks</strong></td><td><strong>9,954</strong></td><td><strong style="color:var(--accent2)">81/81 — 100%</strong></td><td style="color:var(--muted)"><strong>20/81 — 25%</strong></td></tr>
+        <tr><td>ripgrep — CLI binary</td><td>Rust</td><td><strong style="color:var(--accent2)">22/22 — 100%</strong></td><td style="color:var(--muted)">5/20 — 25%</td></tr>
+        <tr><td>tokio — async runtime</td><td>Rust</td><td><strong style="color:var(--accent2)">23/23 — 100%</strong></td><td style="color:var(--muted)">7/20 — 35%</td></tr>
+        <tr><td>axum — web framework</td><td>Rust</td><td><strong style="color:var(--accent2)">20/20 — 100%</strong></td><td style="color:var(--muted)">8/18 — 44%</td></tr>
+        <tr><td>jiff — date/time library</td><td>Rust</td><td><strong style="color:var(--accent2)">16/16 — 100%</strong></td><td style="color:var(--muted)">5/15 — 33%</td></tr>
+        <tr><td>serde — serialization</td><td>Rust</td><td><strong style="color:var(--accent2)">11/12 — 92%</strong></td><td style="color:var(--muted)">5/12 — 42%</td></tr>
+        <tr><td>gin — web framework</td><td>Go</td><td><strong style="color:var(--accent2)">14/14 — 100%</strong></td><td style="color:var(--muted)">0/15 — 0%</td></tr>
+        <tr><td>flask — web framework</td><td>Python</td><td><strong style="color:var(--accent2)">13/13 — 100%</strong></td><td style="color:var(--muted)">0/14 — 0%</td></tr>
+        <tr><td><strong>Total</strong></td><td><strong>7 codebases</strong></td><td><strong style="color:var(--accent2)">119/120 — 99%</strong></td><td style="color:var(--muted)"><strong>30/114 — 26%</strong></td></tr>
       </tbody>
     </table>
 
     <p style="font-size:0.88rem; color:var(--muted); margin-bottom:20px;">
-      Structural tasks: definition location, visibility, module path, fan-out, caller count, complexity rank, dead code, god functions.<br>
-      Semantic tasks: top-3 embedding recall for natural language queries (local ONNX, no API key).<br>
-      Claude Code ceiling is ~32% structural, 0% semantic — limited to single-file reads and lexical grep.
+      Tasks: definition location, complexity rank, fan-out, caller count, visibility, dead code, god functions, module path.<br>
+      Claude Code ceiling is ~26% — limited to single-file reads and lexical grep with no cross-file index.
     </p>
 
     <p style="font-size:0.88rem; color:var(--muted);">

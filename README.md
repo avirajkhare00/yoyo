@@ -14,14 +14,14 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 - **Accuracy** — file paths, function names, line numbers, and byte offsets come directly from the parsed AST, not from model memory.
 - **Semantic search** — find functions by intent ("semaphore acquisition", "spawn blocking task") using local ONNX embeddings. No API key required.
 
-Evaluated on 7 real codebases (Rust, Go, Python): **120/124 tasks — 97%** vs Claude Code baseline at 25% (30/121). Full report: [`evals/REPORT.md`](./evals/REPORT.md)
+Evaluated on 7 real codebases (Rust, Go, Python): **119/120 tasks — 99%** vs Claude Code baseline at 26% (30/114). Full report: [`evals/REPORT.md`](./evals/REPORT.md)
 
 ---
 
 ## How it works
 
 ```
-bake  →  parse source files with Tree-sitter  →  write bake.json
+bake  →  parse source files with ast-grep  →  write bake.json
 read  →  symbol / supersearch / slice / ...   →  read from bake.json
 write →  patch / graph_rename / ...           →  write file + reindex
 ```
@@ -147,6 +147,7 @@ Claude calls the tools automatically. You don't manage it.
 - **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
 - **`graph_move` doesn't update imports** — it relocates the function body but doesn't add or remove `use`/`import` statements.
 - **Common search terms explode** — `symbol` and `supersearch` return many matches for generic names like `parse` or `connect`. Use `--file` to scope to a directory and `--limit` to cap results.
+- **C++ namespace false positives** — `namespace` blocks may appear as top-complexity entries. See [#66](https://github.com/avirajkhare00/yoyo/issues/66).
 
 Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkhare00/yoyo/issues)
 
@@ -175,6 +176,15 @@ src/
     rust.rs
     python.rs
     go.rs
+    c.rs
+    cpp.rs
+    csharp.rs
+    java.rs
+    kotlin.rs
+    php.rs
+    ruby.rs
+    swift.rs
+    bash.rs
 ```
 
 ---
