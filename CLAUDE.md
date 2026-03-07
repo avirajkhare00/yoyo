@@ -1,5 +1,16 @@
 # yoyo — Instructions for Claude
 
+## ⚠️ MANDATORY: Load yoyo tools before doing anything else
+yoyo MCP tools are deferred — they MUST be loaded before use. At the start of EVERY session, call `ToolSearch` with `"select:mcp__yoyo__llm_instructions"` immediately. Do not read files, grep, or search anything before doing this.
+
+**Replacement rules — no exceptions:**
+| Instead of... | Use... |
+|---|---|
+| `Grep` / `Bash grep` / `Bash rg` | `mcp__yoyo__supersearch` |
+| `Read` (to understand code) | `mcp__yoyo__symbol` with `include_source=true` |
+| `Read` (specific lines) | `mcp__yoyo__slice` |
+| `Edit` / `mcp__yoyo__patch` (function edits) | `mcp__yoyo__patch_by_symbol` |
+
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
 Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are last-resort fallbacks — only reach for them when yoyo tools are repeatedly erroring out and blocking progress. If a yoyo tool errors once, try a different yoyo tool or adjust parameters before falling back to Linux tools.
