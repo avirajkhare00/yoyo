@@ -170,9 +170,23 @@ pub fn module_path_from_file(file: &str, lang: &str) -> String {
         _ => "/",
     };
 
-    // Strip `src/` prefix for Rust
+    // Strip `src/` for Rust — it's a filesystem convention, not a module.
+    // `crate_name/src/foo/bar` → `crate_name/foo/bar` (keep crate name, drop `src`).
+    // `src/foo/bar` (no crate prefix) → `foo/bar`.
     let dir = if lang == "rust" {
-        dir.strip_prefix("src/").unwrap_or(&dir).to_string()
+        if let Some(idx) = dir.find("/src/") {
+            let before = &dir[..idx];
+            let after = &dir[idx + 5..];
+            // Take only the last segment of `before` as the crate name.
+            let crate_name = before.split('/').next_back().unwrap_or(before);
+            if after.is_empty() {
+                crate_name.to_string()
+            } else {
+                format!("{}/{}", crate_name, after)
+            }
+        } else {
+            dir.strip_prefix("src/").unwrap_or(&dir).to_string()
+        }
     } else {
         dir
     };

@@ -28,7 +28,7 @@
       "question": "What module does `poll_acquire` in `tokio/src/sync/batch_semaphore.rs` belong to? Give the full module path.",
       "file_hint": "tokio/src/sync/batch_semaphore.rs",
       "ground_truth": {
-        "module_path": "tokio-master::tokio::src::sync"
+        "module_path": "tokio::sync"
       }
     },
     {
@@ -128,7 +128,7 @@
       "question": "What module does `spawn_blocking` in `tokio/src/runtime/blocking/pool.rs` belong to?",
       "file_hint": "tokio/src/runtime/blocking/pool.rs",
       "ground_truth": {
-        "module_path": "tokio-master::tokio::src::runtime::blocking"
+        "module_path": "tokio::runtime::blocking"
       }
     }
   ]
