@@ -74,9 +74,9 @@ fn decision_map() -> Vec<DecisionEntry> {
         DecisionEntry {
             question: "What module or package does X belong to?",
             wrong_tool: "infer from file path",
-            wrong_because: "Path conventions vary. mod re-exports and workspace layouts break naive inference.",
+            wrong_because: "Path conventions vary. For Rust, `src/` is stripped and crate name is inferred from workspace layout. mod re-exports break naive path inference entirely.",
             right_tool: "symbol",
-            right_field: "module_path",
+            right_field: "module_path (e.g. tokio::sync, not tokio::src::sync)",
         },
         DecisionEntry {
             question: "What functions does X call?",
@@ -160,7 +160,7 @@ fn decision_map() -> Vec<DecisionEntry> {
             wrong_tool: "grep for keywords or read many files",
             wrong_because: "No structural awareness. Returns every file containing the string, including comments, docs, tests. Cannot rank by relevance.",
             right_tool: "semantic_search",
-            right_field: "results[{name, file, start_line, score}] — ranked by TF-IDF over name + callees + file path",
+            right_field: "results[{name, file, start_line, score}] — cosine similarity via local ONNX embeddings (score 0–1); TF-IDF fallback if DB absent",
         },
     ]
 }
@@ -176,14 +176,14 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "symbol",           description: "Exact/partial lookup of functions, structs, enums, traits, and type aliases. Set include_source=true to retrieve the body inline. Returns parent_type for methods.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "file_functions",   description: "List all functions in a file with line ranges and cyclomatic complexity.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "supersearch",      description: "AST-aware search over source files. Prefer over grep. Supports context and pattern filters.", requires_bake: true, category: "read-indexed", parallelisable: true },
-        ToolDescription { name: "semantic_search",  description: "Search by natural-language intent — ranks functions by TF-IDF similarity to query. Zero external deps. Use when you know what a function does but not its name.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "semantic_search",  description: "Search by natural-language intent. Uses local ONNX embeddings (fastembed AllMiniLML6V2) stored in SQLite; falls back to TF-IDF if embeddings DB is absent. Test functions excluded from index. Use when you know what a function does but not its name.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "all_endpoints",    description: "List all detected HTTP endpoints (Express / Actix / Gin / net/http).", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "api_surface",      description: "Exported API summary grouped by module. Optionally filter by package name.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "api_trace",        description: "Trace an endpoint path to its handler file and function.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "crud_operations",  description: "Infer CRUD matrix (create/read/update/delete) from detected endpoints.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "suggest_placement",description: "Suggest which existing file to add a new function to, based on type and related symbol.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "package_summary",  description: "Deep-dive into a package/module: files, functions, and endpoints matching a path substring.", requires_bake: true, category: "read-indexed", parallelisable: true },
-        ToolDescription { name: "blast_radius",     description: "Find all functions that transitively call a given symbol. Returns callers and affected files.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "blast_radius",     description: "Find all functions that transitively call a given symbol. `callers` array is depth-limited (default depth=2); `total_callers` is the full unlimited transitive count. Returns affected files too.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "trace_down",       description: "Trace a function's call chain downward to external boundaries (db, http, queue). BFS up to max depth. Go + Rust only.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "patch",            description: "Apply a patch to a file. Three modes: (1) by symbol name — pass 'name'; (2) by line range — pass 'file'+'start'+'end'; (3) content-match — pass 'file'+'old_string'+'new_string'. Mode 3 is immune to line drift and preferred for large edits.", requires_bake: false, category: "write", parallelisable: false },
         ToolDescription { name: "patch_bytes",      description: "Splice at exact byte offsets.", requires_bake: true, category: "write",        parallelisable: false },
@@ -192,7 +192,7 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "graph_add",        description: "Insert a new function scaffold into a file, optionally after an existing symbol.", requires_bake: false, category: "write",        parallelisable: false },
         ToolDescription { name: "graph_move",       description: "Move a function from one file to another.", requires_bake: true, category: "write",        parallelisable: false },
         ToolDescription { name: "graph_delete",     description: "Remove a function from a file by name. Erases its byte range and reindexes. Confirm safety with health or blast_radius first.", requires_bake: true, category: "write", parallelisable: false },
-        ToolDescription { name: "health",           description: "Audit the codebase for dead code, god functions, and duplicate hints. Use before graph_delete to confirm a function is safe to remove.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "health",           description: "Audit the codebase for dead code, god functions, and duplicate hints. Public functions are excluded from dead_code (externally reachable). Use before graph_delete to confirm a function is safe to remove.", requires_bake: true, category: "read-indexed", parallelisable: true },
     ]
 }
 
@@ -265,7 +265,7 @@ fn workflow_catalog() -> Vec<Workflow> {
             name: "Find a function by intent (semantic search)",
             description: "You know what a function does but not its name. Use semantic_search to find ranked candidates.",
             steps: vec![
-                WorkflowStep { tool: "semantic_search", hint: "Pass a natural-language query, e.g. 'validate user token' or 'write to database'. Returns ranked matches with relevance scores." },
+                WorkflowStep { tool: "semantic_search", hint: "Pass a natural-language query, e.g. 'validate user token' or 'spawn blocking task'. Returns cosine-similarity ranked matches (0–1 score). Requires bake to have run first to build the embeddings DB." },
                 WorkflowStep { tool: "symbol",          hint: "Confirm the top match with include_source=true to read the body" },
             ],
         },
