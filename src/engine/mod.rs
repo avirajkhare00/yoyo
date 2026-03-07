@@ -16,4 +16,4 @@ pub use edit::{multi_patch, patch, patch_bytes, patch_by_symbol, patch_string, s
 pub use graph::{graph_add, graph_move, graph_rename, trace_down};
 pub use index::{bake, llm_instructions, shake};
 pub use nav::{architecture_map, package_summary, suggest_placement};
-pub use search::{file_functions, supersearch, symbol};
+pub use search::{file_functions, semantic_search, supersearch, symbol};

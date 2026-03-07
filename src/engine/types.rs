@@ -510,6 +510,28 @@ pub(crate) struct DuplicateEntry {
     pub(crate) start_line: u32,
 }
 
+// ── semantic_search ───────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct SemanticSearchPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) query: String,
+    pub(crate) results: Vec<SemanticMatch>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct SemanticMatch {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_type: Option<String>,
+    pub(crate) kind: &'static str,
+}
+
 // ── graph_delete ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]

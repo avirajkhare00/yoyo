@@ -317,6 +317,12 @@ fn list_tools() -> Value {
             "depth": i("Maximum call depth to follow (default 5)"),
             "file": s("Optional file path substring to disambiguate when multiple functions share the same name")
         })),
+        tool("semantic_search", "Search for functions by natural-language intent — no exact name needed. Uses local TF-IDF over the bake index: zero external deps, instant, private. Returns ranked matches with relevance scores. Use when you know what a function *does* but not its name.", json!({
+            "path": p(),
+            "query": s("Natural-language description, e.g. 'validate user token' or 'send email notification'"),
+            "limit": i("Max results (default 10, max 50)"),
+            "file": s("Optional file path substring to restrict scope")
+        })),
         tool("health", "Diagnose codebase health: dead code (never-called functions), god functions (high complexity × fan-out), and duplicate hints (same-stem functions across different files). Run after bake.", json!({
             "path": p(),
             "top": i("Max results per category (default 10)")
@@ -480,6 +486,9 @@ async fn call_tool(params: Value) -> Result<Value> {
         )?),
         "trace_down" => ok_text(crate::engine::trace_down(
             path, a.str_req("name", "trace_down")?, a.uint_opt("depth"), a.str_opt("file"),
+        )?),
+        "semantic_search" => ok_text(crate::engine::semantic_search(
+            path, a.str_req("query", "semantic_search")?, a.uint_opt("limit"), a.str_opt("file"),
         )?),
         "health" => ok_text(crate::engine::health(path, a.uint_opt("top"))?),
         "graph_delete" => ok_text(crate::engine::graph_delete(

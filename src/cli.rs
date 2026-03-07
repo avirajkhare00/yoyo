@@ -50,6 +50,8 @@ pub enum Command {
     Health(HealthArgs),
     /// Remove a function from a file by name.
     GraphDelete(GraphDeleteArgs),
+    /// Search for functions by natural-language intent (local TF-IDF, no external deps).
+    SemanticSearch(SemanticSearchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -369,6 +371,25 @@ pub struct GraphMoveArgs {
     pub to_file: String,
 }
 
+#[derive(Args, Debug)]
+pub struct SemanticSearchArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Natural-language description of what you're looking for.
+    #[arg(long)]
+    pub query: String,
+
+    /// Max results to return (default 10, max 50).
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Optional file path substring to restrict scope.
+    #[arg(long)]
+    pub file: Option<String>,
+}
+
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
         Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
@@ -394,6 +415,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::TraceDown(args)) => run_trace_down(args).await?,
         Some(Command::Health(args)) => run_health(args).await?,
         Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
+        Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
         None => {
             eprintln!(
                 "No command provided. Run `yoyo --help` for available commands."
@@ -615,6 +637,12 @@ pub struct GraphDeleteArgs {
 
 async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_delete(args.path, args.name, args.file, args.force)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_semantic_search(args: SemanticSearchArgs) -> anyhow::Result<()> {
+    let json = crate::engine::semantic_search(args.path, args.query, args.limit, args.file)?;
     println!("{json}");
     Ok(())
 }
