@@ -455,6 +455,51 @@
 
 <hr class="section-divider">
 
+<section id="matrix">
+  <div class="container">
+    <h2>Language support matrix</h2>
+    <p class="section-sub">What works in each language. All 14 languages index functions and support AST-aware search.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Language</th>
+          <th>Functions</th>
+          <th>Types</th>
+          <th>Endpoints</th>
+          <th>Import graph</th>
+          <th>AST search</th>
+          <th>trace_down</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Rust</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td><strong>Go</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td><strong>Python</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>TypeScript</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>JavaScript</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>C</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>C++</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>C#</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Java</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Kotlin</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>PHP</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Ruby</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Swift</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Bash</strong></td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:0.85rem; color:var(--muted); margin-top:16px;">
+      <strong>Endpoints</strong> — HTTP route detection for <code>all_endpoints</code>, <code>api_trace</code>, <code>crud_operations</code>.<br>
+      <strong>Import graph</strong> — <code>blast_radius</code> uses imports to expand affected files.<br>
+      <strong>trace_down</strong> — BFS call chain to db/http/queue boundaries (Rust + Go only).
+    </p>
+  </div>
+</section>
+
+<hr class="section-divider">
+
 <section>
   <div class="container">
     <h2>Eval results</h2>

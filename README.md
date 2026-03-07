@@ -139,6 +139,32 @@ Claude calls the tools automatically. You don't manage it.
 
 ---
 
+## Language support matrix
+
+| Language | Functions | Types | Endpoints | Import graph | AST search | trace_down |
+|---|---|---|---|---|---|---|
+| Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Go | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Python | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| JavaScript | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| C | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| C++ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| C# | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Java | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Kotlin | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| PHP | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Ruby | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Swift | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+**Endpoints** — route detection via `all_endpoints`, `api_trace`, `crud_operations`.  
+**Import graph** — used by `blast_radius` to expand affected files.  
+**AST search** — `supersearch` uses the AST walker for this language.  
+**trace_down** — BFS call chain to db/http/queue boundaries.
+
+---
+
 ## Known limitations
 
 - **Route detection is partial** — `api_trace` and `crud_operations` work with the frameworks listed above. Axum, NestJS, Fastify, Django, and dynamic routers are not detected. See [#19](https://github.com/avirajkhare00/yoyo/issues/19).
