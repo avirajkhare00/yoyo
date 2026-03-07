@@ -1,0 +1,37 @@
+{
+  "codebase": "axum",
+  "codebase_path": "/Users/avirajkhare/ttt/axum",
+  "description": "Semantic search eval for axum",
+  "tasks": [
+    {
+      "id": "axs-001",
+      "type": "semantic_top3",
+      "query": "handle http request",
+      "ground_truth": { "expected_in_top3": ["handle_connection", "call"], "notes": "HTTP request handler entry points" }
+    },
+    {
+      "id": "axs-002",
+      "type": "semantic_top3",
+      "query": "extract request body",
+      "ground_truth": { "expected_in_top3": ["from_request"], "notes": "Body extraction via FromRequest trait" }
+    },
+    {
+      "id": "axs-003",
+      "type": "semantic_top3",
+      "query": "router path matching",
+      "ground_truth": { "expected_in_top3": ["route", "at", "path_for_nested_route"], "notes": "Route registration and matching" }
+    },
+    {
+      "id": "axs-004",
+      "type": "semantic_top3",
+      "query": "middleware layer",
+      "ground_truth": { "expected_in_top3": ["layer"], "notes": "Tower middleware layer functions" }
+    },
+    {
+      "id": "axs-005",
+      "type": "semantic_top3",
+      "query": "return json response",
+      "ground_truth": { "expected_in_top3": ["into_response", "json_data"], "notes": "JSON response construction" }
+    }
+  ]
+}

@@ -1,190 +1,104 @@
 {
   "codebase": "ripgrep",
-  "codebase_path": "/tmp/ripgrep",
-  "pinned_commit": "master",
+  "codebase_path": "/Users/avirajkhare/ttt/ripgrep",
+  "pinned_commit": "HEAD",
   "tasks": [
     {
       "id": "rg-001",
       "type": "definition_location",
-      "question": "Where is the primary definition of `search_path` in `crates/core/search.rs`? Give the line number.",
-      "file_hint": "crates/core/search.rs",
-      "ground_truth": {
-        "file": "crates/core/search.rs",
-        "line": 380
-      }
+      "question": "Where is `from_low_args` defined in ripgrep? Give the file and line number.",
+      "file_hint": "crates/core/flags/hiargs.rs",
+      "ground_truth": { "file": "crates/core/flags/hiargs.rs", "line": 113 }
     },
     {
       "id": "rg-002",
       "type": "visibility",
-      "question": "Is the `search_path` function in `crates/core/search.rs` public, module-level, or private?",
-      "file_hint": "crates/core/search.rs",
-      "ground_truth": {
-        "visibility": "private"
-      }
+      "question": "Is `from_low_args` in `crates/core/flags/hiargs.rs` public, module-level (pub(crate)), or private?",
+      "file_hint": "crates/core/flags/hiargs.rs",
+      "ground_truth": { "visibility": "module" }
     },
     {
       "id": "rg-003",
       "type": "module_path",
-      "question": "What module does `search_path` in `crates/core/search.rs` belong to? Give the full module path.",
-      "file_hint": "crates/core/search.rs",
-      "ground_truth": {
-        "module_path": "crates::core",
-        "qualified_name": "crates::core::search_path"
-      }
+      "question": "What module does `from_low_args` in `crates/core/flags/hiargs.rs` belong to?",
+      "file_hint": "crates/core/flags/hiargs.rs",
+      "ground_truth": { "module_path": "crates::core::flags" }
     },
     {
       "id": "rg-004",
       "type": "fan_out",
-      "question": "For the primary `search_path` match in `crates/core/search.rs`: how many entries are in its `calls` array? Give the exact count.",
-      "file_hint": "crates/core/search.rs",
-      "ground_truth": {
-        "calls_count": 4
-      }
+      "question": "For `search_parallel` in `crates/core/main.rs`: how many entries are in its `calls` array?",
+      "file_hint": "crates/core/main.rs",
+      "ground_truth": { "calls_count": 21 }
     },
     {
       "id": "rg-005",
       "type": "caller_count",
-      "question": "Which distinct function names (excluding self-recursion) directly call `search_path` in ripgrep? List them and give the count.",
-      "ground_truth": {
-        "caller_count": 2,
-        "callers": ["search", "search_decompress"]
-      }
+      "question": "How many distinct functions call `from_low_args` in ripgrep (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 11 }
     },
     {
       "id": "rg-006",
       "type": "complexity_rank",
-      "question": "Which function has the highest complexity score in ripgrep? Give function name and file.",
-      "ground_truth": {
-        "name": "from_low_args",
-        "file": "crates/core/flags/hiargs.rs",
-        "score": 493
-      }
+      "question": "Which function has the highest complexity score in ripgrep? Give the function name and file.",
+      "ground_truth": { "name": "from_low_args", "file": "crates/core/flags/hiargs.rs" }
     },
     {
       "id": "rg-007",
       "type": "definition_location",
-      "question": "Where is `from_low_args` defined in ripgrep? Give the file and line number.",
-      "ground_truth": {
-        "file": "crates/core/flags/hiargs.rs",
-        "line": 113
-      }
+      "question": "Where is `generate_work` defined in ripgrep? Give the file and line number.",
+      "file_hint": "crates/ignore/src/walk.rs",
+      "ground_truth": { "file": "crates/ignore/src/walk.rs", "line": 1731 }
     },
     {
       "id": "rg-008",
       "type": "visibility",
-      "question": "Is `from_low_args` public, module-level (pub(crate)), or private in ripgrep?",
-      "ground_truth": {
-        "visibility": "module"
-      }
+      "question": "Is `generate_work` in `crates/ignore/src/walk.rs` public, module-level, or private?",
+      "file_hint": "crates/ignore/src/walk.rs",
+      "ground_truth": { "visibility": "private" }
     },
     {
       "id": "rg-009",
-      "type": "fan_out",
-      "question": "For the primary `from_low_args` match in `crates/core/flags/hiargs.rs`: how many entries are in its `calls` array? Give the exact count.",
-      "file_hint": "crates/core/flags/hiargs.rs",
-      "ground_truth": {
-        "calls_count": 14
-      }
+      "type": "caller_count",
+      "question": "How many distinct functions call `search_parallel` in ripgrep (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 9 }
     },
     {
       "id": "rg-010",
-      "type": "definition_location",
-      "question": "Where is `generate_work` defined in ripgrep? Give the file and line number.",
-      "ground_truth": {
-        "file": "crates/ignore/src/walk.rs",
-        "line": 1731
-      }
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the ripgrep codebase?",
+      "ground_truth": { "dead_code_count": 50 }
     },
     {
       "id": "rg-011",
-      "type": "visibility",
-      "question": "Is `generate_work` public, module-level, or private in ripgrep?",
+      "type": "health_god_functions",
+      "question": "Name the top 2 god functions (most complex) in ripgrep, with their files.",
       "ground_truth": {
-        "visibility": "private"
+        "god_functions": [
+          {"name": "from_low_args", "file": "crates/core/flags/hiargs.rs"},
+          {"name": "generate_work",  "file": "crates/ignore/src/walk.rs"}
+        ]
       }
     },
     {
       "id": "rg-012",
       "type": "fan_out",
-      "question": "For the primary `generate_work` match in `crates/ignore/src/walk.rs`: how many entries are in its `calls` array? Give the exact count.",
+      "question": "For `generate_work` in `crates/ignore/src/walk.rs`: how many entries are in its `calls` array?",
       "file_hint": "crates/ignore/src/walk.rs",
-      "ground_truth": {
-        "calls_count": 11
-      }
+      "ground_truth": { "calls_count": 10 }
     },
     {
       "id": "rg-013",
-      "type": "definition_location",
-      "question": "Where is `build` defined in ripgrep (the one in the walk module)? Give the file and line number.",
-      "ground_truth": {
-        "file": "crates/ignore/src/walk.rs",
-        "line": 565
-      }
+      "type": "caller_count",
+      "question": "How many distinct functions call `is_match` in ripgrep (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 23 }
     },
     {
       "id": "rg-014",
-      "type": "visibility",
-      "question": "Is the `build` function in `crates/ignore/src/walk.rs` public, module-level, or private?",
-      "ground_truth": {
-        "visibility": "public"
-      }
-    },
-    {
-      "id": "rg-015",
-      "type": "fan_out",
-      "question": "For the primary `build` match in `crates/ignore/src/walk.rs`: how many entries are in its `calls` array? Give the exact count.",
-      "file_hint": "crates/ignore/src/walk.rs",
-      "ground_truth": {
-        "calls_count": 9
-      }
-    },
-    {
-      "id": "rg-016",
-      "type": "definition_location",
-      "question": "Where is `is_match` defined in `crates/globset/src/lib.rs`? Give the line number.",
-      "file_hint": "crates/globset/src/lib.rs",
-      "ground_truth": {
-        "file": "crates/globset/src/lib.rs",
-        "line": 860
-      }
-    },
-    {
-      "id": "rg-017",
       "type": "module_path",
-      "question": "What module does `generate_work` belong to in ripgrep?",
-      "ground_truth": {
-        "module_path": "crates::ignore::src"
-      }
-    },
-    {
-      "id": "rg-018",
-      "type": "health_dead_code",
-      "question": "How many items are in the `dead_code` array returned by the health tool on ripgrep? Give the exact count.",
-      "ground_truth": {
-        "dead_code_count": 84,
-        "tolerance": 5
-      }
-    },
-    {
-      "id": "rg-019",
-      "type": "health_god_functions",
-      "question": "Name the top 2 god functions (most complex) in ripgrep, with their files.",
-      "ground_truth": {
-        "top_2": [
-          {"name": "from_low_args", "file": "crates/core/flags/hiargs.rs"},
-          {"name": "generate_work", "file": "crates/ignore/src/walk.rs"}
-        ]
-      }
-    },
-    {
-      "id": "rg-020",
-      "type": "definition_location",
-      "question": "Where is `search` defined in `crates/core/search.rs`? Give the line number.",
-      "file_hint": "crates/core/search.rs",
-      "ground_truth": {
-        "file": "crates/core/search.rs",
-        "line": 245
-      }
+      "question": "What module does `generate_work` in `crates/ignore/src/walk.rs` belong to?",
+      "file_hint": "crates/ignore/src/walk.rs",
+      "ground_truth": { "module_path": "crates::ignore::src" }
     }
   ]
 }

@@ -1,0 +1,104 @@
+{
+  "codebase": "axum",
+  "codebase_path": "/Users/avirajkhare/ttt/axum",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "ax-001",
+      "type": "definition_location",
+      "question": "Where is `expand` defined in `axum-macros/src/from_request/mod.rs`? Give the line number.",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "file": "axum-macros/src/from_request/mod.rs", "line": 93 }
+    },
+    {
+      "id": "ax-002",
+      "type": "visibility",
+      "question": "Is `expand` in `axum-macros/src/from_request/mod.rs` public, module-level, or private?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "visibility": "module" }
+    },
+    {
+      "id": "ax-003",
+      "type": "module_path",
+      "question": "What module does `expand` in `axum-macros/src/from_request/mod.rs` belong to?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "module_path": "axum-macros::from_request" }
+    },
+    {
+      "id": "ax-004",
+      "type": "fan_out",
+      "question": "For `expand` in `axum-macros/src/from_request/mod.rs`: how many entries are in its `calls` array?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "calls_count": 11 }
+    },
+    {
+      "id": "ax-005",
+      "type": "caller_count",
+      "question": "How many distinct functions call `expand` in axum (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 9 }
+    },
+    {
+      "id": "ax-006",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in axum? Give the function name and file.",
+      "ground_truth": { "name": "expand", "file": "axum-macros/src/from_request/mod.rs" }
+    },
+    {
+      "id": "ax-007",
+      "type": "definition_location",
+      "question": "Where is `extract_fields` defined in axum? Give the file and line number.",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "file": "axum-macros/src/from_request/mod.rs", "line": 412 }
+    },
+    {
+      "id": "ax-008",
+      "type": "visibility",
+      "question": "Is `extract_fields` in `axum-macros/src/from_request/mod.rs` public, module-level, or private?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "visibility": "private" }
+    },
+    {
+      "id": "ax-009",
+      "type": "caller_count",
+      "question": "How many distinct functions call `into_response` in axum (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 140 }
+    },
+    {
+      "id": "ax-010",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the axum codebase?",
+      "ground_truth": { "dead_code_count": 58 }
+    },
+    {
+      "id": "ax-011",
+      "type": "health_god_functions",
+      "question": "Name the top 2 god functions (most complex) in axum, with their files.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "expand",         "file": "axum-macros/src/from_request/mod.rs"},
+          {"name": "extract_fields", "file": "axum-macros/src/from_request/mod.rs"}
+        ]
+      }
+    },
+    {
+      "id": "ax-012",
+      "type": "fan_out",
+      "question": "For `extract_fields` in `axum-macros/src/from_request/mod.rs`: how many entries are in its `calls` array?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "calls_count": 4 }
+    },
+    {
+      "id": "ax-013",
+      "type": "caller_count",
+      "question": "How many distinct functions call `extract_fields` in axum (depth=2)? Give the count.",
+      "ground_truth": { "caller_count": 2 }
+    },
+    {
+      "id": "ax-014",
+      "type": "module_path",
+      "question": "What module does `extract_fields` in `axum-macros/src/from_request/mod.rs` belong to?",
+      "file_hint": "axum-macros/src/from_request/mod.rs",
+      "ground_truth": { "module_path": "axum-macros::from_request" }
+    }
+  ]
+}

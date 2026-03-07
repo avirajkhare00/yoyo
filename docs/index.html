@@ -233,7 +233,7 @@
   <div class="container">
     <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo parses your codebase into a searchable index and gives Claude or Cursor 24 tools to read and edit it.
+      yoyo parses your codebase into a searchable index and gives Claude or Cursor 25 tools to read and edit it.
       No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
@@ -254,8 +254,12 @@
       <div class="stat-label">faster than manual file reading</div>
     </div>
     <div class="stat">
-      <div class="stat-num">24</div>
+      <div class="stat-num">25</div>
       <div class="stat-label">tools over MCP</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">eval accuracy across 9,954 functions</div>
     </div>
     <div class="stat">
       <div class="stat-num">0</div>
@@ -321,7 +325,12 @@
 
       <div class="card">
         <h3>Audits dead code</h3>
-        <p><code>health</code> reports functions that are never called, functions with high complexity and high fan-out, and functions with duplicate names across files.</p>
+        <p><code>health</code> reports functions that are never called, functions with high complexity and high fan-out, and functions with duplicate names across files. Public API is excluded — only genuinely unreachable code is flagged.</p>
+      </div>
+
+      <div class="card">
+        <h3>Semantic search — no API key</h3>
+        <p><code>semantic_search</code> finds functions by intent: "semaphore acquisition", "spawn blocking task", "async runtime builder". Powered by local ONNX embeddings (fastembed AllMiniLML6V2). No network, no key.</p>
       </div>
 
       <div class="card">
@@ -337,7 +346,7 @@
 
 <section id="tools">
   <div class="container">
-    <h2>All 24 tools</h2>
+    <h2>All 25 tools</h2>
     <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
@@ -368,6 +377,7 @@
         <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Stable</span></td><td>Insert a new function scaffold into a file.</td></tr>
         <tr><td><code>graph_move</code></td><td><span class="pill pill-green">Stable</span></td><td>Move a function from one file to another.</td></tr>
         <tr><td><code>graph_delete</code></td><td><span class="pill pill-green">Stable</span></td><td>Remove a function by name. Confirms safety first with <code>blast_radius</code>.</td></tr>
+        <tr><td><code>semantic_search</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
       </tbody>
     </table>
   </div>
@@ -447,22 +457,32 @@
 
 <section>
   <div class="container">
-    <h2>Benchmark</h2>
-    <p class="section-sub">Tested on two real projects: a 24-file CLI tool and a 386-file ML library.</p>
+    <h2>Eval results</h2>
+    <p class="section-sub">Measured against 3 real Rust codebases — 9,954 functions total. Structural and semantic tasks.</p>
 
-    <p style="font-size:0.92rem; color:var(--muted); margin-bottom:16px;">
-      With yoyo, Claude ran 8 tool calls in 3 parallel batches and had a complete picture of the 386-file codebase in
-      <strong style="color:var(--text);">~30 seconds</strong>. Without yoyo, the same task took
-      <strong style="color:var(--text);">15–20 minutes</strong> of directory browsing and file reading.
+    <table style="margin-bottom:24px;">
+      <thead>
+        <tr><th>Codebase</th><th>Type</th><th>Functions</th><th>yoyo</th><th>Claude Code (no index)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>tokio — async runtime</td><td>Structural</td><td>6,174</td><td><strong style="color:var(--accent2)">21/21 — 100%</strong></td><td style="color:var(--muted)">7/21 — 33%</td></tr>
+        <tr><td>tokio</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">8/8 — 100%</strong></td><td style="color:var(--muted)">0/8 — 0%</td></tr>
+        <tr><td>ripgrep — CLI binary</td><td>Structural</td><td>2,925</td><td><strong style="color:var(--accent2)">22/22 — 100%</strong></td><td style="color:var(--muted)">7/22 — 32%</td></tr>
+        <tr><td>ripgrep</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">5/5 — 100%</strong></td><td style="color:var(--muted)">0/5 — 0%</td></tr>
+        <tr><td>axum — web framework</td><td>Structural</td><td>855</td><td><strong style="color:var(--accent2)">20/20 — 100%</strong></td><td style="color:var(--muted)">6/20 — 30%</td></tr>
+        <tr><td>axum</td><td>Semantic</td><td></td><td><strong style="color:var(--accent2)">5/5 — 100%</strong></td><td style="color:var(--muted)">0/5 — 0%</td></tr>
+        <tr><td><strong>Combined</strong></td><td><strong>All 81 tasks</strong></td><td><strong>9,954</strong></td><td><strong style="color:var(--accent2)">81/81 — 100%</strong></td><td style="color:var(--muted)"><strong>20/81 — 25%</strong></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:0.88rem; color:var(--muted); margin-bottom:20px;">
+      Structural tasks: definition location, visibility, module path, fan-out, caller count, complexity rank, dead code, god functions.<br>
+      Semantic tasks: top-3 embedding recall for natural language queries (local ONNX, no API key).<br>
+      Claude Code ceiling is ~32% structural, 0% semantic — limited to single-file reads and lexical grep.
     </p>
 
-    <pre><span class="comment"># 8 calls, 3 batches, ~30 seconds total</span>
-Batch 1:  <span class="cmd">bake</span> + <span class="cmd">shake</span>
-Batch 2:  <span class="cmd">architecture_map</span> + <span class="cmd">find_docs</span> + <span class="cmd">api_surface</span>
-Batch 3:  <span class="cmd">package_summary</span>(globalApi) + <span class="cmd">package_summary</span>(mtcnn) + <span class="cmd">supersearch</span>(detectAllFaces)</pre>
-
-    <p style="font-size:0.88rem; color:var(--muted); margin-top:12px;">
-      Full report: <a href="https://github.com/avirajkhare00/yoyo/blob/main/reports/benchmark-face-api-js-2026-03-03.md">reports/benchmark-face-api-js-2026-03-03.md</a>
+    <p style="font-size:0.88rem; color:var(--muted);">
+      Full report: <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/REPORT.md">evals/REPORT.md</a>
     </p>
   </div>
 </section>

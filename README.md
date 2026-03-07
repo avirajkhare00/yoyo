@@ -1,6 +1,6 @@
 # yoyo
 
-yoyo parses your codebase and gives Claude or Cursor 24 tools to read and edit it over MCP.
+yoyo parses your codebase and gives Claude or Cursor 25 tools to read and edit it over MCP.
 
 Without a tool to read your code, AI assistants guess — wrong file paths, stale function names, invented module structures. yoyo stops the guessing. Every answer comes from the AST.
 
@@ -12,8 +12,9 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 
 - **Speed** — 8 parallel tool calls replace 15–20 minutes of manual file reading. A 400-file codebase in ~30 seconds.
 - **Accuracy** — file paths, function names, line numbers, and byte offsets come directly from the parsed AST, not from model memory.
+- **Semantic search** — find functions by intent ("semaphore acquisition", "spawn blocking task") using local ONNX embeddings. No API key required.
 
-Tested on two real projects. Full benchmark: [`reports/benchmark-face-api-js-2026-03-03.md`](./reports/benchmark-face-api-js-2026-03-03.md)
+Evaluated on 3 real Rust codebases (9,954 functions): **81/81 tasks — 100%** structural + semantic accuracy. Full report: [`evals/REPORT.md`](./evals/REPORT.md)
 
 ---
 
@@ -110,6 +111,7 @@ Claude calls the tools automatically. You don't manage it.
 | `graph_rename` | Rename a symbol at its definition and every call site atomically. |
 | `graph_add` | Insert a new function scaffold into a file. |
 | `graph_move` | Move a function from one file to another. |
+| `semantic_search` | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 | `graph_delete` | Remove a function by name. |
 
 **Languages:** TypeScript, JavaScript, Rust, Python, Go
@@ -121,7 +123,7 @@ Claude calls the tools automatically. You don't manage it.
 ## Known limitations
 
 - **Route detection is partial** — `api_trace` and `crud_operations` work with the frameworks listed above. Axum, NestJS, Fastify, Django, and dynamic routers are not detected. See [#19](https://github.com/avirajkhare00/yoyo/issues/19).
-- **`health` false positives for HTTP handlers** — functions registered via a router (not via direct calls) are flagged as dead code because the static call graph can't see the registration. Tracked in [#30](https://github.com/avirajkhare00/yoyo/issues/30).
+- **`health` false positives for HTTP handlers** — functions registered via a router (not via direct calls) are flagged as dead code because the static call graph can't see the registration. Tracked in [#39](https://github.com/avirajkhare00/yoyo/issues/39).
 - **`trace_down` is Rust + Go only** — call chain tracing doesn't work in TypeScript or Python yet.
 - **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
 - **`graph_move` doesn't update imports** — it relocates the function body but doesn't add or remove `use`/`import` statements.
@@ -144,6 +146,7 @@ src/
     edit.rs      patch, patch_bytes, multi_patch, slice
     graph.rs     graph_rename, graph_add, graph_move
     analysis.rs  blast_radius, find_docs, health, graph_delete
+    embed.rs     semantic_search — fastembed ONNX embeddings + SQLite store
     api.rs       all_endpoints, api_surface, api_trace, crud_operations
     nav.rs       architecture_map, package_summary, suggest_placement
     types.rs     shared payload structs
