@@ -2,8 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Result;
+use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
-use tree_sitter_go::LANGUAGE;
 
 use super::{
     byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
@@ -60,7 +60,7 @@ impl LanguageAnalyzer for GoAnalyzer {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
-            .set_language(&LANGUAGE.into())
+            .set_language(&SupportLang::Go.get_ts_language())
             .expect("failed to load Go grammar");
         let tree = parser
             .parse(&source, None)
@@ -84,7 +84,7 @@ impl LanguageAnalyzer for GoAnalyzer {
 
     fn ast_search(&self, source: &str, query_lc: &str, context: &str, pattern: &str) -> Vec<AstMatch> {
         let mut parser = Parser::new();
-        if parser.set_language(&LANGUAGE.into()).is_err() {
+        if parser.set_language(&SupportLang::Go.get_ts_language()).is_err() {
             return vec![];
         }
         let tree = match parser.parse(source, None) {

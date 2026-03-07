@@ -92,6 +92,8 @@ pub async fn run_stdio_server() -> Result<()> {
                 }
             };
 
+            // Notifications (no id) are silently dropped — correct per spec.
+            // Explicitly skip rather than falling through to handle_request.
             if req.id.is_none() {
                 continue;
             }
@@ -114,6 +116,8 @@ pub async fn run_stdio_server() -> Result<()> {
                 }
             };
 
+            // Notifications (no id) are silently dropped — correct per spec.
+            // Explicitly skip rather than falling through to handle_request.
             if req.id.is_none() {
                 continue;
             }
@@ -140,7 +144,7 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
 
             let result = json!({
                 "protocolVersion": protocol_version,
-                "capabilities": {"tools": {"listChanged": true}},
+                "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
                 "instructions": "You have access to yoyo, a code intelligence MCP server. \
                     Always call `llm_instructions` first on any new project to learn available tools and workflows. \
@@ -153,6 +157,12 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
 
             JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(result), error: None }
         }
+        "ping" => JsonRpcResponse {
+            jsonrpc: "2.0",
+            id: req.id,
+            result: Some(json!({})),
+            error: None,
+        },
         "list_tools" | "tools/list" => JsonRpcResponse {
             jsonrpc: "2.0",
             id: req.id,
