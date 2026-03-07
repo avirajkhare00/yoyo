@@ -1,6 +1,15 @@
+pub mod bash;
+pub mod c;
+pub mod cpp;
+pub mod csharp;
 pub mod go;
+pub mod java;
+pub mod kotlin;
+pub mod php;
 pub mod python;
+pub mod ruby;
 pub mod rust;
+pub mod swift;
 pub mod typescript;
 
 use std::path::Path;
@@ -210,9 +219,18 @@ pub fn qualified_name(module_path: &str, name: &str, lang: &str) -> String {
 /// Registry — one place to add new languages.
 pub fn find_analyzer(lang: &str) -> Option<Box<dyn LanguageAnalyzer>> {
     let all: Vec<Box<dyn LanguageAnalyzer>> = vec![
+        Box::new(bash::BashAnalyzer),
+        Box::new(c::CAnalyzer),
+        Box::new(cpp::CppAnalyzer),
+        Box::new(csharp::CSharpAnalyzer),
         Box::new(go::GoAnalyzer),
+        Box::new(java::JavaAnalyzer),
+        Box::new(kotlin::KotlinAnalyzer),
+        Box::new(php::PhpAnalyzer),
         Box::new(python::PythonAnalyzer),
+        Box::new(ruby::RubyAnalyzer),
         Box::new(rust::RustAnalyzer),
+        Box::new(swift::SwiftAnalyzer),
         Box::new(typescript::TypeScriptAnalyzer),
     ];
     all.into_iter().find(|a| a.language() == lang)

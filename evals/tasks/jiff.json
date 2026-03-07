@@ -1,0 +1,99 @@
+{
+  "codebase": "jiff",
+  "codebase_path": "/Users/avirajkhare/ttt/jiff",
+  "pinned_commit": "main",
+  "tasks": [
+    {
+      "id": "jf-001",
+      "type": "definition_location",
+      "question": "Where is `fractional_time_to_span` defined in jiff? Give the file and line number.",
+      "file_hint": "src/fmt/util.rs",
+      "ground_truth": {
+        "file": "src/fmt/util.rs",
+        "line": 794
+      }
+    },
+    {
+      "id": "jf-002",
+      "type": "visibility",
+      "question": "Is `fractional_time_to_span` in `src/fmt/util.rs` public, module-level, or private?",
+      "file_hint": "src/fmt/util.rs",
+      "ground_truth": {
+        "visibility": "private"
+      }
+    },
+    {
+      "id": "jf-003",
+      "type": "module_path",
+      "question": "What module does `fractional_time_to_span` in `src/fmt/util.rs` belong to?",
+      "file_hint": "src/fmt/util.rs",
+      "ground_truth": {
+        "module_path": "fmt"
+      }
+    },
+    {
+      "id": "jf-004",
+      "type": "fan_out",
+      "question": "For `fractional_time_to_span` in `src/fmt/util.rs`: how many entries are in its `calls` array?",
+      "file_hint": "src/fmt/util.rs",
+      "ground_truth": {
+        "calls_count": 21
+      }
+    },
+    {
+      "id": "jf-005",
+      "type": "definition_location",
+      "question": "Where is `since_with_largest_unit` defined in jiff? Give the file and line number.",
+      "file_hint": "src/civil/date.rs",
+      "ground_truth": {
+        "file": "src/civil/date.rs",
+        "line": 2814
+      }
+    },
+    {
+      "id": "jf-006",
+      "type": "visibility",
+      "question": "Is `since_with_largest_unit` in `src/civil/date.rs` public, module-level, or private?",
+      "file_hint": "src/civil/date.rs",
+      "ground_truth": {
+        "visibility": "private"
+      }
+    },
+    {
+      "id": "jf-007",
+      "type": "caller_count",
+      "question": "How many distinct functions call `since_with_largest_unit` in jiff (excluding self-recursion)? Give the count.",
+      "ground_truth": {
+        "caller_count": 33
+      }
+    },
+    {
+      "id": "jf-008",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in jiff? Give the function name and file.",
+      "ground_truth": {
+        "name": "parse",
+        "file": "src/fmt/strtime/parse.rs"
+      }
+    },
+    {
+      "id": "jf-009",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the jiff codebase?",
+      "ground_truth": {
+        "dead_code_count": 148
+      }
+    },
+    {
+      "id": "jf-010",
+      "type": "health_god_functions",
+      "question": "Name the top 2 god functions (most complex) in jiff, with their files.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "parse", "file": "src/fmt/strtime/parse.rs"},
+          {"name": "fractional_time_to_span", "file": "src/fmt/util.rs"}
+        ]
+      }
+    }
+  ]
+}

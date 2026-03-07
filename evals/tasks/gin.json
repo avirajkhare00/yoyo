@@ -1,0 +1,90 @@
+{
+  "codebase": "gin",
+  "codebase_path": "/Users/avirajkhare/ttt/gin",
+  "pinned_commit": "main",
+  "tasks": [
+    {
+      "id": "gn-001",
+      "type": "definition_location",
+      "question": "Where is `findCaseInsensitivePathRec` defined in gin? Give the file and line number.",
+      "file_hint": "tree.go",
+      "ground_truth": {
+        "file": "tree.go",
+        "line": 703
+      }
+    },
+    {
+      "id": "gn-002",
+      "type": "visibility",
+      "question": "Is `findCaseInsensitivePathRec` in `tree.go` public or private?",
+      "file_hint": "tree.go",
+      "ground_truth": {
+        "visibility": "private"
+      }
+    },
+    {
+      "id": "gn-003",
+      "type": "module_path",
+      "question": "What module does `findCaseInsensitivePathRec` in `tree.go` belong to?",
+      "file_hint": "tree.go",
+      "ground_truth": {
+        "module_path": "gin"
+      }
+    },
+    {
+      "id": "gn-004",
+      "type": "fan_out",
+      "question": "For `findCaseInsensitivePathRec` in `tree.go`: how many entries are in its `calls` array?",
+      "file_hint": "tree.go",
+      "ground_truth": {
+        "calls_count": 2
+      }
+    },
+    {
+      "id": "gn-005",
+      "type": "definition_location",
+      "question": "Where is `getValue` defined in gin? Give the file and line number.",
+      "file_hint": "tree.go",
+      "ground_truth": {
+        "file": "tree.go",
+        "line": 418
+      }
+    },
+    {
+      "id": "gn-006",
+      "type": "caller_count",
+      "question": "How many distinct functions call `getValue` in gin (excluding self-recursion)?",
+      "ground_truth": {
+        "caller_count": 14
+      }
+    },
+    {
+      "id": "gn-007",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in gin? Give the function name and file.",
+      "ground_truth": {
+        "name": "findCaseInsensitivePathRec",
+        "file": "tree.go"
+      }
+    },
+    {
+      "id": "gn-008",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the gin codebase?",
+      "ground_truth": {
+        "dead_code_count": 7
+      }
+    },
+    {
+      "id": "gn-009",
+      "type": "health_god_functions",
+      "question": "Name the top 2 god functions (most complex) in gin, with their files.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "findCaseInsensitivePathRec", "file": "tree.go"},
+          {"name": "getValue", "file": "tree.go"}
+        ]
+      }
+    }
+  ]
+}

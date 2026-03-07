@@ -1,0 +1,98 @@
+{
+  "codebase": "flask",
+  "codebase_path": "/Users/avirajkhare/ttt/flask",
+  "pinned_commit": "main",
+  "tasks": [
+    {
+      "id": "fl-001",
+      "type": "definition_location",
+      "question": "Where is `register` defined in `src/flask/sansio/blueprints.py`? Give the line number.",
+      "file_hint": "src/flask/sansio/blueprints.py",
+      "ground_truth": {
+        "file": "src/flask/sansio/blueprints.py",
+        "line": 273
+      }
+    },
+    {
+      "id": "fl-002",
+      "type": "visibility",
+      "question": "Is `register` in `src/flask/sansio/blueprints.py` public or private?",
+      "file_hint": "src/flask/sansio/blueprints.py",
+      "ground_truth": {
+        "visibility": "public"
+      }
+    },
+    {
+      "id": "fl-003",
+      "type": "module_path",
+      "question": "What module does `register` in `src/flask/sansio/blueprints.py` belong to?",
+      "file_hint": "src/flask/sansio/blueprints.py",
+      "ground_truth": {
+        "module_path": "src.flask.sansio"
+      }
+    },
+    {
+      "id": "fl-004",
+      "type": "caller_count",
+      "question": "How many distinct functions call `register` in flask (excluding self-recursion)?",
+      "ground_truth": {
+        "caller_count": 69
+      }
+    },
+    {
+      "id": "fl-005",
+      "type": "definition_location",
+      "question": "Where is `run` defined in `src/flask/app.py`? Give the line number.",
+      "file_hint": "src/flask/app.py",
+      "ground_truth": {
+        "file": "src/flask/app.py",
+        "line": 632
+      }
+    },
+    {
+      "id": "fl-006",
+      "type": "visibility",
+      "question": "Is `run` in `src/flask/app.py` public or private?",
+      "file_hint": "src/flask/app.py",
+      "ground_truth": {
+        "visibility": "public"
+      }
+    },
+    {
+      "id": "fl-007",
+      "type": "module_path",
+      "question": "What module does `run` in `src/flask/app.py` belong to?",
+      "file_hint": "src/flask/app.py",
+      "ground_truth": {
+        "module_path": "src.flask"
+      }
+    },
+    {
+      "id": "fl-008",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in flask? Give the function name and file.",
+      "ground_truth": {
+        "name": "register",
+        "file": "src/flask/sansio/blueprints.py"
+      }
+    },
+    {
+      "id": "fl-009",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the flask codebase?",
+      "ground_truth": {
+        "dead_code_count": 28
+      }
+    },
+    {
+      "id": "fl-010",
+      "type": "health_god_functions",
+      "question": "Name the top god function (most complex) in flask, with its file.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "register", "file": "src/flask/sansio/blueprints.py"}
+        ]
+      }
+    }
+  ]
+}

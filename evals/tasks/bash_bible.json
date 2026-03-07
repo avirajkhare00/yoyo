@@ -1,0 +1,31 @@
+{
+  "repo": "dylanaraps/pure-bash-bible",
+  "language": "bash",
+  "path": "/tmp/pure-bash-bible",
+  "tasks": [
+    {
+      "id": "bb-001",
+      "type": "definition_location",
+      "question": "In which file does the `main` function appear in build.sh, and at what line?",
+      "ground_truth": "build.sh, line 5"
+    },
+    {
+      "id": "bb-002",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity in pure-bash-bible?",
+      "ground_truth": "main in build.sh or test.sh (complexity 3, tied)"
+    },
+    {
+      "id": "bb-003",
+      "type": "definition_location",
+      "question": "At what line does `assert_equals` start in test.sh?",
+      "ground_truth": "line 208"
+    },
+    {
+      "id": "bb-004",
+      "type": "definition_location",
+      "question": "At what line does the `main` function start in test.sh?",
+      "ground_truth": "line 221"
+    }
+  ]
+}
