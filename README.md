@@ -133,7 +133,7 @@ Claude calls the tools automatically. You don't manage it.
 | `semantic_search` | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 | `graph_delete` | Remove a function by name. |
 
-**Languages:** TypeScript, JavaScript, Rust, Python, Go
+**Languages:** TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash
 
 **Route detection:** Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http
 
