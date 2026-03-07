@@ -17,6 +17,8 @@ pub(crate) struct BakeIndex {
     pub(crate) endpoints: Vec<crate::lang::IndexedEndpoint>,
     #[serde(default)]
     pub(crate) types: Vec<crate::lang::IndexedType>,
+    #[serde(default)]
+    pub(crate) impls: Vec<crate::lang::IndexedImpl>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -145,6 +147,15 @@ pub(crate) struct SymbolMatch {
     /// For methods: the struct/enum/trait this is defined on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) parent_type: Option<String>,
+    /// For structs/enums: traits this type implements.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) implements: Vec<String>,
+    /// For traits: concrete types that implement this trait.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) implementors: Vec<String>,
+    /// For structs: parsed field names and types.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) fields: Vec<crate::lang::FieldInfo>,
 }
 
 #[derive(Serialize)]
