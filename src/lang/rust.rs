@@ -237,6 +237,27 @@ fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
     calls
 }
 
+/// Walk up a receiver/value chain to find the root identifier.
+/// `db.query(...).fetch_one(...)` → `"db"` instead of `"db.query(...)"`.
+fn root_receiver<'a>(node: Node<'a>, source: &str) -> Option<String> {
+    match node.kind() {
+        "identifier" | "self" => node.utf8_text(source.as_bytes()).ok().map(str::to_string),
+        "method_call_expression" => node
+            .child_by_field_name("receiver")
+            .and_then(|r| root_receiver(r, source)),
+        "call_expression" => node
+            .child_by_field_name("function")
+            .and_then(|f| root_receiver(f, source)),
+        "field_expression" => node
+            .child_by_field_name("value")
+            .and_then(|v| root_receiver(v, source)),
+        "await_expression" => node
+            .named_child(0)
+            .and_then(|c| root_receiver(c, source)),
+        _ => None,
+    }
+}
+
 fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::CallSite>) {
     let line = node.start_position().row as u32 + 1;
     match node.kind() {
@@ -266,8 +287,7 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                             .to_string();
                         let qualifier = func
                             .child_by_field_name("value")
-                            .and_then(|v| v.utf8_text(source.as_bytes()).ok())
-                            .map(|s| s.to_string());
+                            .and_then(|v| root_receiver(v, source));
                         (callee, qualifier)
                     }
                     _ => (String::new(), None),
@@ -282,8 +302,7 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                 let callee = method.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 let qualifier = node
                     .child_by_field_name("receiver")
-                    .and_then(|r| r.utf8_text(source.as_bytes()).ok())
-                    .map(|s| s.to_string());
+                    .and_then(|r| root_receiver(r, source));
                 if !callee.is_empty() {
                     calls.push(crate::lang::CallSite { callee, qualifier, line });
                 }
