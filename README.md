@@ -14,7 +14,7 @@ No API keys. No SaaS. No telemetry. Your code stays on your machine.
 - **Accuracy** — file paths, function names, line numbers, and byte offsets come directly from the parsed AST, not from model memory.
 - **Semantic search** — find functions by intent ("semaphore acquisition", "spawn blocking task") using local ONNX embeddings. No API key required.
 
-Evaluated on 3 real Rust codebases (9,954 functions): **81/81 tasks — 100%** structural + semantic accuracy. Full report: [`evals/REPORT.md`](./evals/REPORT.md)
+Evaluated on 7 real codebases (Rust, Go, Python): **120/124 tasks — 97%** vs Claude Code baseline at 25% (30/121). Full report: [`evals/REPORT.md`](./evals/REPORT.md)
 
 ---
 
@@ -76,6 +76,25 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
       "command": "/usr/local/bin/yoyo",
       "args": ["--mcp-server"]
     }
+  }
+}
+```
+
+**Recommended: add a `UserPromptSubmit` hook** so Claude is reminded to prefer yoyo tools on every turn. Add this to your project's `.claude/settings.local.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[yoyo] Use mcp__yoyo__supersearch instead of Grep/Bash grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__slice for line ranges. yoyo tools must be loaded via ToolSearch first if not yet loaded.'"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
