@@ -1,3 +1,4 @@
 target/
 bakes/
 .DS_Store
+.fastembed_cache/
