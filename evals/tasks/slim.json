@@ -1,0 +1,60 @@
+{
+  "codebase": "slimphp/Slim",
+  "codebase_path": "/tmp/slim",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "sl-001",
+      "type": "definition_location",
+      "question": "In which file and at what line does `addDeferred` start in Slim?",
+      "file_hint": "Slim/MiddlewareDispatcher.php",
+      "ground_truth": { "file": "Slim/MiddlewareDispatcher.php", "line": 144 }
+    },
+    {
+      "id": "sl-002",
+      "type": "complexity_rank",
+      "question": "Which function has the highest cyclomatic complexity in Slim's core source (Slim/ directory)?",
+      "ground_truth": { "function": "addDeferred", "file": "Slim/MiddlewareDispatcher.php", "complexity": 13 }
+    },
+    {
+      "id": "sl-003",
+      "type": "caller_count",
+      "question": "How many distinct functions call `handle` in the Slim codebase?",
+      "ground_truth": { "caller_count": 84 }
+    },
+    {
+      "id": "sl-004",
+      "type": "visibility",
+      "question": "What is the visibility of `emitBody` in Slim/ResponseEmitter.php?",
+      "file_hint": "Slim/ResponseEmitter.php",
+      "ground_truth": { "visibility": "private" }
+    },
+    {
+      "id": "sl-005",
+      "type": "definition_location",
+      "question": "At what line does `relativeUrlFor` start in Slim/Routing/RouteParser.php?",
+      "file_hint": "Slim/Routing/RouteParser.php",
+      "ground_truth": { "line": 40 }
+    },
+    {
+      "id": "sl-006",
+      "type": "caller_count",
+      "question": "How many functions call `relativeUrlFor` in Slim?",
+      "ground_truth": { "caller_count": 3 }
+    },
+    {
+      "id": "sl-007",
+      "type": "visibility",
+      "question": "What is the visibility of `addDeferred` in Slim/MiddlewareDispatcher.php?",
+      "file_hint": "Slim/MiddlewareDispatcher.php",
+      "ground_truth": { "visibility": "public" }
+    },
+    {
+      "id": "sl-008",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `determineContentType` in Slim/Handlers/ErrorHandler.php?",
+      "file_hint": "Slim/Handlers/ErrorHandler.php",
+      "ground_truth": { "complexity": 7 }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "codebase": "Alamofire/Alamofire",
+  "codebase_path": "/tmp/alamofire",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "af-001",
+      "type": "definition_location",
+      "question": "In which file and at what line does `cURLDescription` start in Alamofire?",
+      "file_hint": "Source/Core/Request.swift",
+      "ground_truth": { "file": "Source/Core/Request.swift", "line": 1148 }
+    },
+    {
+      "id": "af-002",
+      "type": "complexity_rank",
+      "question": "Which function in Alamofire has the highest cyclomatic complexity?",
+      "ground_truth": { "function": "cURLDescription", "file": "Source/Core/Request.swift", "complexity": 14 }
+    },
+    {
+      "id": "af-003",
+      "type": "definition_location",
+      "question": "At what line does `append` start in Source/Features/MultipartFormData.swift?",
+      "file_hint": "Source/Features/MultipartFormData.swift",
+      "ground_truth": { "line": 198 }
+    },
+    {
+      "id": "af-004",
+      "type": "definition_location",
+      "question": "In which file is `performSetupOperations` defined in Alamofire?",
+      "ground_truth": { "file": "Source/Core/Session.swift" }
+    },
+    {
+      "id": "af-005",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `encode` in Source/Core/ParameterEncoder.swift?",
+      "file_hint": "Source/Core/ParameterEncoder.swift",
+      "ground_truth": { "complexity": 8 }
+    },
+    {
+      "id": "af-006",
+      "type": "definition_location",
+      "question": "At what line does `performSetupOperations` start in Session.swift?",
+      "file_hint": "Source/Core/Session.swift",
+      "ground_truth": { "line": 1233 }
+    },
+    {
+      "id": "af-007",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `set` in Source/Features/URLEncodedFormEncoder.swift?",
+      "file_hint": "Source/Features/URLEncodedFormEncoder.swift",
+      "ground_truth": { "complexity": 10 }
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "codebase": "jqlang/jq",
+  "codebase_path": "/tmp/jq_c",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "jq-001",
+      "type": "definition_location",
+      "question": "Where is the function `jq_next` defined in jq? Give the file and starting line number.",
+      "file_hint": "src/execute.c",
+      "ground_truth": { "file": "src/execute.c", "line": 340 }
+    },
+    {
+      "id": "jq-002",
+      "type": "complexity_rank",
+      "question": "Which function in jq has the highest cyclomatic complexity score according to yoyo?",
+      "ground_truth": { "function": "yyparse", "file": "src/parser.c", "complexity": 215 }
+    },
+    {
+      "id": "jq-003",
+      "type": "definition_location",
+      "question": "In which file and at what line does `jv_dump_term` start?",
+      "file_hint": "src/jv_print.c",
+      "ground_truth": { "file": "src/jv_print.c", "line": 219 }
+    },
+    {
+      "id": "jq-004",
+      "type": "fan_out",
+      "question": "How many distinct functions does `jq_next` in src/execute.c call directly?",
+      "file_hint": "src/execute.c",
+      "ground_truth": { "fan_out": 55 }
+    },
+    {
+      "id": "jq-005",
+      "type": "definition_location",
+      "question": "At which line in src/main.c does the `main` function start?",
+      "file_hint": "src/main.c",
+      "ground_truth": { "file": "src/main.c", "line": 289 }
+    },
+    {
+      "id": "jq-006",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `jq_next` in src/execute.c?",
+      "file_hint": "src/execute.c",
+      "ground_truth": { "complexity": 105 }
+    },
+    {
+      "id": "jq-007",
+      "type": "definition_location",
+      "question": "Where is `decDivide` defined — which file and starting line?",
+      "ground_truth": { "file": "vendor/decNumber/decBasic.c", "line": 167 }
+    },
+    {
+      "id": "jq-008",
+      "type": "health_god_functions",
+      "question": "Which function has the highest god-function score (complexity × fan-out) in jq?",
+      "ground_truth": { "function": "yyparse", "file": "src/parser.c" }
+    }
+  ]
+}

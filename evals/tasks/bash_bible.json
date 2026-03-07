@@ -1,0 +1,35 @@
+{
+  "codebase": "dylanaraps/pure-bash-bible",
+  "codebase_path": "/tmp/pure-bash-bible",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "bb-001",
+      "type": "definition_location",
+      "question": "In which file and at what line does the `main` function start in build.sh?",
+      "file_hint": "build.sh",
+      "ground_truth": { "file": "build.sh", "line": 5 }
+    },
+    {
+      "id": "bb-002",
+      "type": "definition_location",
+      "question": "At what line does `assert_equals` start in test.sh?",
+      "file_hint": "test.sh",
+      "ground_truth": { "file": "test.sh", "line": 208 }
+    },
+    {
+      "id": "bb-003",
+      "type": "definition_location",
+      "question": "At what line does the `main` function start in test.sh?",
+      "file_hint": "test.sh",
+      "ground_truth": { "file": "test.sh", "line": 221 }
+    },
+    {
+      "id": "bb-004",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `assert_equals` in test.sh?",
+      "file_hint": "test.sh",
+      "ground_truth": { "complexity": 2 }
+    }
+  ]
+}

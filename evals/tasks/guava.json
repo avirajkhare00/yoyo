@@ -1,0 +1,53 @@
+{
+  "codebase": "google/guava",
+  "codebase_path": "/tmp/guava",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "gv-001",
+      "type": "definition_location",
+      "question": "In which file and at what line does `roundToDouble` start in guava/src/?",
+      "file_hint": "guava/src/com/google/common/math/ToDoubleRounder.java",
+      "ground_truth": { "file": "guava/src/com/google/common/math/ToDoubleRounder.java", "line": 47 }
+    },
+    {
+      "id": "gv-002",
+      "type": "complexity_rank",
+      "question": "Which function has the highest cyclomatic complexity in the guava/src/ directory (not android/)?",
+      "ground_truth": { "function": "roundToDouble", "file": "guava/src/com/google/common/math/ToDoubleRounder.java", "complexity": 23 }
+    },
+    {
+      "id": "gv-003",
+      "type": "caller_count",
+      "question": "How many distinct functions call `roundToDouble` in the guava codebase?",
+      "ground_truth": { "caller_count": 14 }
+    },
+    {
+      "id": "gv-004",
+      "type": "visibility",
+      "question": "What is the visibility of `roundToDouble` in ToDoubleRounder.java?",
+      "file_hint": "guava/src/com/google/common/math/ToDoubleRounder.java",
+      "ground_truth": { "visibility": "private" }
+    },
+    {
+      "id": "gv-005",
+      "type": "definition_location",
+      "question": "At what line does `createHashTable` start in android/guava/src/com/google/common/collect/RegularImmutableMap.java?",
+      "file_hint": "android/guava/src/com/google/common/collect/RegularImmutableMap.java",
+      "ground_truth": { "line": 150 }
+    },
+    {
+      "id": "gv-006",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `blockingGet` in guava/src/com/google/common/util/concurrent/AbstractFutureState.java?",
+      "file_hint": "guava/src/com/google/common/util/concurrent/AbstractFutureState.java",
+      "ground_truth": { "complexity": 20 }
+    },
+    {
+      "id": "gv-007",
+      "type": "caller_count",
+      "question": "How many distinct functions call `blockingGet` in the guava codebase?",
+      "ground_truth": { "caller_count": 4 }
+    }
+  ]
+}

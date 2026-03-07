@@ -1,0 +1,54 @@
+{
+  "codebase": "square/okhttp",
+  "codebase_path": "/tmp/okhttp",
+  "pinned_commit": "HEAD",
+  "tasks": [
+    {
+      "id": "ok-001",
+      "type": "definition_location",
+      "question": "In which file and at what line does the `intercept` function start in HttpLoggingInterceptor.kt?",
+      "file_hint": "okhttp-logging-interceptor/src/main/kotlin/okhttp3/logging/HttpLoggingInterceptor.kt",
+      "ground_truth": { "file": "okhttp-logging-interceptor/src/main/kotlin/okhttp3/logging/HttpLoggingInterceptor.kt", "line": 165 }
+    },
+    {
+      "id": "ok-002",
+      "type": "complexity_rank",
+      "question": "Which Kotlin function in okhttp has the highest cyclomatic complexity?",
+      "ground_truth": { "function": "intercept", "file": "okhttp-logging-interceptor/src/main/kotlin/okhttp3/logging/HttpLoggingInterceptor.kt", "complexity": 32 }
+    },
+    {
+      "id": "ok-003",
+      "type": "definition_location",
+      "question": "At what line does the `parse` function start in okhttp3/Cookie.kt?",
+      "file_hint": "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Cookie.kt",
+      "ground_truth": { "line": 450 }
+    },
+    {
+      "id": "ok-004",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of the `parse` function in Cookie.kt?",
+      "file_hint": "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Cookie.kt",
+      "ground_truth": { "complexity": 29 }
+    },
+    {
+      "id": "ok-005",
+      "type": "definition_location",
+      "question": "In which file is `commonParse` defined in okhttp?",
+      "ground_truth": { "file": "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/-CacheControlCommon.kt" }
+    },
+    {
+      "id": "ok-006",
+      "type": "complexity_rank",
+      "question": "What is the complexity score of `intercept` in CallServerInterceptor.kt?",
+      "file_hint": "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http/CallServerInterceptor.kt",
+      "ground_truth": { "complexity": 25 }
+    },
+    {
+      "id": "ok-007",
+      "type": "definition_location",
+      "question": "At what line does `commonParse` start in -CacheControlCommon.kt?",
+      "file_hint": "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/-CacheControlCommon.kt",
+      "ground_truth": { "line": 110 }
+    }
+  ]
+}
