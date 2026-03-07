@@ -155,6 +155,13 @@ fn decision_map() -> Vec<DecisionEntry> {
             right_tool: "patch with name= parameter",
             right_field: "resolves location from index — one call, immune to line drift",
         },
+        DecisionEntry {
+            question: "Find a function by what it does, not its name",
+            wrong_tool: "grep for keywords or read many files",
+            wrong_because: "No structural awareness. Returns every file containing the string, including comments, docs, tests. Cannot rank by relevance.",
+            right_tool: "semantic_search",
+            right_field: "results[{name, file, start_line, score}] — ranked by TF-IDF over name + callees + file path",
+        },
     ]
 }
 
@@ -169,6 +176,7 @@ fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "symbol",           description: "Exact/partial lookup of functions, structs, enums, traits, and type aliases. Set include_source=true to retrieve the body inline. Returns parent_type for methods.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "file_functions",   description: "List all functions in a file with line ranges and cyclomatic complexity.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "supersearch",      description: "AST-aware search over source files. Prefer over grep. Supports context and pattern filters.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "semantic_search",  description: "Search by natural-language intent — ranks functions by TF-IDF similarity to query. Zero external deps. Use when you know what a function does but not its name.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "all_endpoints",    description: "List all detected HTTP endpoints (Express / Actix / Gin / net/http).", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "api_surface",      description: "Exported API summary grouped by module. Optionally filter by package name.", requires_bake: true, category: "read-indexed", parallelisable: true },
         ToolDescription { name: "api_trace",        description: "Trace an endpoint path to its handler file and function.", requires_bake: true, category: "read-indexed", parallelisable: true },
@@ -251,6 +259,14 @@ fn workflow_catalog() -> Vec<Workflow> {
             steps: vec![
                 WorkflowStep { tool: "supersearch", hint: "Use context=identifiers and pattern=call for call-site search" },
                 WorkflowStep { tool: "slice",       hint: "Read matches in context using the returned line numbers" },
+            ],
+        },
+        Workflow {
+            name: "Find a function by intent (semantic search)",
+            description: "You know what a function does but not its name. Use semantic_search to find ranked candidates.",
+            steps: vec![
+                WorkflowStep { tool: "semantic_search", hint: "Pass a natural-language query, e.g. 'validate user token' or 'write to database'. Returns ranked matches with relevance scores." },
+                WorkflowStep { tool: "symbol",          hint: "Confirm the top match with include_source=true to read the body" },
             ],
         },
         Workflow {

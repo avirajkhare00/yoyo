@@ -3,8 +3,8 @@ use std::fs;
 use anyhow::{anyhow, Result};
 
 use super::types::{
-    FileFunctionSummary, FileFunctionsPayload, SupersearchMatch, SupersearchPayload, SymbolMatch,
-    SymbolPayload,
+    FileFunctionSummary, FileFunctionsPayload, SemanticMatch, SemanticSearchPayload,
+    SupersearchMatch, SupersearchPayload, SymbolMatch, SymbolPayload,
 };
 use super::util::{load_bake_index, resolve_project_root};
 
@@ -298,6 +298,134 @@ pub fn supersearch(
         matches,
     };
 
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+/// Split a symbol/query string into lowercase tokens on `_`, `-`, space, `.`, `/`, `:`
+/// and camelCase boundaries. Tokens shorter than 2 chars are dropped.
+fn tokenize(s: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    for c in s.chars() {
+        if matches!(c, '_' | '-' | ' ' | '/' | '.' | ':') {
+            if !current.is_empty() {
+                tokens.push(current.to_lowercase());
+                current.clear();
+            }
+        } else if c.is_uppercase() && !current.is_empty() {
+            tokens.push(current.to_lowercase());
+            current.clear();
+            current.push(c);
+        } else {
+            current.push(c);
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current.to_lowercase());
+    }
+    tokens.into_iter().filter(|t| t.len() >= 2).collect()
+}
+
+/// Score a single function against the query tokens.
+/// Weights: name token ×3, callee name ×1, file path ×0.5 — all TF-IDF scaled.
+fn score_fn<F: Fn(&str) -> f32>(
+    func: &crate::lang::IndexedFunction,
+    query_tokens: &[String],
+    idf: F,
+) -> f32 {
+    let name_set: std::collections::HashSet<String> = tokenize(&func.name).into_iter().collect();
+    let callee_set: std::collections::HashSet<String> = func
+        .calls
+        .iter()
+        .flat_map(|c| tokenize(&c.callee))
+        .collect();
+    let file_set: std::collections::HashSet<String> = tokenize(&func.file).into_iter().collect();
+
+    let mut score = 0.0f32;
+    for qt in query_tokens {
+        let w = idf(qt);
+        if name_set.contains(qt)   { score += 3.0 * w; }
+        if callee_set.contains(qt) { score += 1.0 * w; }
+        if file_set.contains(qt)   { score += 0.5 * w; }
+    }
+    score
+}
+
+/// Public entrypoint for the `semantic_search` tool.
+/// Ranks every indexed function by TF-IDF similarity to a natural-language query.
+/// Zero external dependencies — runs entirely against the bake index in memory.
+pub fn semantic_search(
+    path: Option<String>,
+    query: String,
+    limit: Option<usize>,
+    file: Option<String>,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let bake = load_bake_index(&root)?
+        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+
+    let query_tokens = tokenize(&query);
+    if query_tokens.is_empty() {
+        return Err(anyhow!("Query produced no tokens after tokenisation."));
+    }
+
+    let limit = limit.unwrap_or(10).min(50);
+    let file_filter = file.as_deref().map(str::to_lowercase);
+
+    // Build IDF table: idf(t) = ln(N / df(t) + 1) + 1
+    let n = bake.functions.len() as f32;
+    let mut doc_freq: std::collections::HashMap<String, f32> =
+        std::collections::HashMap::new();
+    for func in &bake.functions {
+        for tok in tokenize(&func.name)
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+        {
+            *doc_freq.entry(tok).or_insert(0.0) += 1.0;
+        }
+    }
+    let idf = |tok: &str| -> f32 {
+        let df = doc_freq.get(tok).copied().unwrap_or(0.0);
+        ((n + 1.0) / (df + 1.0)).ln() + 1.0
+    };
+
+    // Score functions, filter by optional file scope
+    let mut scored: Vec<(f32, &crate::lang::IndexedFunction)> = bake
+        .functions
+        .iter()
+        .filter(|f| {
+            file_filter
+                .as_deref()
+                .map_or(true, |ff| f.file.to_lowercase().contains(ff))
+        })
+        .filter_map(|f| {
+            let s = score_fn(f, &query_tokens, &idf);
+            if s > 0.0 { Some((s, f)) } else { None }
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit);
+
+    let results: Vec<SemanticMatch> = scored
+        .into_iter()
+        .map(|(score, f)| SemanticMatch {
+            name: f.name.clone(),
+            file: f.file.clone(),
+            start_line: f.start_line,
+            score,
+            parent_type: f.parent_type.clone(),
+            kind: "function",
+        })
+        .collect();
+
+    let payload = SemanticSearchPayload {
+        tool: "semantic_search",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        query,
+        results,
+    };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
 
