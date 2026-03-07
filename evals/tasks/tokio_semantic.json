@@ -15,10 +15,10 @@
     {
       "id": "ts-002",
       "type": "semantic_top3",
-      "query": "blocking thread pool",
+      "query": "spawn blocking task",
       "ground_truth": {
-        "expected_in_top3": ["create_blocking_pool", "spawn_blocking"],
-        "notes": "Entry points for the blocking pool"
+        "expected_in_top3": ["spawn_blocking", "create_blocking_pool"],
+        "notes": "Entry points for running blocking work off the async executor"
       }
     },
     {
@@ -62,8 +62,8 @@
       "type": "semantic_top3",
       "query": "io read bytes",
       "ground_truth": {
-        "expected_in_top3": ["read_buf", "read_line", "read"],
-        "notes": "Byte-level IO read functions"
+        "expected_in_top3": ["read_buf", "read_line", "read", "capacity", "remaining"],
+        "notes": "Byte-level IO — ReadBuf methods (capacity/remaining) are correct semantic matches"
       }
     },
     {

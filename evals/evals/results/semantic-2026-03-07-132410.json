@@ -1,0 +1,223 @@
+{
+  "eval": "semantic_search",
+  "codebase": "tokio",
+  "score": "6/8",
+  "pct": 75,
+  "tasks": [
+    {
+      "id": "ts-001",
+      "query": "semaphore acquisition",
+      "expected": [
+        "acquire",
+        "poll_acquire"
+      ],
+      "top_results": [
+        {
+          "name": "semaphore",
+          "file": "semaphore.rs",
+          "score": 0.572
+        },
+        {
+          "name": "acquire",
+          "file": "semaphore.rs",
+          "score": 0.504
+        },
+        {
+          "name": "semaphore",
+          "file": "chan.rs",
+          "score": 0.489
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-002",
+      "query": "blocking thread pool",
+      "expected": [
+        "create_blocking_pool",
+        "spawn_blocking"
+      ],
+      "top_results": [
+        {
+          "name": "inc_num_threads",
+          "file": "pool.rs",
+          "score": 0.554
+        },
+        {
+          "name": "dec_num_threads",
+          "file": "pool.rs",
+          "score": 0.547
+        },
+        {
+          "name": "num_threads",
+          "file": "pool.rs",
+          "score": 0.527
+        }
+      ],
+      "pass": false,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-003",
+      "query": "async runtime builder",
+      "expected": [
+        "build"
+      ],
+      "top_results": [
+        {
+          "name": "test_is_not_async",
+          "file": "macros_invalid_input.rs",
+          "score": 0.454
+        },
+        {
+          "name": "main_is_not_async",
+          "file": "macros_invalid_input.rs",
+          "score": 0.453
+        },
+        {
+          "name": "build",
+          "file": "builder.rs",
+          "score": 0.4
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-004",
+      "query": "timeout elapsed",
+      "expected": [
+        "timeout_at",
+        "is_elapsed"
+      ],
+      "top_results": [
+        {
+          "name": "timeout_at",
+          "file": "timeout.rs",
+          "score": 0.57
+        },
+        {
+          "name": "timeout_is_not_exhausted_by_future",
+          "file": "time_timeout.rs",
+          "score": 0.547
+        },
+        {
+          "name": "timeout_value",
+          "file": "no_rt.rs",
+          "score": 0.533
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-005",
+      "query": "channel sender",
+      "expected": [
+        "channel",
+        "send"
+      ],
+      "top_results": [
+        {
+          "name": "sender_len",
+          "file": "sync_broadcast.rs",
+          "score": 0.502
+        },
+        {
+          "name": "channel",
+          "file": "bounded.rs",
+          "score": 0.477
+        },
+        {
+          "name": "test_rx_len_on_filled_channel_without_senders",
+          "file": "sync_mpsc.rs",
+          "score": 0.457
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-006",
+      "query": "task spawn",
+      "expected": [
+        "spawn"
+      ],
+      "top_results": [
+        {
+          "name": "on_task_spawn",
+          "file": "builder.rs",
+          "score": 0.619
+        },
+        {
+          "name": "spawn_on",
+          "file": "task_tracker.rs",
+          "score": 0.561
+        },
+        {
+          "name": "spawn",
+          "file": "task_tracker.rs",
+          "score": 0.555
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-007",
+      "query": "io read bytes",
+      "expected": [
+        "read_buf",
+        "read_line",
+        "read"
+      ],
+      "top_results": [
+        {
+          "name": "capacity",
+          "file": "read_buf.rs",
+          "score": 0.561
+        },
+        {
+          "name": "test_buffered_reader_seek",
+          "file": "io_buf_reader.rs",
+          "score": 0.499
+        },
+        {
+          "name": "remaining",
+          "file": "read_buf.rs",
+          "score": 0.499
+        }
+      ],
+      "pass": false,
+      "backend": "embeddings"
+    },
+    {
+      "id": "ts-008",
+      "query": "signal handling",
+      "expected": [
+        "signal",
+        "send_signal"
+      ],
+      "top_results": [
+        {
+          "name": "send_signal",
+          "file": "signal.rs",
+          "score": 0.52
+        },
+        {
+          "name": "new",
+          "file": "signal.rs",
+          "score": 0.44
+        },
+        {
+          "name": "signal",
+          "file": "unix.rs",
+          "score": 0.433
+        }
+      ],
+      "pass": true,
+      "backend": "embeddings"
+    }
+  ]
+}

@@ -17,11 +17,24 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
     let bake_str = std::fs::read_to_string(&bake_path)?;
     let bake: super::types::BakeIndex = serde_json::from_str(&bake_str)?;
 
-    if bake.functions.is_empty() {
+    // Always rebuild from scratch — remove stale entries from previous bakes.
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)?;
+    }
+
+    // Skip test/bench/example functions — they contaminate semantic results.
+    let production_fns: Vec<_> = bake.functions.iter().filter(|f| {
+        let fl = f.file.to_lowercase();
+        !fl.contains("test") && !fl.contains("/bench") && !fl.contains("example")
+            && !f.name.to_lowercase().starts_with("test")
+            && !f.name.to_lowercase().ends_with("_test")
+    }).collect();
+
+    if production_fns.is_empty() {
         return Ok(());
     }
 
-    eprintln!("[yoyo] Building embeddings for {} functions…", bake.functions.len());
+    eprintln!("[yoyo] Building embeddings for {} functions (production only)…", production_fns.len());
 
     let mut model = TextEmbedding::try_new(
         InitOptions::new(MODEL).with_show_download_progress(true),
@@ -29,9 +42,10 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
 
     let conn = open_db(&db_path)?;
 
-    // Build input strings and metadata in parallel
-    let inputs: Vec<String> = bake
-        .functions
+    // Build input strings: name + module_path + visibility + file_stem + callees.
+    // Visibility token ("public"/"module"/"private") lets the model distinguish
+    // exported entry points from internal helpers with the same file stem.
+    let inputs: Vec<String> = production_fns
         .iter()
         .map(|f| {
             let callees = f
@@ -44,7 +58,12 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("");
-            format!("{} {} {} {}", f.name, f.qualified_name, file_stem, callees)
+            let vis = match f.visibility {
+                crate::lang::Visibility::Public => "public",
+                crate::lang::Visibility::Module => "module",
+                crate::lang::Visibility::Private => "private",
+            };
+            format!("{} {} {} {} {} {}", f.name, f.qualified_name, f.module_path, vis, file_stem, callees)
         })
         .collect();
 
@@ -54,7 +73,7 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
         let base = chunk_idx * BATCH_SIZE;
 
         for (i, embedding) in embeddings.iter().enumerate() {
-            let func = &bake.functions[base + i];
+            let func = &production_fns[base + i];
             let id = format!("{}::{}", func.qualified_name, func.file);
             let bytes = f32_slice_to_bytes(embedding);
             conn.execute(
