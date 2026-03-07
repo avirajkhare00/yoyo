@@ -1,0 +1,79 @@
+{
+  "codebase": "tokio",
+  "codebase_path": "/Users/avirajkhare/ttt/tokio/tokio-master",
+  "description": "Semantic search eval — validates embedding-backed search returns the right function in top-N results",
+  "tasks": [
+    {
+      "id": "ts-001",
+      "type": "semantic_top3",
+      "query": "semaphore acquisition",
+      "ground_truth": {
+        "expected_in_top3": ["acquire", "poll_acquire"],
+        "notes": "Core semaphore acquire path"
+      }
+    },
+    {
+      "id": "ts-002",
+      "type": "semantic_top3",
+      "query": "blocking thread pool",
+      "ground_truth": {
+        "expected_in_top3": ["create_blocking_pool", "spawn_blocking"],
+        "notes": "Entry points for the blocking pool"
+      }
+    },
+    {
+      "id": "ts-003",
+      "type": "semantic_top3",
+      "query": "async runtime builder",
+      "ground_truth": {
+        "expected_in_top3": ["build"],
+        "notes": "Runtime builder entrypoint in builder.rs"
+      }
+    },
+    {
+      "id": "ts-004",
+      "type": "semantic_top3",
+      "query": "timeout elapsed",
+      "ground_truth": {
+        "expected_in_top3": ["timeout_at", "is_elapsed"],
+        "notes": "Timeout / deadline functions"
+      }
+    },
+    {
+      "id": "ts-005",
+      "type": "semantic_top3",
+      "query": "channel sender",
+      "ground_truth": {
+        "expected_in_top3": ["channel", "send"],
+        "notes": "Channel construction and send path"
+      }
+    },
+    {
+      "id": "ts-006",
+      "type": "semantic_top3",
+      "query": "task spawn",
+      "ground_truth": {
+        "expected_in_top3": ["spawn"],
+        "notes": "Core task spawn function"
+      }
+    },
+    {
+      "id": "ts-007",
+      "type": "semantic_top3",
+      "query": "io read bytes",
+      "ground_truth": {
+        "expected_in_top3": ["read_buf", "read_line", "read"],
+        "notes": "Byte-level IO read functions"
+      }
+    },
+    {
+      "id": "ts-008",
+      "type": "semantic_top3",
+      "query": "signal handling",
+      "ground_truth": {
+        "expected_in_top3": ["signal", "send_signal"],
+        "notes": "Unix signal setup and delivery"
+      }
+    }
+  ]
+}
