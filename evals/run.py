@@ -21,6 +21,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import textwrap
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +32,17 @@ YOYO = Path.home() / ".local/bin/yoyo"
 MODEL_AGENT = "claude-haiku-4-5-20251001"
 MODEL_JUDGE = "claude-haiku-4-5-20251001"
 
-client = anthropic.Anthropic()
+client = anthropic.Anthropic(max_retries=5)
+
+def api_call(**kwargs):
+    for attempt in range(8):
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic._exceptions.OverloadedError:
+            wait = 10 * (2 ** attempt)
+            print(f"  [overloaded, retry {attempt+1}/8 in {wait}s]", flush=True)
+            time.sleep(wait)
+    return client.messages.create(**kwargs)
 
 
 # ── Tool runners ──────────────────────────────────────────────────────────────
@@ -181,7 +192,7 @@ information to answer, say "I cannot determine this from the available output" �
 """
 
 def agent_answer(question: str, tool_output: str) -> str:
-    resp = client.messages.create(
+    resp = api_call(
         model=MODEL_AGENT,
         max_tokens=512,
         system=AGENT_SYSTEM,
@@ -235,7 +246,7 @@ def judge(question: str, ground_truth: dict, answer: str) -> dict:
 
         Score the answer.
     """)
-    resp = client.messages.create(
+    resp = api_call(
         model=MODEL_JUDGE,
         max_tokens=1024,
         system=JUDGE_SYSTEM,

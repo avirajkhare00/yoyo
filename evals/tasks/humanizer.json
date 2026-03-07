@@ -1,49 +1,52 @@
 {
-  "repo": "Humanizr/Humanizer",
-  "language": "csharp",
-  "path": "/tmp/humanizer",
+  "codebase": "Humanizr/Humanizer",
+  "codebase_path": "/tmp/humanizer",
+  "pinned_commit": "HEAD",
   "tasks": [
     {
       "id": "hz-001",
       "type": "definition_location",
-      "question": "In which file and at what line does the `PrecisionHumanize` method start?",
-      "ground_truth": "src/Humanizer/DateTimeHumanizeStrategy/DateTimeHumanizeAlgorithms.cs, line 43"
+      "question": "In which file and at what line does `PrecisionHumanize` start in Humanizer?",
+      "ground_truth": { "file": "src/Humanizer/DateTimeHumanizeStrategy/DateTimeHumanizeAlgorithms.cs", "line": 43 }
     },
     {
       "id": "hz-002",
       "type": "complexity_rank",
-      "question": "Which method in Humanizer has the highest cyclomatic complexity? Which file is it in?",
-      "ground_truth": "Convert in src/Humanizer/Localisation/NumberToWords/CroatianNumberToWordsConverter.cs (complexity 29)"
+      "question": "Which method in Humanizer has the highest cyclomatic complexity, and in which file?",
+      "ground_truth": { "function": "Convert", "file": "src/Humanizer/Localisation/NumberToWords/CroatianNumberToWordsConverter.cs", "complexity": 29 }
     },
     {
       "id": "hz-003",
       "type": "caller_count",
       "question": "How many distinct functions call a function named `Convert` in the Humanizer codebase?",
-      "ground_truth": "154"
+      "ground_truth": { "caller_count": 154 }
     },
     {
       "id": "hz-004",
       "type": "definition_location",
       "question": "At what line does `ConvertToOrdinal` start in CatalanNumberToWordsConverter.cs?",
-      "ground_truth": "line 343"
+      "file_hint": "src/Humanizer/Localisation/NumberToWords/CatalanNumberToWordsConverter.cs",
+      "ground_truth": { "line": 343 }
     },
     {
       "id": "hz-005",
       "type": "complexity_rank",
-      "question": "What is the complexity score of `PrecisionHumanize`?",
-      "ground_truth": "17"
+      "question": "What is the complexity score of `PrecisionHumanize` in DateTimeHumanizeAlgorithms.cs?",
+      "file_hint": "src/Humanizer/DateTimeHumanizeStrategy/DateTimeHumanizeAlgorithms.cs",
+      "ground_truth": { "complexity": 17 }
     },
     {
       "id": "hz-006",
       "type": "definition_location",
-      "question": "In which file is `ConvertImpl` defined in the Humanizer codebase?",
-      "ground_truth": "src/Humanizer/Localisation/NumberToWords/ArmenianNumberToWordsConverter.cs"
+      "question": "In which file is `ConvertImpl` defined in Humanizer?",
+      "ground_truth": { "file": "src/Humanizer/Localisation/NumberToWords/ArmenianNumberToWordsConverter.cs" }
     },
     {
       "id": "hz-007",
       "type": "complexity_rank",
-      "question": "Which of these two has higher complexity: `Convert` in ArabicNumberToWordsConverter.cs or `Convert` in NorwegianBokmalNumberToWordsConverter.cs?",
-      "ground_truth": "They are equal — both have complexity 24"
+      "question": "What is the complexity score of `Convert` in ArabicNumberToWordsConverter.cs?",
+      "file_hint": "src/Humanizer/Localisation/NumberToWords/ArabicNumberToWordsConverter.cs",
+      "ground_truth": { "complexity": 24 }
     }
   ]
 }
