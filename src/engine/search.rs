@@ -352,8 +352,8 @@ fn score_fn<F: Fn(&str) -> f32>(
 }
 
 /// Public entrypoint for the `semantic_search` tool.
-/// Ranks every indexed function by TF-IDF similarity to a natural-language query.
-/// Zero external dependencies — runs entirely against the bake index in memory.
+/// Uses embedding-backed cosine similarity when `bakes/latest/embeddings.db` exists
+/// (built by `bake` via fastembed + SQLite). Falls back to TF-IDF otherwise.
 pub fn semantic_search(
     path: Option<String>,
     query: String,
@@ -361,6 +361,39 @@ pub fn semantic_search(
     file: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
+    let limit = limit.unwrap_or(10).min(50);
+    let file_filter = file.as_deref().map(str::to_lowercase);
+    let bake_dir = root.join("bakes").join("latest");
+
+    // Try vector search first
+    if let Ok(Some(matches)) = crate::engine::embed::vector_search(
+        &bake_dir,
+        &query,
+        limit,
+        file_filter.as_deref(),
+    ) {
+        let results: Vec<SemanticMatch> = matches
+            .into_iter()
+            .map(|m| SemanticMatch {
+                name: m.name,
+                file: m.file,
+                start_line: m.start_line,
+                score: m.score,
+                parent_type: m.parent_type,
+                kind: "function",
+            })
+            .collect();
+        let payload = SemanticSearchPayload {
+            tool: "semantic_search",
+            version: env!("CARGO_PKG_VERSION"),
+            project_root: root,
+            query,
+            results,
+        };
+        return Ok(serde_json::to_string_pretty(&payload)?);
+    }
+
+    // Fallback: TF-IDF
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
 
@@ -369,10 +402,6 @@ pub fn semantic_search(
         return Err(anyhow!("Query produced no tokens after tokenisation."));
     }
 
-    let limit = limit.unwrap_or(10).min(50);
-    let file_filter = file.as_deref().map(str::to_lowercase);
-
-    // Build IDF table: idf(t) = ln(N / df(t) + 1) + 1
     let n = bake.functions.len() as f32;
     let mut doc_freq: std::collections::HashMap<String, f32> =
         std::collections::HashMap::new();
@@ -389,7 +418,6 @@ pub fn semantic_search(
         ((n + 1.0) / (df + 1.0)).ln() + 1.0
     };
 
-    // Score functions, filter by optional file scope
     let mut scored: Vec<(f32, &crate::lang::IndexedFunction)> = bake
         .functions
         .iter()

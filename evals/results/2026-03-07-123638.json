@@ -1,0 +1,1036 @@
+{
+  "run_id": "2026-03-07-123638",
+  "codebase": "ripgrep",
+  "yoyo_version": "0.19.1",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 20,
+  "totals": {
+    "cc": {
+      "correct": 18,
+      "total": 38
+    },
+    "yoyo": {
+      "correct": 36,
+      "total": 38
+    }
+  },
+  "tasks": [
+    {
+      "id": "rg-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, there are two occurrences of `fn search_path` in `/tmp/ripgrep/crates/core/search.rs`:\n\n1. Line 342: `fn search_path(&mut self, path: &Path) -> io::Result<SearchResult>` - This appears to be a method definition (likely on a struct/impl block)\n2. Line 380: `fn search_path<M: Matcher, W: WriteColor>(` - This appears to be a standalone function definition with generic parameters\n\nThe primary definition (the standalone function, not a method) is at **line 380**.",
+        "score": {
+          "scores": {
+            "primary_definition_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified line 380 as primary definition of search_path"
+            },
+            "reasoning_quality": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent properly distinguished between method and standalone function definitions"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified line 380 as the primary definition of search_path with sound reasoning about the distinction between implementations."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the primary definition of `search_path` in `crates/core/search.rs` is located at **line 380** (ending at line 412).\n\nThis is indicated by the `\"primary\": true` field in the first match result.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer states line 380, matching ground truth exactly"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies crates/core/search.rs as the file"
+            },
+            "primary_definition_identification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies this as primary definition using tool evidence"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified line 380 in crates/core/search.rs as the primary definition location with proper justification."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, there are two `search_path` functions in `/tmp/ripgrep/crates/core/search.rs`:\n\n1. **Line 342**: `fn search_path(&mut self, path: &Path)` - This appears to be a **private method** (no `pub` keyword shown), likely a method on a struct or impl block.\n\n2. **Line 380**: `fn search_path<M: Matcher, W: WriteColor>` - This appears to be a **private, module-level function** (no `pub` keyword shown).\n\nBoth functions are declared with `fn` rather than `pub fn`, making them **private**.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified search_path functions are private (no pub keyword)"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly determined that search_path functions are private based on absence of pub keyword."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `search_path` function in `crates/core/search.rs` is **private**.\n\nBoth occurrences of `search_path` in the file show `\"visibility\": \"private\"`. One is a module-level private function (lines 380-412, marked as `\"primary\": true`), and the other is a private method on the `SearchWorker<W>` type (lines 342-351, marked as `\"primary\": false`).",
+        "score": {
+          "scores": {
+            "search_path_visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies search_path as private, matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified that search_path is private with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep results show two `search_path` functions in `/tmp/ripgrep/crates/core/search.rs` (one at line 342 and one at line 380), but they don't include the module declaration information needed to determine the full module path. To answer this question, I would need to see the file structure or module declarations in the search.rs file.",
+        "score": {
+          "scores": {
+            "module_path_identification": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent declined to answer despite sufficient information in file path"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to determine module path when it could be inferred from file location crates/core/search.rs."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `search_path` in `crates/core/search.rs` belongs to the module:\n\n**`crates::core`**\n\nThis is shown in the `module_path` field for both occurrences of `search_path` found in the search results.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies module path as crates::core"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the full module path as crates::core with appropriate confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-004",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output only shows the function signatures at lines 342 and 380 in `/tmp/ripgrep/crates/core/search.rs`, but it doesn't include the function bodies or any information about a `calls` array within these functions. To answer your question, I would need to see the actual implementation of the `search_path` function(s).",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite having access to examine the code file"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent declined to provide the required count, claiming insufficient information despite available code access."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the `calls` array for the primary `search_path` match in `crates/core/search.rs` has **4** entries.\n\nThe output explicitly states: `calls array length: 4`",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer explicitly states 4 entries, matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the calls array has 4 entries in search_path."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-005",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the tool output, here are the distinct function names that directly call `search_path` (excluding self-recursion):\n\n1. **SearchWorker::search** (in `/tmp/ripgrep/crates/core/search.rs:265` and `:331`)\n2. **SearchWorker::search_path** (in `/tmp/ripgrep/crates/core/search.rs:347` and `:349`) - calls the module-level `search_path` function\n3. **search_path** (in `/tmp/ripgrep/crates/core/search.rs:389`, `:397`, `:405`) - calls `searcher.search_path` method\n4. **main** (in `/tmp/ripgrep/crates/grep/examples/simplegrep.rs:58`) - calls `searcher.search_path`\n\n**Count: 4 distinct function names**\n\nNote: The function at line 643 in `searcher/mod.rs` is the definition of the `search_path` method (not a caller), and line 664 is a comment. Lines 360 and 380 are also comments/documentation, not callers.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent claims 4 callers; ground truth is 2"
+            },
+            "caller_names": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "hallucinated",
+              "note": "Agent lists SearchWorker::search, SearchWorker::search_path, search_path, main. Ground truth lists search, search_decompress"
+            },
+            "completeness": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Missing search_decompress; includes incorrect callers not in ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 3,
+            "summary": "Agent incorrectly identified 4 callers instead of 2, with wrong names and missing search_decompress."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output for `search_path`, the distinct function names that directly call `search_path` (excluding self-recursion) are:\n\n1. `search`\n2. `search_decompress`\n\n**Count: 2 distinct non-self callers**",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Count of 2 matches ground truth exactly"
+            },
+            "caller_names": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Both 'search' and 'search_decompress' match ground truth"
+            },
+            "exclusion_of_self_recursion": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent explicitly noted exclusion of self-recursion"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified both distinct callers of search_path with accurate count and explicit self-recursion exclusion."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-006",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. \n\nThe tool output indicates that no native code analysis tool is available, and manual analysis of all files in the ripgrep codebase would be required to calculate complexity scores for each function. To answer this question, I would need either:\n\n1. Output from a static analysis tool (like `radon`, `lizard`, or similar) that calculates cyclomatic complexity\n2. Pre-computed complexity metrics for the ripgrep project\n3. Access to search results showing function definitions with complexity annotations\n\nWithout this data, I cannot reliably identify which function has the highest complexity score.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer instead of providing the correct function name"
+            },
+            "file_path": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer instead of providing the correct file path"
+            },
+            "complexity_score": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer instead of providing the correct score"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 3,
+            "summary": "Agent refused to answer all three dimensions despite ground truth being available."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score is:\n\n**Function name:** `from_low_args`\n**File:** `crates/core/flags/hiargs.rs`\n**Complexity score:** 493\n\nHowever, I should note that this is only based on the single result shown in the tool output. To definitively state this is the highest complexity score across the entire ripgrep codebase, I would need to see a complete analysis of all functions.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'from_low_args'"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'crates/core/flags/hiargs.rs'"
+            },
+            "complexity_score": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly stated score of 493"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "All three key facts (function name, file path, complexity score) are correct and match ground truth exactly."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-007",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the tool output, `from_low_args` is defined in multiple locations in ripgrep:\n\n1. **File**: `/tmp/ripgrep/crates/core/flags/hiargs.rs`\n   - **Line 113**: `pub(crate) fn from_low_args(mut low: LowArgs) -> anyhow::Result<HiArgs>`\n   - **Line 980**: `fn from_low_args(...)`\n   - **Line 1071**: `fn from_low_args(...)`\n   - **Line 1159**: `fn from_low_args(_: &State, low: &LowArgs) -> BinaryDetection`\n\nAll definitions are in the same file: **`/tmp/ripgrep/crates/core/flags/hiargs.rs`**, but at different line numbers (113, 980, 1071, and 1159), likely for different types or trait implementations.",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies hiargs.rs as the file"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies line 113 as the primary definition"
+            },
+            "answer_completeness": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "hallucinated",
+              "note": "Question asks for THE definition; answer conflates multiple overloads/implementations"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 3,
+            "summary": "Core facts correct but misleading presentation of multiple unrelated implementations as equivalent definitions."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `from_low_args` is defined in the file **`crates/core/flags/hiargs.rs`** at **line 113** (for the primary implementation on the `HiArgs` type).\n\nThere are also three additional `from_low_args` implementations for other types in the same file:\n- `Patterns::from_low_args` at line 980\n- `Paths::from_low_args` at line 1071\n- `BinaryDetection::from_low_args` at line 1159",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies crates/core/flags/hiargs.rs"
+            },
+            "line": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies line 113 as primary definition"
+            },
+            "completeness": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Goes beyond ground truth by noting additional implementations"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Answer correctly identifies the primary location and provides additional context about related implementations."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-008",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, `from_low_args` has different visibility levels in ripgrep:\n\n1. **Module-level (pub(crate))**: Line 113 in `/tmp/ripgrep/crates/core/flags/hiargs.rs` - `pub(crate) fn from_low_args`\n\n2. **Private**: Lines 980, 1071, and 1159 in the same file appear to be private implementations (likely trait implementations or methods without explicit visibility modifiers, which default to private).\n\nSo `from_low_args` is primarily **module-level (pub(crate))** for the main entry point, with additional private implementations elsewhere in the file.",
+        "score": {
+          "scores": {
+            "visibility_classification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified pub(crate) as module-level visibility"
+            },
+            "primary_visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Accurately identified main function as pub(crate) at line 113"
+            },
+            "additional_occurrences": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Reasonably inferred private implementations exist; specific line verification unavailable"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified from_low_args as module-level (pub(crate)) visibility, matching ground truth exactly."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `from_low_args` has **mixed visibility** in ripgrep:\n\n1. **Primary function (lines 113-322)**: `visibility: \"module\"` - This is the main `from_low_args` function at module level with module-level visibility (pub(crate) equivalent).\n\n2. **Three additional functions** (lines 980-1175): `visibility: \"private\"` - These are private `from_low_args` implementations that are methods on the `Patterns`, `Paths`, and `BinaryDetection` types respectively.\n\nSo the answer depends on which `from_low_args` you're referring to:\n- The primary module-level function is **module-level** (pub(crate))\n- The other three are **private** (likely impl methods on their respective types)",
+        "score": {
+          "scores": {
+            "visibility_classification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies primary function as module-level visibility"
+            },
+            "primary_function_accuracy": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly states main from_low_args has module visibility (pub(crate))"
+            },
+            "answer_completeness": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Ground truth asks for single answer; agent provides mixed/multiple answers unnecessarily"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 3,
+            "summary": "Agent correctly identifies the primary module-level visibility but overcomplicates by discussing multiple functions when the ground truth indicates a single answer."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-009",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep results show the line numbers where `from_low_args` functions are defined, but they don't contain the actual function implementations or any information about a `calls` array. To answer your question, I would need to see the complete source code of the primary `from_low_args` function (the one at line 113 in hiargs.rs).",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide the answer, claiming insufficient information available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer rather than providing the correct count of 14 entries."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the `calls` array for the primary `from_low_args` match in `crates/core/flags/hiargs.rs` contains **14** entries.\n\nThis is confirmed by the line `calls array length: 14` in the output.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 14 entries, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent provided the correct count of 14 entries with high confidence and appropriate citation."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-010",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output provided, `generate_work` is defined in:\n\n**File:** `/tmp/ripgrep/crates/ignore/src/walk.rs`\n**Line:** 1731",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            },
+            "line": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line number matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both file and line number for generate_work definition."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `generate_work` is defined in:\n\n**File:** `crates/ignore/src/walk.rs`\n**Lines:** 1731-1801",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path provided"
+            },
+            "line": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct starting line 1731 provided"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number where generate_work is defined."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-011",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, I can see that `generate_work` is defined at line 1731 in `/tmp/ripgrep/crates/ignore/src/walk.rs`. However, the grep output only shows the function signature line itself (`fn generate_work(`), which is not enough to determine its visibility level.\n\nTo answer whether it's public, module-level, or private, I would need to see the complete function signature including any visibility modifiers (like `pub`, `pub(crate)`, etc.) that precede the `fn` keyword.\n\n**I cannot determine this from the available output.**",
+        "score": {
+          "scores": {
+            "visibility_determination": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to determine visibility despite sufficient information being available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to determine the visibility level when the correct answer (private) was determinable from the code context."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `generate_work` is **private** in ripgrep.\n\nThe symbol information shows `\"visibility\": \"private\"`, and it is a method within the `Worker<'s>` type (indicated by `\"parent_type\": \"Worker<'s>\"`), meaning it's a private method rather than a module-level function.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies generate_work as private, matching ground truth exactly."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified generate_work as private in ripgrep with appropriate supporting evidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-012",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output only shows the location and line number of the `fn generate_work` function definition, but does not provide the actual code content that would allow me to see or count the entries in a `calls` array. To answer this question, I would need to see the actual implementation of the `generate_work` function.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to determine the specific count despite ground truth being 11"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent declined to answer with a specific count, stating insufficient information was available."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `calls` array for the primary `generate_work` match in `crates/ignore/src/walk.rs` has **10** entries.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent stated 10 entries, ground truth is 11 entries"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent provided incorrect count of calls array entries (10 vs. 11)."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-013",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, there are multiple `build` functions in the walk module. Here are the locations:\n\n1. `/tmp/ripgrep/crates/ignore/src/walk.rs:565` - `pub fn build(&self) -> Walk`\n2. `/tmp/ripgrep/crates/ignore/src/walk.rs:625` - `pub fn build_parallel(&self) -> WalkParallel`\n3. `/tmp/ripgrep/crates/ignore/src/walk.rs:1258` - `fn build(&mut self) -> Box<dyn ParallelVisitor + 's>` (trait method)\n4. `/tmp/ripgrep/crates/ignore/src/walk.rs:1264` - `fn build(&mut self) -> Box<dyn ParallelVisitor + 's>` (implementation)\n5. `/tmp/ripgrep/crates/ignore/src/walk.rs:1287` - `fn build(&mut self) -> Box<dyn ParallelVisitor + 's>` (implementation)\n\nThe main public `build` method is at `/tmp/ripgrep/crates/ignore/src/walk.rs:565`.",
+        "score": {
+          "scores": {
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified crates/ignore/src/walk.rs"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified line 565"
+            },
+            "primary_build_identification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified pub fn build(&self) as main method"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified the file and line number for the primary build function in the walk module."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `build` method in the walk module is defined in:\n\n**File:** `crates/ignore/src/walk.rs`\n**Line:** 565-618\n\nThis is the primary match for the `build` method, which belongs to the `WalkBuilder` type.",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            },
+            "line": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line 565 matches ground truth; range provided is acceptable"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number where `build` is defined in ripgrep's walk module."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-014",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, there are multiple `build` functions in `crates/ignore/src/walk.rs`:\n\n1. Line 565: `pub fn build(&self) -> Walk;` - **public**\n2. Line 625: `pub fn build_parallel(&self) -> WalkParallel;` - **public**\n3. Line 1258: `fn build(&mut self) -> Box<dyn ParallelVisitor + 's>;` - **private** (trait method)\n4. Line 1264: `fn build(&mut self) -> Box<dyn ParallelVisitor + 's> {` - **private** (trait implementation)\n5. Line 1287: `fn build(&mut self) -> Box<dyn ParallelVisitor + 's> {` - **private** (trait implementation)\n\nThe main `build` functions at lines 565 and 625 are **public**, while the trait-related `build` functions are **private**.",
+        "score": {
+          "scores": {
+            "visibility_of_build_function": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified public `build` function at line 565 as the main one"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the main `build` function as public, though provided additional context about other `build` functions in the file."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `build` function in `crates/ignore/src/walk.rs` (at lines 565-618) is **public**.\n\nThis can be seen from the match result which shows:\n- `\"visibility\": \"public\"`\n- `\"parent_type\": \"WalkBuilder\"`\n\nThis indicates it is a public method of the `WalkBuilder` type.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified the function as public, matching ground truth."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the build function as public with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-015",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output shows the locations of `fn build` functions in the file, but it does not include the function implementations or details about any `calls` array that might exist within these functions. To answer your question, I would need to see the actual code content of the `build` function you're referring to, including the initialization and size of any `calls` array.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, claimed insufficient information"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer despite ground truth showing the answer is determinable (9 entries)."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "The `calls` array for the primary `build` match in `crates/ignore/src/walk.rs` has **9** entries.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent states exactly 9 entries, matching ground truth precisely"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 9 entries in the calls array with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-016",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, `is_match` is defined in multiple locations in `/tmp/ripgrep/crates/globset/src/lib.rs`:\n\n- **Line 342**: Public method `is_match<P: AsRef<Path>>(&self, path: P) -> bool`\n- **Line 665**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 708**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 736**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 770**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 800**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 832**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 860**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n- **Line 915**: Private method `is_match(&self, candidate: &Candidate<'_>) -> bool`\n\nThe primary public definition appears to be at **line 342**, while the other definitions (lines 665-915) are likely trait implementations for different types.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line 860 is correctly identified among multiple definitions"
+            },
+            "completeness": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer lists all is_match definitions including line 860"
+            },
+            "primary_definition_identification": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Ground truth specifies line 860, but answer claims line 342 is primary"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 3,
+            "summary": "Line 860 is correctly identified but mischaracterized as secondary rather than the target definition."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, there are multiple definitions of `is_match` in `crates/globset/src/lib.rs`. Here are all the line numbers:\n\n1. **Line 342-344** - `is_match` method on `GlobSet` (public)\n2. **Line 665-676** - `is_match` method on `GlobSetMatchStrategy` (private)\n3. **Line 708-710** - `is_match` method on `LiteralStrategy` (private)\n4. **Line 736-741** - `is_match` method on `BasenameLiteralStrategy` (private)\n5. **Line 770-775** - `is_match` method on `ExtensionStrategy` (private)\n6. **Line 800-808** - `is_match` method on `PrefixStrategy` (private)\n7. **Line 832-840** - `is_match` method on `SuffixStrategy` (private)\n8. **Line 860-875** - `is_match` method on `RequiredExtensionStrategy` (private)\n9. **Line 915-917** - `is_match` method on `RegexSetStrategy` (private)\n\nThe primary definition (marked as `\"primary\": true`) is at **line 860-875** in the `RequiredExtensionStrategy` implementation.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line 860 correctly identified as primary `is_match` definition"
+            },
+            "completeness": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Comprehensively lists all 9 `is_match` definitions with correct line ranges"
+            },
+            "accuracy_of_details": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Line numbers and struct names appear accurate; verification limited without source"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Answer correctly identifies line 860 as the primary `is_match` definition and provides comprehensive list of all implementations."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-017",
+      "type": "module_path",
+      "cc": {
+        "answer": "Based on the grep output, `generate_work` belongs to the **`ignore`** crate's **`walk`** module in ripgrep.\n\nThe full path is: `crates/ignore/src/walk.rs`",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent claims walk.rs module; ground truth specifies crates::ignore::src only"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent provided overly specific module path (walk.rs) not supported by ground truth."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `generate_work` belongs to the **`crates::ignore::src`** module in ripgrep.\n\nMore specifically, it is a private function located in the file `crates/ignore/src/walk.rs` and is associated with the `Worker<'s>` type (as indicated by the `parent_type` field).",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified module as crates::ignore::src"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately identified the module path and provided additional correct context about the function."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-018",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require reading all files and manual analysis. Without access to the actual ripgrep codebase and the ability to run the health tool on it, I cannot provide the exact count of items in the `dead_code` array.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide count, claiming lack of access to tool/codebase"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer, failing to provide the required exact count of 84 items."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array contains **84 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer states exactly 84 items, matching ground truth."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the exact count of 84 items in the dead_code array."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-019",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. To identify the top 2 most complex (\"god\") functions in ripgrep, I would need:\n\n1. Access to ripgrep's source code files\n2. Metrics for complexity (cyclomatic complexity, lines of code, number of parameters, nesting depth, etc.)\n3. A way to analyze and rank functions by these metrics\n\nSince no code search tool output was provided, I cannot give you the specific function names and files. To find this information, you would need to:\n\n- Analyze the ripgrep repository (https://github.com/BurntSushi/ripgrep) directly\n- Use code complexity analysis tools like `radon`, `lizard`, or similar\n- Manually review the largest/most complex functions in the codebase\n\nIf you have access to the ripgrep source code, I'd be happy to help analyze specific files you share.",
+        "score": {
+          "scores": {
+            "top_2_god_functions_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming insufficient data. Ground truth shows specific functions exist."
+            },
+            "from_low_args_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not identify this function as one of the top 2."
+            },
+            "generate_work_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not identify this function as one of the top 2."
+            },
+            "correct_files_provided": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent provided no file locations for any functions."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 4,
+            "summary": "Agent refused to answer the question despite verifiable ground truth existing, claiming insufficient tools and data."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top 2 god functions (most complex) in ripgrep are:\n\n1. **from_low_args** - located in `crates/core/flags/hiargs.rs` (complexity score: 493)\n2. **generate_work** - located in `crates/ignore/src/walk.rs` (complexity score: 336)",
+        "score": {
+          "scores": {
+            "top_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "from_low_args correctly identified as first function"
+            },
+            "top_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "crates/core/flags/hiargs.rs correctly identified"
+            },
+            "second_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "generate_work correctly identified as second function"
+            },
+            "second_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "crates/ignore/src/walk.rs correctly identified"
+            }
+          },
+          "overall": {
+            "correct_count": 4,
+            "total": 4,
+            "summary": "Agent correctly identified both top god functions with accurate file paths matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "rg-020",
+      "type": "definition_location",
+      "cc": {
+        "answer": "According to the grep output, `search` is defined at line 245 in `/tmp/ripgrep/crates/core/search.rs`.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified line 245 as the definition location"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified crates/core/search.rs as the file"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent accurately identified both the correct file and line number where search is defined."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `search` function is defined in `crates/core/search.rs` at **line 245** (spanning to line 267).",
+        "score": {
+          "scores": {
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified file as crates/core/search.rs"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified line 245 as definition start"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Answer accurately provides the correct file and line number where search is defined."
+          }
+        }
+      }
+    }
+  ]
+}

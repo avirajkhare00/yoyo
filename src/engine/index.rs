@@ -433,6 +433,11 @@ pub fn bake(path: Option<String>) -> Result<String> {
     fs::write(&bake_path, &json)
         .map_err(|e| anyhow::anyhow!("Failed to write bake index to {}: {}", bake_path.display(), e))?;
 
+    // Build embeddings DB for semantic_search (best-effort — never fails the bake)
+    if let Err(e) = crate::engine::embed::build_embeddings(&bakes_dir) {
+        eprintln!("[yoyo] Embeddings skipped: {e}");
+    }
+
     let summary = BakeSummary {
         tool: "bake",
         version: env!("CARGO_PKG_VERSION"),
