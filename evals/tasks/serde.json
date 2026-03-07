@@ -1,0 +1,79 @@
+{
+  "codebase": "serde",
+  "codebase_path": "/Users/avirajkhare/ttt/serde",
+  "pinned_commit": "main",
+  "tasks": [
+    {
+      "id": "sr-001",
+      "type": "definition_location",
+      "question": "Where is `from_ast` defined in `serde_derive_internals/src/attr.rs`? Give the line number.",
+      "file_hint": "serde_derive_internals/src/attr.rs",
+      "ground_truth": {
+        "file": "serde_derive_internals/src/attr.rs",
+        "line": 237
+      }
+    },
+    {
+      "id": "sr-002",
+      "type": "visibility",
+      "question": "Is `from_ast` in `serde_derive_internals/src/attr.rs` public, module-level, or private?",
+      "file_hint": "serde_derive_internals/src/attr.rs",
+      "ground_truth": {
+        "visibility": "public"
+      }
+    },
+    {
+      "id": "sr-003",
+      "type": "module_path",
+      "question": "What module does `from_ast` in `serde_derive_internals/src/attr.rs` belong to?",
+      "file_hint": "serde_derive_internals/src/attr.rs",
+      "ground_truth": {
+        "module_path": "serde_derive_internals::src"
+      }
+    },
+    {
+      "id": "sr-004",
+      "type": "fan_out",
+      "question": "For `from_ast` in `serde_derive_internals/src/attr.rs`: how many entries are in its `calls` array?",
+      "file_hint": "serde_derive_internals/src/attr.rs",
+      "ground_truth": {
+        "calls_count": 35
+      }
+    },
+    {
+      "id": "sr-005",
+      "type": "caller_count",
+      "question": "How many distinct functions call `from_ast` in `serde_derive_internals/src/attr.rs` (excluding self-recursion)?",
+      "ground_truth": {
+        "caller_count": 12
+      }
+    },
+    {
+      "id": "sr-006",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in serde? Give the function name and file.",
+      "ground_truth": {
+        "name": "from_ast",
+        "file": "serde_derive_internals/src/attr.rs"
+      }
+    },
+    {
+      "id": "sr-007",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the serde codebase?",
+      "ground_truth": {
+        "dead_code_count": 99
+      }
+    },
+    {
+      "id": "sr-008",
+      "type": "health_god_functions",
+      "question": "Name the top god function (most complex) in serde, with its file.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "from_ast", "file": "serde_derive_internals/src/attr.rs"}
+        ]
+      }
+    }
+  ]
+}
