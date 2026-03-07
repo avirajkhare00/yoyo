@@ -16,13 +16,14 @@ fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     let full_path = root.join(file);
     let Ok(source) = fs::read_to_string(&full_path) else { return vec![] };
 
+    use ast_grep_language::{LanguageExt, SupportLang};
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
-        "rs"                        => parser.set_language(&tree_sitter_rust::LANGUAGE.into()),
-        "go"                        => parser.set_language(&tree_sitter_go::LANGUAGE.into()),
-        "py"                        => parser.set_language(&tree_sitter_python::LANGUAGE.into()),
-        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
+        "rs"                        => parser.set_language(&SupportLang::Rust.get_ts_language()),
+        "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
+        "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
+        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
         _                           => return vec![],
     };
     if ok.is_err() { return vec![]; }
