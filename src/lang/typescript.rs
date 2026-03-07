@@ -63,7 +63,7 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<crate::lang::IndexedImpl>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -78,7 +78,7 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&rel_file, "typescript");
         walk_ts(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
-        Ok((functions, endpoints, types))
+        Ok((functions, endpoints, types, vec![]))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -195,14 +195,9 @@ fn walk_ts(
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     types.push(IndexedType {
-                        name,
-                        file: relative(root, file),
-                        language: "typescript".to_string(),
-                        start_line,
-                        end_line,
-                        kind: "class".to_string(),
-                        module_path: mod_path.to_string(),
-                        visibility: Visibility::Public,
+                        name, file: relative(root, file), language: "typescript".to_string(),
+                        start_line, end_line, kind: "class".to_string(),
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
                     });
                 }
             }
@@ -213,14 +208,9 @@ fn walk_ts(
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     types.push(IndexedType {
-                        name,
-                        file: relative(root, file),
-                        language: "typescript".to_string(),
-                        start_line,
-                        end_line,
-                        kind: "interface".to_string(),
-                        module_path: mod_path.to_string(),
-                        visibility: Visibility::Public,
+                        name, file: relative(root, file), language: "typescript".to_string(),
+                        start_line, end_line, kind: "interface".to_string(),
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
                     });
                 }
             }
@@ -231,14 +221,9 @@ fn walk_ts(
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     types.push(IndexedType {
-                        name,
-                        file: relative(root, file),
-                        language: "typescript".to_string(),
-                        start_line,
-                        end_line,
-                        kind: "type".to_string(),
-                        module_path: mod_path.to_string(),
-                        visibility: Visibility::Public,
+                        name, file: relative(root, file), language: "typescript".to_string(),
+                        start_line, end_line, kind: "type".to_string(),
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
                     });
                 }
             }
@@ -249,14 +234,9 @@ fn walk_ts(
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     types.push(IndexedType {
-                        name,
-                        file: relative(root, file),
-                        language: "typescript".to_string(),
-                        start_line,
-                        end_line,
-                        kind: "enum".to_string(),
-                        module_path: mod_path.to_string(),
-                        visibility: Visibility::Public,
+                        name, file: relative(root, file), language: "typescript".to_string(),
+                        start_line, end_line, kind: "enum".to_string(),
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
                     });
                 }
             }

@@ -7,8 +7,8 @@ use tree_sitter_rust::LANGUAGE;
 
 use super::{
     byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
-    AstMatch, IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
-    Visibility,
+    AstMatch, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
+    LanguageAnalyzer, NodeKinds, Visibility,
 };
 
 pub struct RustAnalyzer;
@@ -48,7 +48,7 @@ impl LanguageAnalyzer for RustAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -61,6 +61,7 @@ impl LanguageAnalyzer for RustAnalyzer {
         let mut functions = Vec::new();
         let mut endpoints = Vec::new();
         let mut types = Vec::new();
+        let mut impls: Vec<IndexedImpl> = Vec::new();
         let root_node = tree.root_node();
         let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&rel_file, "rust");
@@ -69,21 +70,32 @@ impl LanguageAnalyzer for RustAnalyzer {
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "impl_item" {
-                // Extract the concrete type being implemented (the `type` field, not `trait`).
-                // For `impl Trait for Type`, tree-sitter puts Type in `type` field.
-                // For `impl Type { ... }`, same field.
-                let impl_type = child
+                let type_name = child
                     .child_by_field_name("type")
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty());
-                if let Some(body) = child.child_by_field_name("body") {
-                    scan_children(&source, root, file, body, &mod_path, impl_type.as_deref(), &mut functions, &mut endpoints, &mut types);
+                let trait_name = child
+                    .child_by_field_name("trait")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                if let Some(type_name) = type_name {
+                    let (start_line, _) = line_range(&child);
+                    impls.push(IndexedImpl {
+                        type_name: type_name.clone(),
+                        trait_name,
+                        file: relative(root, file),
+                        start_line,
+                    });
+                    if let Some(body) = child.child_by_field_name("body") {
+                        scan_children(&source, root, file, body, &mod_path, Some(&type_name), &mut functions, &mut endpoints, &mut types);
+                    }
                 }
             }
         }
 
-        Ok((functions, endpoints, types))
+        Ok((functions, endpoints, types, impls))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -189,6 +201,11 @@ fn scan_children(
                             _             => "type",
                         };
                         let vis = rust_visibility(child, source);
+                        let fields = if kind == "struct" {
+                            collect_struct_fields(&child, source)
+                        } else {
+                            vec![]
+                        };
                         types.push(IndexedType {
                             name: name.to_string(),
                             file: relative(root_path, file),
@@ -198,6 +215,7 @@ fn scan_children(
                             kind: kind.to_string(),
                             module_path: mod_path.to_string(),
                             visibility: vis,
+                            fields,
                         });
                     }
                 }
@@ -323,4 +341,35 @@ fn estimate_complexity(node: Node, source: &str) -> u32 {
         count += estimate_complexity(child, source).saturating_sub(1);
     }
     count
+}
+
+/// Extract named fields from a struct_item node.
+fn collect_struct_fields(struct_node: &Node, source: &str) -> Vec<FieldInfo> {
+    let mut fields = Vec::new();
+    let mut cursor = struct_node.walk();
+    for child in struct_node.children(&mut cursor) {
+        if child.kind() == "field_declaration_list" {
+            let mut fc = child.walk();
+            for field in child.children(&mut fc) {
+                if field.kind() == "field_declaration" {
+                    let name = field
+                        .child_by_field_name("name")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let type_str = field
+                        .child_by_field_name("type")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !name.is_empty() {
+                        let vis = rust_visibility(field, source);
+                        fields.push(FieldInfo { name, type_str, visibility: vis });
+                    }
+                }
+            }
+        }
+    }
+    fields
 }

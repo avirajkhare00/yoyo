@@ -166,18 +166,20 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
             let full_path = root.join(&file.path);
             let source = std::fs::read_to_string(&full_path).ok()?;
             let imports = analyzer.extract_imports(&source);
-            let (funcs, eps, typs) = analyzer.analyze_file(root, &full_path).ok()?;
-            Some((idx, funcs, eps, typs, imports))
+            let (funcs, eps, typs, imps) = analyzer.analyze_file(root, &full_path).ok()?;
+            Some((idx, funcs, eps, typs, imps, imports))
         })
         .collect();
 
     let mut functions = Vec::new();
     let mut endpoints = Vec::new();
     let mut types = Vec::new();
-    for (idx, funcs, eps, typs, imports) in results {
+    let mut impls = Vec::new();
+    for (idx, funcs, eps, typs, imps, imports) in results {
         functions.extend(funcs);
         endpoints.extend(eps);
         types.extend(typs);
+        impls.extend(imps);
         files[idx].imports = imports;
     }
 
@@ -189,6 +191,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         functions,
         endpoints,
         types,
+        impls,
     })
 }
 
@@ -246,10 +249,11 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
         }
         let lang = detect_language(&full_path);
         if let Some(analyzer) = crate::lang::find_analyzer(lang) {
-            if let Ok((funcs, eps, typs)) = analyzer.analyze_file(root, &full_path) {
+            if let Ok((funcs, eps, typs, imps)) = analyzer.analyze_file(root, &full_path) {
                 bake.functions.extend(funcs);
                 bake.endpoints.extend(eps);
                 bake.types.extend(typs);
+                bake.impls.extend(imps);
             }
         }
     }

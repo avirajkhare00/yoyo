@@ -79,7 +79,7 @@ pub fn symbol(
                     start_line: f.start_line,
                     end_line: f.end_line,
                     complexity: f.complexity,
-                    primary: false, // set below after sorting
+                    primary: false,
                     kind: None,
                     source: None,
                     visibility: Some(f.visibility.clone()),
@@ -87,6 +87,9 @@ pub fn symbol(
                     qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
                     calls,
                     parent_type: f.parent_type.clone(),
+                    implements: vec![],
+                    implementors: vec![],
+                    fields: vec![],
                 })
             } else {
                 None
@@ -95,6 +98,22 @@ pub fn symbol(
         .chain(bake.types.iter().filter_map(|t| {
             let tname = t.name.to_lowercase();
             if tname == needle || tname.contains(&needle) {
+                // For structs/enums: collect traits they implement.
+                let implements: Vec<String> = bake.impls.iter()
+                    .filter(|i| i.type_name.to_lowercase() == tname)
+                    .filter_map(|i| i.trait_name.clone())
+                    .collect();
+                // For traits: collect unique types that implement them.
+                let implementors: Vec<String> = if t.kind == "trait" {
+                    let mut seen = std::collections::HashSet::new();
+                    bake.impls.iter()
+                        .filter(|i| i.trait_name.as_deref().map(|tr| tr.to_lowercase()) == Some(tname.clone()))
+                        .map(|i| i.type_name.clone())
+                        .filter(|n| seen.insert(n.clone()))
+                        .collect()
+                } else {
+                    vec![]
+                };
                 Some(SymbolMatch {
                     name: t.name.clone(),
                     file: t.file.clone(),
@@ -109,6 +128,9 @@ pub fn symbol(
                     qualified_name: None,
                     calls: vec![],
                     parent_type: None,
+                    implements,
+                    implementors,
+                    fields: t.fields.clone(),
                 })
             } else {
                 None

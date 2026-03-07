@@ -56,7 +56,7 @@ impl LanguageAnalyzer for GoAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)> {
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<crate::lang::IndexedImpl>)> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -75,7 +75,7 @@ impl LanguageAnalyzer for GoAnalyzer {
             module_path_from_file(&rel, "go")
         });
         walk_go(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
-        Ok((functions, endpoints, types))
+        Ok((functions, endpoints, types, vec![]))
     }
 
     fn supports_ast_search(&self) -> bool {
@@ -166,6 +166,7 @@ fn walk_go(
                                 kind: kind.to_string(),
                                 module_path: mod_path.to_string(),
                                 visibility: vis,
+                                fields: vec![],
                             });
                         }
                     }

@@ -82,6 +82,29 @@ pub struct IndexedType {
     pub module_path: String,
     #[serde(default)]
     pub visibility: Visibility,
+    /// Parsed fields for structs (Rust only for now).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<FieldInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldInfo {
+    pub name: String,
+    /// Raw type string as written in source (e.g. "Option<String>", "*mut u8").
+    pub type_str: String,
+    pub visibility: Visibility,
+}
+
+/// One `impl Trait for Type` (or `impl Type`) relationship, indexed per file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexedImpl {
+    /// The concrete type being implemented on (e.g. "SearchWorker").
+    pub type_name: String,
+    /// The trait being implemented, if any (e.g. "Matcher"). None for bare `impl Type`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trait_name: Option<String>,
+    pub file: String,
+    pub start_line: u32,
 }
 
 #[derive(Debug)]
@@ -98,7 +121,7 @@ pub trait LanguageAnalyzer: Send + Sync {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>)>;
+    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)>;
     /// Extract import/use/require paths from source. Line-based — no AST needed.
     fn extract_imports(&self, _source: &str) -> Vec<String> {
         vec![]
