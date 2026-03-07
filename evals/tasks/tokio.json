@@ -1,0 +1,135 @@
+{
+  "codebase": "tokio",
+  "codebase_path": "/Users/avirajkhare/ttt/tokio/tokio-master",
+  "pinned_commit": "master",
+  "tasks": [
+    {
+      "id": "tk-001",
+      "type": "definition_location",
+      "question": "Where is `poll_acquire` defined in tokio? Give the file and line number.",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "file": "tokio/src/sync/batch_semaphore.rs",
+        "line": 397
+      }
+    },
+    {
+      "id": "tk-002",
+      "type": "visibility",
+      "question": "Is `poll_acquire` in `tokio/src/sync/batch_semaphore.rs` public, module-level (pub(crate)), or private?",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "visibility": "private"
+      }
+    },
+    {
+      "id": "tk-003",
+      "type": "module_path",
+      "question": "What module does `poll_acquire` in `tokio/src/sync/batch_semaphore.rs` belong to? Give the full module path.",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "module_path": "tokio-master::tokio::src::sync"
+      }
+    },
+    {
+      "id": "tk-004",
+      "type": "fan_out",
+      "question": "For `poll_acquire` in `tokio/src/sync/batch_semaphore.rs`: how many entries are in its `calls` array? Give the exact count.",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "calls_count": 14
+      }
+    },
+    {
+      "id": "tk-005",
+      "type": "caller_count",
+      "question": "How many distinct functions call `poll_acquire` in tokio (excluding self-recursion)? Give the count.",
+      "ground_truth": {
+        "caller_count": 121
+      }
+    },
+    {
+      "id": "tk-006",
+      "type": "complexity_rank",
+      "question": "Which function has the highest complexity score in tokio? Give the function name and file.",
+      "ground_truth": {
+        "name": "test_combination",
+        "file": "tokio/src/runtime/tests/task_combinations.rs"
+      }
+    },
+    {
+      "id": "tk-007",
+      "type": "definition_location",
+      "question": "Where is the primary `spawn_blocking` defined in `tokio/src/runtime/blocking/pool.rs`? Give the line number.",
+      "file_hint": "tokio/src/runtime/blocking/pool.rs",
+      "ground_truth": {
+        "file": "tokio/src/runtime/blocking/pool.rs",
+        "line": 298
+      }
+    },
+    {
+      "id": "tk-008",
+      "type": "visibility",
+      "question": "Is `spawn_blocking` in `tokio/src/runtime/blocking/pool.rs` public, module-level (pub(crate)), or private?",
+      "file_hint": "tokio/src/runtime/blocking/pool.rs",
+      "ground_truth": {
+        "visibility": "module"
+      }
+    },
+    {
+      "id": "tk-009",
+      "type": "caller_count",
+      "question": "How many distinct functions call `spawn_blocking` in tokio (excluding self-recursion)? Give the count.",
+      "ground_truth": {
+        "caller_count": 135
+      }
+    },
+    {
+      "id": "tk-010",
+      "type": "definition_location",
+      "question": "Where is `poll` defined in `tokio/src/sync/batch_semaphore.rs`? Give the line number.",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "file": "tokio/src/sync/batch_semaphore.rs",
+        "line": 578
+      }
+    },
+    {
+      "id": "tk-011",
+      "type": "fan_out",
+      "question": "For `poll` in `tokio/src/sync/batch_semaphore.rs`: how many entries are in its `calls` array?",
+      "file_hint": "tokio/src/sync/batch_semaphore.rs",
+      "ground_truth": {
+        "calls_count": 3
+      }
+    },
+    {
+      "id": "tk-012",
+      "type": "health_dead_code",
+      "question": "How many items are in the `dead_code` array returned by the health tool on the tokio codebase?",
+      "ground_truth": {
+        "dead_code_count": 126
+      }
+    },
+    {
+      "id": "tk-013",
+      "type": "health_god_functions",
+      "question": "Name the top 2 god functions (most complex) in tokio, with their files.",
+      "ground_truth": {
+        "god_functions": [
+          {"name": "test_combination", "file": "tokio/src/runtime/tests/task_combinations.rs"},
+          {"name": "test_named_pipe_multi_client_ready", "file": "tokio/tests/net_named_pipe.rs"}
+        ]
+      }
+    },
+    {
+      "id": "tk-014",
+      "type": "module_path",
+      "question": "What module does `spawn_blocking` in `tokio/src/runtime/blocking/pool.rs` belong to?",
+      "file_hint": "tokio/src/runtime/blocking/pool.rs",
+      "ground_truth": {
+        "module_path": "tokio-master::tokio::src::runtime::blocking"
+      }
+    }
+  ]
+}

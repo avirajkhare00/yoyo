@@ -37,7 +37,7 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
         }
     }
 
-    // BFS from target symbol outward through callers
+    // BFS pass 1: depth-limited — builds the callers list for display.
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen_callers: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     let mut affected_files: BTreeSet<String> = BTreeSet::new();
@@ -71,6 +71,27 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
             }
         }
     }
+
+    // BFS pass 2: unlimited — compute the true transitive caller count.
+    let total_callers = {
+        let mut all_visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut all_seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut q: std::collections::VecDeque<String> = std::collections::VecDeque::new();
+        q.push_back(symbol.clone());
+        all_visited.insert(symbol.clone());
+        while let Some(sym) = q.pop_front() {
+            if let Some(entries) = called_by.get(&sym) {
+                for (caller_name, caller_file) in entries {
+                    all_seen.insert((caller_name.clone(), caller_file.clone()));
+                    if !all_visited.contains(caller_name) {
+                        all_visited.insert(caller_name.clone());
+                        q.push_back(caller_name.clone());
+                    }
+                }
+            }
+        }
+        all_seen.len()
+    };
 
     // Sort: depth ascending (closest callers first), then complexity descending (highest impact first)
     callers.sort_by(|a, b| {
@@ -114,7 +135,6 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
     }
 
     let affected_files: Vec<String> = affected_files.into_iter().collect();
-    let total_callers = callers.len();
 
     let payload = serde_json::json!({
         "tool": "blast_radius",
@@ -219,9 +239,10 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         .collect();
 
     // Dead code: indexed but never called; skip main, tests, examples, benches,
-    // HTTP handlers, and very short names.
+    // HTTP handlers, public API (reachable externally), and very short names.
     // Examples/benches are entry points — not called by the project itself.
     // HTTP handlers are registered via router (dynamic dispatch) — static call graph can't see them.
+    // Public functions in libraries are part of the exported API — external callers are invisible to static analysis.
     let mut dead_code: Vec<DeadFunction> = bake
         .functions
         .iter()
@@ -237,6 +258,7 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
                 && !file_lc.contains("/bench")
                 && !lc.starts_with("handle_")  // HTTP handlers registered via router
                 && !file_lc.contains("handler") // handler files — same reason
+                && f.visibility != crate::lang::Visibility::Public // public API is externally callable
                 && f.name.len() > 2
         })
         .map(|f| DeadFunction {

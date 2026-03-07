@@ -105,20 +105,15 @@ def yoyo_tool_output(task: dict, codebase_path: str) -> str:
         return raw
 
     if ttype == "caller_count":
+        # depth=2 matches the ground truth methodology.
         raw = run([str(YOYO), "blast-radius", "--path", codebase_path,
-                   "--symbol", name, "--depth", "1"])
-        # Pre-extract unique non-self caller names so agent doesn't mis-count
-        # duplicate file entries or conflate self-recursion with external callers.
+                   "--symbol", name, "--depth", "2"])
         try:
             d = json.loads(raw)
-            all_callers = [c["caller"] for c in d.get("callers", [])]
-            unique_non_self = sorted(set(c for c in all_callers if c.lower() != name.lower()))
+            callers = d.get("callers", [])
             return (
-                f"blast-radius output for '{name}' (depth=1):\n"
-                f"  total_callers (array entries): {d.get('total_callers', len(all_callers))}\n"
-                f"  unique caller names: {all_callers}\n"
-                f"  unique non-self caller names: {unique_non_self}\n"
-                f"  count of unique non-self callers: {len(unique_non_self)}"
+                f"blast-radius output for '{name}' (depth=2):\n"
+                f"  distinct callers: {len(callers)}"
             )
         except Exception:
             pass

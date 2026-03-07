@@ -4,7 +4,6 @@ use anyhow::Result;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use rusqlite::{params, Connection};
 
-use super::util::load_bake_index;
 
 const BATCH_SIZE: usize = 64;
 const MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2;
