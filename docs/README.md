@@ -68,12 +68,12 @@ Result: Claude answers from facts, not memory. No hallucinated file paths. No st
 
 ## Installation
 
-**macOS (Intel + Apple Silicon)**
+**macOS (Apple Silicon)**
 ```bash
 brew tap avirajkhare00/yoyo
 brew install yoyo
 ```
-Homebrew resolves the right architecture automatically. No `codesign`, no `sudo mv`.
+Homebrew handles signing and PATH. No `codesign`, no `sudo mv`.
 
 **Linux (x86_64)**
 ```bash

@@ -41,13 +41,13 @@ result:     answers from facts, not memory. no hallucinated file paths.
 
 ### 1. Install
 
-**macOS (Intel + Apple Silicon)**
+**macOS (Apple Silicon)**
 ```bash
 brew tap avirajkhare00/yoyo
 brew install yoyo
 ```
 
-Homebrew resolves the right architecture automatically. No `codesign`, no `sudo mv`, works on both Intel and Apple Silicon.
+Homebrew handles signing and PATH automatically. No `codesign`, no `sudo mv`.
 
 **Linux (x86_64)**
 ```bash
