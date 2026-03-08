@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.9] - 2026-03-08
+
+### Fixed
+- Homebrew auto-update: HOMEBREW_TAP_TOKEN secret now set, formula will update on release.
+
 ## [0.22.8] - 2026-03-08
 
 ### Fixed
