@@ -27,7 +27,7 @@ result:     answers from facts, not memory. no hallucinated file paths.
 ```bash
 curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
-# Required: sign the binary or macOS Gatekeeper will kill it silently
+# Required: sign the binary or macOS Gatekeeper will kill it silently (exit 137)
 codesign --force --deep --sign - /usr/local/bin/yoyo
 ```
 
@@ -41,6 +41,10 @@ Verify:
 ```bash
 yoyo --version
 ```
+
+> **Why `/usr/local/bin`?** The MCP server must be on a path accessible to all tools and shells, not just your terminal session. Install here once — it works everywhere.
+>
+> **No sudo?** Install to `~/.local/bin/yoyo` instead, but you must update the `command` path in the MCP config (step 2) to match. `~/.local/bin` must also be on your `PATH`.
 
 ---
 
