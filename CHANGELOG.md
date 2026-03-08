@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2] - 2026-03-09
+
+### Fixed
+
+- **`patch` returns `patched_source`** — all three patch modes (name, content-match, line-range) now include the written content in the response. Models can verify inline without a follow-up `symbol` call. Makes `patch` output clearly superior to `Edit`.
+- **`patch` description strengthened** — now explicitly states "replaces Edit/Write for all function-level changes — never use Edit on a function body". Same pattern as supersearch ("replaces grep/rg").
+- **Antipattern added to `llm_instructions`** — "using Edit or Write to modify a function body" is now a named antipattern with explanation: no reindex, no syntax check, line drift. Applies to all customers, not just sessions with CLAUDE.md.
+
 ## [1.1.1] - 2026-03-09
 
 ### Fixed

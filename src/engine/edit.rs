@@ -289,6 +289,7 @@ pub fn patch(
         start,
         end,
         total_lines,
+        patched_source: Some(new_content),
         syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
@@ -337,6 +338,7 @@ pub fn patch_string(
         start: start_line,
         end: end_line,
         total_lines,
+        patched_source: Some(new_string),
         syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -358,7 +360,6 @@ pub fn patch_by_symbol(
 
     let needle = name.to_lowercase();
 
-    // Collect matching functions as (file, start_line, end_line, exact_match, complexity).
     let mut matches: Vec<(String, u32, u32, bool, u32)> = bake
         .functions
         .iter()
@@ -372,7 +373,6 @@ pub fn patch_by_symbol(
         })
         .collect();
 
-    // Same order as symbol: exact match first, then higher complexity, then file path.
     matches.sort_by(|a, b| {
         (b.3 as i32)
             .cmp(&(a.3 as i32))
@@ -407,6 +407,7 @@ pub fn patch_by_symbol(
         start,
         end,
         total_lines,
+        patched_source: Some(new_content),
         syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
