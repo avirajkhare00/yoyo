@@ -610,21 +610,53 @@ fn resolve_candidate<'a>(
     if candidates.len() == 1 {
         return Some(candidates[0]);
     }
-    // Use qualifier to narrow by file path (skip trivial receivers)
+
+    // All candidates share the same name — use it for qualified_name matching.
+    let fn_name = candidates[0].name.to_lowercase();
+
     if let Some(qual) = qualifier {
         let ql = qual.to_lowercase();
+
         if !TRIVIAL_RECEIVERS.contains(&ql.as_str()) {
+            // 1. Exact qualified_name match (Rust: engine::fn, Go: pkg/fn, Python: mod.fn).
+            //    Handles calls like `engine::process(...)` where qualifier == module_path.
+            let sep_rust = format!("{}::{}", ql, fn_name);
+            let sep_slash = format!("{}/{}", ql, fn_name);
+            let sep_dot = format!("{}.{}", ql, fn_name);
+            if let Some(m) = candidates.iter().find(|f| {
+                let qn = f.qualified_name.to_lowercase();
+                qn == sep_rust || qn == sep_slash || qn == sep_dot
+            }) {
+                return Some(m);
+            }
+
+            // 2. Qualifier exactly matches module_path (Go packages, Python modules).
+            if let Some(m) = candidates.iter().find(|f| f.module_path.to_lowercase() == ql) {
+                return Some(m);
+            }
+
+            // 3. Qualifier ends with module_path — handles `crate::engine` matching
+            //    module_path `engine` in Rust.
+            if let Some(m) = candidates.iter().find(|f| {
+                let mp = f.module_path.to_lowercase();
+                !mp.is_empty() && ql.ends_with(mp.as_str())
+            }) {
+                return Some(m);
+            }
+
+            // 4. Fallback: qualifier as file path substring (original heuristic).
             if let Some(m) = candidates.iter().find(|f| f.file.to_lowercase().contains(&ql)) {
                 return Some(m);
             }
         }
     }
-    // Same language first
+
+    // Same language, single match.
     let same_lang: Vec<_> = candidates.iter().filter(|f| f.language == caller.language).collect();
     if same_lang.len() == 1 {
         return Some(same_lang[0]);
     }
-    // Closest directory
+    // Closest directory.
     if let Some(dir) = caller.file.rsplit('/').skip(1).next() {
         if let Some(m) = candidates.iter().find(|f| f.file.contains(dir)) {
             return Some(m);
@@ -1051,5 +1083,85 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("same"));
+    }
+
+    // ── resolve_candidate ─────────────────────────────────────────────────────
+
+    fn make_fn(name: &str, file: &str, lang: &str, module_path: &str) -> crate::lang::IndexedFunction {
+        crate::lang::IndexedFunction {
+            name: name.to_string(),
+            file: file.to_string(),
+            language: lang.to_string(),
+            start_line: 1,
+            end_line: 5,
+            complexity: 1,
+            calls: vec![],
+            byte_start: 0,
+            byte_end: 0,
+            module_path: module_path.to_string(),
+            qualified_name: if module_path.is_empty() {
+                name.to_string()
+            } else {
+                let sep = if lang == "rust" { "::" } else if lang == "python" { "." } else { "/" };
+                format!("{}{}{}", module_path, sep, name)
+            },
+            visibility: crate::lang::Visibility::Public,
+            parent_type: None,
+        }
+    }
+
+    #[test]
+    fn resolve_candidate_exact_qualified_name_rust() {
+        let a = make_fn("process", "src/engine/core.rs", "rust", "engine");
+        let b = make_fn("process", "src/api/handler.rs", "rust", "api");
+        let caller = make_fn("run", "src/main.rs", "rust", "");
+        let candidates = vec![&a, &b];
+        // qualifier "engine" matches module_path "engine" exactly
+        let result = resolve_candidate(&candidates, &caller, &Some("engine".to_string()));
+        assert_eq!(result.unwrap().file, "src/engine/core.rs");
+    }
+
+    #[test]
+    fn resolve_candidate_crate_prefix_rust() {
+        let a = make_fn("process", "src/engine/core.rs", "rust", "engine");
+        let b = make_fn("process", "src/api/handler.rs", "rust", "api");
+        let caller = make_fn("run", "src/main.rs", "rust", "");
+        let candidates = vec![&a, &b];
+        // qualifier "crate::engine" ends with module_path "engine"
+        let result = resolve_candidate(&candidates, &caller, &Some("crate::engine".to_string()));
+        assert_eq!(result.unwrap().file, "src/engine/core.rs");
+    }
+
+    #[test]
+    fn resolve_candidate_go_package_exact() {
+        let a = make_fn("Handle", "cmd/server/handler.go", "go", "server");
+        let b = make_fn("Handle", "internal/client/handler.go", "go", "client");
+        let caller = make_fn("main", "cmd/main.go", "go", "main");
+        let candidates = vec![&a, &b];
+        // qualifier "server" matches module_path "server" exactly
+        let result = resolve_candidate(&candidates, &caller, &Some("server".to_string()));
+        assert_eq!(result.unwrap().file, "cmd/server/handler.go");
+    }
+
+    #[test]
+    fn resolve_candidate_sep_qualified_name_rust() {
+        let a = make_fn("parse", "src/engine/parse.rs", "rust", "engine");
+        let b = make_fn("parse", "src/cli/parse.rs", "rust", "cli");
+        let caller = make_fn("run", "src/main.rs", "rust", "");
+        let candidates = vec![&a, &b];
+        // qualifier "engine" + "::" + "parse" == qualified_name "engine::parse"
+        let result = resolve_candidate(&candidates, &caller, &Some("engine".to_string()));
+        assert_eq!(result.unwrap().file, "src/engine/parse.rs");
+    }
+
+    #[test]
+    fn resolve_candidate_trivial_receiver_falls_through() {
+        let a = make_fn("get", "src/engine/store.rs", "rust", "engine");
+        let b = make_fn("get", "src/api/store.rs", "rust", "api");
+        let caller = make_fn("run", "src/engine/core.rs", "rust", "engine");
+        let candidates = vec![&a, &b];
+        // "self" is trivial — skip qualifier matching, fall to same-directory
+        let result = resolve_candidate(&candidates, &caller, &Some("self".to_string()));
+        assert_eq!(result.unwrap().file, "src/engine/store.rs");
     }
 }
