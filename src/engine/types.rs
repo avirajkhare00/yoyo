@@ -70,6 +70,9 @@ pub(crate) struct LlmInstructionsPayload {
     /// Explicit anti-patterns. Each item describes something that looks reasonable
     /// but produces wrong answers. Internalise these before calling any tool.
     pub(crate) antipatterns: Vec<&'static str>,
+    /// High-level shapes that all workflows are instances of.
+    /// Learn these first — every specific workflow is a variation of one of these five.
+    pub(crate) metapatterns: Vec<Metapattern>,
     /// Present when a newer yoyo release is available. Surface this to the user.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) update_available: Option<String>,
@@ -104,6 +107,26 @@ pub(crate) struct Workflow {
 pub(crate) struct WorkflowStep {
     pub(crate) tool: &'static str,
     pub(crate) hint: &'static str,
+}
+
+/// A high-level shape that all yoyo workflows are instances of.
+/// Learn these five shapes first — every specific workflow is a variation.
+#[derive(Serialize)]
+pub(crate) struct Metapattern {
+    /// Short label, e.g. "Orient → Scope → Read"
+    pub(crate) shape: &'static str,
+    /// When to apply this pattern
+    pub(crate) when: &'static str,
+    /// The abstract steps and the concrete tools that implement each
+    pub(crate) steps: Vec<MetapatternStep>,
+    /// Concrete named workflows that are instances of this shape
+    pub(crate) instances: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct MetapatternStep {
+    pub(crate) phase: &'static str,
+    pub(crate) tools: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
