@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.1] - 2026-03-08
+
+### Fixed
+- macOS release binary now ad-hoc signed in CI — Gatekeeper no longer kills it with exit 137 on first run.
+
 ## [0.22.0] - 2026-03-08
 
 ### Added
