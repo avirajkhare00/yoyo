@@ -50,7 +50,7 @@ pub enum Command {
     GraphMove(GraphMoveArgs),
     /// Trace a function's call chain downward to external boundaries.
     TraceDown(TraceDownArgs),
-    /// Audit dead code, god functions, and duplicate hints.
+    /// Audit dead code, large functions, and duplicate hints.
     Health(HealthArgs),
     /// Remove a function from a file by name.
     GraphDelete(GraphDeleteArgs),

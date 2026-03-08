@@ -73,7 +73,7 @@ def cc_tool_output(task: dict, codebase_path: str) -> str:
         wc   = run(["bash", "-c", f"grep -rn '{name}' {path} --include='*.rs' | wc -l"])
         return f"Grep for '{name}' ({wc} total hits including definition/comments):\n{grep[:2000]}"
 
-    if ttype in ("complexity_rank", "health_dead_code", "health_god_functions"):
+    if ttype in ("complexity_rank", "health_dead_code", "health_large_functions"):
         return "(No native tool available. Would require reading all files and manual analysis.)"
 
     return "(No tool output available for this task type)"
@@ -134,11 +134,11 @@ def yoyo_tool_output(task: dict, codebase_path: str) -> str:
         raw = run([str(YOYO), "health", "--path", codebase_path])
         try:
             d = json.loads(raw)
-            top = d.get("god_functions", [])
+            top = d.get("large_functions", [])
             if top:
                 g = top[0]
                 return (
-                    f"Health tool — top god function:\n"
+                    f"Health tool — top large function:\n"
                     f"  name: {g['name']}\n"
                     f"  file: {g['file']}\n"
                     f"  complexity_score: {g['score']}"
@@ -147,12 +147,12 @@ def yoyo_tool_output(task: dict, codebase_path: str) -> str:
             pass
         return raw
 
-    if ttype == "health_god_functions":
+    if ttype == "health_large_functions":
         raw = run([str(YOYO), "health", "--path", codebase_path])
         try:
             d = json.loads(raw)
-            top = d.get("god_functions", [])[:2]
-            lines = ["Health tool — top 2 god functions:"]
+            top = d.get("large_functions", [])[:2]
+            lines = ["Health tool — top 2 large functions:"]
             for i, g in enumerate(top, 1):
                 lines.append(f"  #{i}: name={g['name']}  file={g['file']}  score={g['score']}")
             return "\n".join(lines)
