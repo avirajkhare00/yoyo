@@ -512,7 +512,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             println!("  yoyo update          self-update binary");
             println!("  brew upgrade yoyo    if installed via Homebrew");
             println!();
-            println!("All 27 tools: yoyo --help");
+            println!("All 28 tools: yoyo --help");
             println!("Full docs:    https://github.com/avirajkhare00/yoyo");
         }
     }
