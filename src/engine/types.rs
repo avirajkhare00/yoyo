@@ -353,6 +353,8 @@ pub(crate) struct PatchPayload {
     pub(crate) start: u32,
     pub(crate) end: u32,
     pub(crate) total_lines: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) patched_source: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) syntax_errors: Vec<SyntaxError>,
 }
