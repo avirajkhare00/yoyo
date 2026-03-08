@@ -56,6 +56,8 @@ pub enum Command {
     GraphDelete(GraphDeleteArgs),
     /// Search for functions by natural-language intent (local TF-IDF, no external deps).
     SemanticSearch(SemanticSearchArgs),
+    /// Update yoyo to the latest release.
+    Update(UpdateArgs),
 }
 
 #[derive(Args, Debug)]
@@ -464,6 +466,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Health(args)) => run_health(args).await?,
         Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
         Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
+        Some(Command::Update(args)) => run_update(args).await?,
         None => {
             eprintln!(
                 "No command provided. Run `yoyo --help` for available commands."
@@ -704,5 +707,17 @@ async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
 async fn run_semantic_search(args: SemanticSearchArgs) -> anyhow::Result<()> {
     let json = crate::engine::semantic_search(args.path, args.query, args.limit, args.file)?;
     println!("{json}");
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct UpdateArgs {}
+
+async fn run_update(_args: UpdateArgs) -> anyhow::Result<()> {
+    eprintln!("Checking for updates...");
+    match crate::engine::self_update() {
+        Ok(msg) => println!("{msg}"),
+        Err(e) => eprintln!("Update failed: {e}"),
+    }
     Ok(())
 }

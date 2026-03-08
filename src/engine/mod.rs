@@ -7,6 +7,7 @@ mod index;
 mod nav;
 mod search;
 pub(crate) mod types;
+mod update;
 mod util;
 #[cfg(test)]
 mod e2e_tests;
@@ -18,3 +19,4 @@ pub use graph::{graph_add, graph_create, graph_move, graph_rename, trace_down};
 pub use index::{bake, llm_instructions, shake};
 pub use nav::{architecture_map, package_summary, suggest_placement};
 pub use search::{file_functions, semantic_search, supersearch, symbol};
+pub use update::self_update;
