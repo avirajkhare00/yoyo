@@ -52,9 +52,11 @@ yoyo is named after competitive yoyo. A yoyo is a spinning disk on a string — 
 
 yoyo tools work the same way. No single tool is impressive. The orchestration is. When building features, always ask: what is the combination that makes this powerful? A new tool is only worth adding if it unlocks a combination that wasn't possible before.
 
-## GitHub issues as project memory
+## GitHub issues and pull requests as project memory
 
 GitHub issues are the living memory of this project — decisions made, problems found, patterns discovered. Before starting any significant work, check open issues for context. When something important is learned (a gap, a pattern, a mistake), file an issue immediately — even if it won't be fixed this session. Issues outlive conversations.
+
+When multiple people are collaborating, use pull requests — not direct pushes to main. PRs give collaborators a chance to review, catch gaps, and leave context that becomes part of the project record. A PR description is itself memory: what changed, why, and what was considered but rejected.
 
 ## GitHub issue lifecycle
 
