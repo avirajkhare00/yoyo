@@ -49,6 +49,7 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
             "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use symbol — implementors field on trait matches.",
             "reading struct source to get field types: works but is unstructured. Use symbol with include_source=true — fields array is parsed and typed.",
         ],
+        update_available: super::update::check_update(),
     };
 
     let json = serde_json::to_string_pretty(&payload)?;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.6] - 2026-03-08
+
+### Added
+- `yoyo update` CLI command — self-updates to the latest GitHub release, replaces the binary in-place, codesigns on macOS automatically. Works for manual install users.
+- `update_available` field in `llm_instructions` response — when a newer version is available, agents see it immediately and can surface it to the user. Field is absent when up to date.
+- Update check is cached for 24h in `~/.cache/yoyo/update-check` — no GitHub API spam on every session.
+
 ## [0.22.5] - 2026-03-08
 
 ### Fixed

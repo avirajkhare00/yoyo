@@ -70,6 +70,9 @@ pub(crate) struct LlmInstructionsPayload {
     /// Explicit anti-patterns. Each item describes something that looks reasonable
     /// but produces wrong answers. Internalise these before calling any tool.
     pub(crate) antipatterns: Vec<&'static str>,
+    /// Present when a newer yoyo release is available. Surface this to the user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) update_available: Option<String>,
 }
 
 #[derive(Serialize)]
