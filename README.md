@@ -103,6 +103,20 @@ Claude calls the tools automatically. You don't manage it.
 
 ---
 
+## How Claude works with yoyo
+
+Claude treats yoyo as its primary interface to the codebase. Here's what happens each session:
+
+1. **Bootstrap** — Claude loads `llm_instructions` on first contact. This returns the tool list, workflows, and prime directives in one call. No file reading, no grepping.
+2. **Read** — Instead of `grep` or `cat`, Claude uses `supersearch`, `symbol`, and `slice`. These return structured data from the AST index — not line matches.
+3. **Understand** — `blast_radius`, `trace_down`, `flow`, and `health` answer structural questions that no text tool can: who calls this? what does this function touch? is this dead?
+4. **Write** — `patch`, `graph_rename`, `graph_create`, `graph_add`, `graph_move`, `graph_delete` mutate code and auto-reindex. Claude never edits files directly when a yoyo write tool applies.
+5. **Dogfood** — every session building yoyo is also a yoyo session. Gaps found while building get filed as issues immediately.
+
+The result: Claude answers questions about the codebase from facts, not memory. No hallucinated file paths. No stale function names.
+
+---
+
 ## Tools
 
 | Tool | What it does |
@@ -128,8 +142,10 @@ Claude calls the tools automatically. You don't manage it.
 | `patch_bytes` | Write at exact byte offsets from the index. |
 | `multi_patch` | Apply N edits across M files in one call. |
 | `graph_rename` | Rename a symbol at its definition and every call site atomically. |
-| `graph_add` | Insert a new function scaffold into a file. |
+| `graph_create` | Create a new file with an initial function scaffold. Errors if file exists. |
+| `graph_add` | Insert a new function scaffold into an existing file. |
 | `graph_move` | Move a function from one file to another. |
+| `flow` | Vertical slice: endpoint → handler → call chain to db/http/queue in one call. Replaces `api_trace` + `trace_down` + `symbol`. |
 | `semantic_search` | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 | `graph_delete` | Remove a function by name. |
 

@@ -38,5 +38,15 @@
 - Impatient with process, patient with quality.
 - Sessions end cleanly. He says goodbye. Then he ships.
 
+## How he works with Claude specifically
+
+- He gives direction in 1–10 words. Claude figures out the rest.
+- "yes", "go", "YESSS" = full approval, execute immediately and completely.
+- He reviews output by outcomes: did it ship? did tests pass? did the issue close?
+- He expects Claude to catch things he didn't ask for — missing tests, workflow gaps, stale docs.
+- He files issues in real time. If Claude finds a gap while building, file it immediately.
+- Sessions end cleanly: commit, tag, push, issues closed. Never leave half-done work.
+- He tracks what Claude remembers across sessions. Update memory files when patterns solidify.
+
 ## One line
 He builds like he has something to prove and the whole afternoon to do it.

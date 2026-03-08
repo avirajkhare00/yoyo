@@ -17,6 +17,15 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
 Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
+## How Claude works in this project
+
+Each session follows this sequence:
+1. Load `llm_instructions` via ToolSearch — this is the bootstrap, not optional
+2. Read with yoyo tools (`supersearch`, `symbol`, `slice`) — not grep, not cat
+3. Understand structure with `blast_radius`, `flow`, `health` before proposing changes
+4. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.) — not Edit/Write unless yoyo tools fail
+5. Build → test → commit → tag → push in one session. Don't leave half-done work.
+
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
 
