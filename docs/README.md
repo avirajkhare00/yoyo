@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 27 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 28 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
 
@@ -188,7 +188,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | `blast_radius` | All functions that transitively call a symbol. Affected file list included. |
 | `trace_down` | BFS call chain from a function to db/http/queue boundaries. Rust + Go only. |
 | `flow` | **One-call vertical slice:** endpoint → handler → call chain to boundary. Replaces `api_trace` + `trace_down` + `symbol`. |
-| `health` | Dead code, god functions (high complexity + fan-out), duplicate name hints. |
+| `health` | Dead code, large functions (high complexity + fan-out), duplicate name hints. |
 | `package_summary` | All functions, endpoints, and complexity for a module path substring. |
 | `architecture_map` | Directory tree with inferred roles (routes, services, models, etc.). |
 | `api_surface` | Exported functions grouped by module. |
