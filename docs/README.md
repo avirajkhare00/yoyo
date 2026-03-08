@@ -8,6 +8,7 @@ yoyo parses your codebase and gives Claude or Cursor 27 tools to read and edit i
 
 ## Contents
 
+- [Philosophy](#philosophy)
 - [How it works](#how-it-works)
 - [How Claude works with yoyo](#how-claude-works-with-yoyo)
 - [Installation](#installation)
@@ -16,6 +17,24 @@ yoyo parses your codebase and gives Claude or Cursor 27 tools to read and edit i
 - [Language support matrix](#language-support-matrix)
 - [Known limitations](#known-limitations)
 - [Project layout](#project-layout)
+
+---
+
+## Philosophy
+
+In yoyo tournaments, a yoyo is just a spinning disk on a string. The magic is in the combinations — string wraps, body movements, timing layered together. A single trick is fine. Fifty moves chained in sequence is something else entirely.
+
+yoyo (the tool) works the same way. Each tool does one thing cleanly. The power is in how your agent orchestrates them:
+
+| Combination | What it does |
+|---|---|
+| `supersearch` → `symbol` → `patch` | Find it, read it, change it |
+| `blast_radius` → `health` → `graph_delete` | Who calls this? Is it dead? Remove it safely. |
+| `flow` → `multi_patch` | Trace the full request path, fix it end-to-end in one shot. |
+| `bake` → `semantic_search` → `suggest_placement` | Where does this new function belong? |
+| `architecture_map` → `api_surface` → `graph_create` | Understand the shape, find the gap, fill it. |
+
+No single tool is the point. The orchestration is.
 
 ---
 

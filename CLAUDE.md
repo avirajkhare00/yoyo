@@ -61,6 +61,14 @@ xattr -c target/release/yoyo
 
 This applies to local dev binaries and the MCP server binary. CI handles this automatically via the `Sign binary (macOS ad-hoc)` step in `.github/workflows/release.yml`.
 
+## Emoji rule — strict
+
+Emojis are allowed ONLY in:
+- `README.md`
+- `docs/index.html`
+
+Nowhere else — not in source code, not in CHANGELOG, not in docs/README.md, not in commit messages, not in issue bodies. If in doubt, no emoji.
+
 ## Versioning (semver — strict)
 yoyo follows semver. Before bumping a version, ask: is this a fix or a feature?
 - **PATCH** (`0.x.Y`) — bug fixes, output caps, pattern corrections, anything broken now works
