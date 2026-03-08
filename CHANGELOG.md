@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.5] - 2026-03-08
+
+### Fixed
+- `trace_down`: returns a structured `{"supported": false, "language": "...", "reason": "...", "alternatives": [...]}` response instead of an empty chain when called on non-Rust/Go code. Closes #77 (Option C).
+- `flow`: populates `chain_warning` field in response when handler language doesn't support chain tracing, instead of silently returning empty `call_chain`.
+- Tool descriptions: `all_endpoints`, `flow`, `api_trace`, `crud_operations` now list supported frameworks explicitly. `blast_radius` notes import-graph language scope. `api_surface` notes TypeScript-only.
+
 ## [0.22.4] - 2026-03-08
 
 ### Fixed

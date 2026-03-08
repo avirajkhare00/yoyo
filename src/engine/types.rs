@@ -498,6 +498,8 @@ pub(crate) struct FlowPayload {
     pub(crate) boundaries: Vec<String>,
     pub(crate) unresolved: Vec<String>,
     pub(crate) summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) chain_warning: Option<String>,
 }
 
 // ── health ────────────────────────────────────────────────────────────────────

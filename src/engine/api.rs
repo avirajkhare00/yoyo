@@ -244,7 +244,7 @@ pub fn flow(
         handler_name: ep.handler_name.clone(),
     };
 
-    let (handler_info, call_chain, boundaries, unresolved) = if let Some(start_fn) = start {
+    let (handler_info, call_chain, boundaries, unresolved, chain_warning) = if let Some(start_fn) = start {
         let source = if include_source {
             std::fs::read_to_string(root.join(&start_fn.file))
                 .ok()
@@ -254,6 +254,16 @@ pub fn flow(
                     let e = (start_fn.end_line as usize).min(lines.len());
                     if s < lines.len() { Some(lines[s..e].join("\n")) } else { None }
                 })
+        } else {
+            None
+        };
+
+        let lang = start_fn.language.to_lowercase();
+        let warning = if lang != "rust" && lang != "go" {
+            Some(format!(
+                "Call-chain tracing is not supported for {}. Handler returned but call_chain will be empty. Use supersearch (context=identifiers, pattern=call) to trace calls manually.",
+                start_fn.language
+            ))
         } else {
             None
         };
@@ -270,7 +280,7 @@ pub fn flow(
             start_line: start_fn.start_line,
             source,
         };
-        (handler, chain, boundaries, unresolved)
+        (handler, chain, boundaries, unresolved, warning)
     } else {
         let handler = FlowHandlerInfo {
             name: handler_name.clone(),
@@ -278,7 +288,7 @@ pub fn flow(
             start_line: 0,
             source: None,
         };
-        (handler, vec![], vec![], vec![])
+        (handler, vec![], vec![], vec![], None)
     };
 
     let boundary_str = if boundaries.is_empty() {
@@ -307,6 +317,7 @@ pub fn flow(
         boundaries,
         unresolved,
         summary,
+        chain_warning,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }

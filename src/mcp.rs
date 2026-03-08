@@ -210,8 +210,8 @@ fn list_tools() -> Value {
             "file": s("Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"),
             "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
         })),
-        tool("all_endpoints", "List all detected HTTP routes. Use when flow returns no match — find the exact path substring here, then retry flow. Supports Express, Actix, Flask, FastAPI, gin, echo.", json!({"path": p()})),
-        tool_req("flow", "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Always prefer over api_trace+trace_down+symbol — those three tools combined do less. Pair with multi_patch to fix the full chain in one session.", &["endpoint"], json!({
+        tool("all_endpoints", "List all detected HTTP routes. Use when flow returns no match — find the exact path substring here, then retry flow. Frameworks: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Not supported: Axum, NestJS, Fastify, Django, dynamic routers.", json!({"path": p()})),
+        tool_req("flow", "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Always prefer over api_trace+trace_down+symbol. Endpoint detection: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo. Call chain tracing: Rust and Go only — on other languages the handler is returned but the chain will be empty.", &["endpoint"], json!({
             "path": p(),
             "endpoint": s("URL path substring to match (e.g. '/users' or '/api/login')"),
             "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
@@ -224,7 +224,7 @@ fn list_tools() -> Value {
             "start_line": i("1-based start line (inclusive). Matches the start_line field from symbol output."),
             "end_line": i("1-based end line (inclusive). Matches the end_line field from symbol output.")
         })),
-        tool("api_surface", "All exported functions grouped by module — understand the public contract without reading files. Use during orientation alongside shake and architecture_map.", json!({
+        tool("api_surface", "All exported functions grouped by module — understand the public contract without reading files. TypeScript only. Use during orientation alongside shake and architecture_map.", json!({
             "path": p(),
             "package": s("Optional package/module filter (substring match on module or file paths)"),
             "limit": i("Maximum number of functions per module (default 20)")
@@ -257,11 +257,11 @@ fn list_tools() -> Value {
             "function_type": s("Function type: handler | service | repository | model | util | test"),
             "related_to": s("Existing related symbol or substring (optional)")
         })),
-        tool("crud_operations", "Create/read/update/delete matrix per entity inferred from routes. Use to understand data flow before modifying endpoints. Pair with api_trace to drill into a specific operation.", json!({
+        tool("crud_operations", "Create/read/update/delete matrix per entity inferred from routes. Same framework support as all_endpoints: Express, Actix-web, Flask, FastAPI, gin, echo. Use to understand data flow before modifying endpoints.", json!({
             "path": p(),
             "entity": s("Optional entity filter (e.g. \"user\")")
         })),
-        tool("api_trace", "Resolve a route path+method to its handler function. Prefer flow over this — flow does api_trace+trace_down+symbol in one call. Use api_trace only when you need the handler name without the full chain.", json!({
+        tool("api_trace", "Resolve a route path+method to its handler function. Prefer flow — it does this and more in one call. Same framework support as all_endpoints. Use api_trace only when you need the handler name without the full chain.", json!({
             "path": p(),
             "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
             "method": s("Optional HTTP method (GET, POST, etc.)")
@@ -305,7 +305,7 @@ fn list_tools() -> Value {
                 }
             })
         })),
-        tool_req("blast_radius", "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename — skip this and you risk breaking callers silently. Prefer over grep for caller discovery: grep overcounts by hitting comments, strings, and partial name matches.", &["symbol"], json!({
+        tool_req("blast_radius", "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename. Import graph expansion (affected files): Rust, Go, Python, TypeScript, JavaScript only — C/C++/C#/Java/Kotlin/PHP/Ruby/Swift/Bash return caller list only. Prefer over grep: grep overcounts by hitting comments, strings, partial names.", &["symbol"], json!({
             "path": p(),
             "symbol": s("Function name to analyse (exact match on the callee name)"),
             "depth": i("Maximum call-graph depth to traverse (default 2)")

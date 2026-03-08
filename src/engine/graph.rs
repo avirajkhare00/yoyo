@@ -767,6 +767,21 @@ pub fn trace_down(
         })
         .ok_or_else(|| anyhow!("Symbol '{}' not found. Run `bake` first or check the name.", symbol))?;
 
+    let lang = start.language.to_lowercase();
+    if lang != "rust" && lang != "go" {
+        return Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "tool": "trace_down",
+            "supported": false,
+            "language": start.language,
+            "reason": "trace_down call-chain tracing is only supported for Rust and Go. Other languages do not emit enough call-graph data during bake.",
+            "alternatives": [
+                "supersearch with context=identifiers and pattern=call to find call sites manually",
+                "symbol+include_source to read the function body and trace manually",
+                "flow for endpoint-rooted tracing — handler is still returned even without chain"
+            ]
+        }))?);
+    }
+
     let (chain, unresolved) = trace_chain(&bake, start, max_depth);
 
     let payload = TraceDownPayload {
