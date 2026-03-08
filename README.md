@@ -17,17 +17,17 @@ agent uses: supersearch / symbol / flow / patch — not grep, not cat
 result:     answers from facts, not memory. no hallucinated file paths.
 ```
 
-Every read comes from the AST index. Every write auto-reindexes. The agent always sees a fresh, accurate view of your code.
-
 ---
 
-## 1. Install
+## Setup (4 steps)
+
+### 1. Install
 
 **macOS (Apple Silicon)**
 ```bash
 curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
-# macOS: sign the binary or Gatekeeper will kill it silently (exit 137)
+# Required: sign the binary or macOS Gatekeeper will kill it silently
 codesign --force --deep --sign - /usr/local/bin/yoyo
 ```
 
@@ -37,11 +37,16 @@ curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_
 sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 ```
 
+Verify:
+```bash
+yoyo --version
+```
+
 ---
 
-## 2. Connect your agent
+### 2. Add to your agent's MCP config
 
-**Claude Code** — add to `~/.claude/settings.json`:
+**Claude Code** — add the `yoyo` block inside `mcpServers` in `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -54,19 +59,51 @@ sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 }
 ```
 
-**Cursor** — add the same block to your Cursor MCP config.
+> If `~/.claude/settings.json` already has other MCP servers, just add the `"yoyo": { ... }` block alongside them. Don't replace the whole file.
 
-**Any MCP-compatible agent** — point it at `yoyo --mcp-server` over stdio.
+> If you installed without `sudo` and the binary is at `~/.local/bin/yoyo`, use that path instead.
+
+**Cursor** — add the same block to your Cursor MCP config file.
+
+Then **restart Claude Code** (or run `/mcp` to reconnect) so it picks up the new server.
 
 ---
 
-## 3. Index your project
+### 3. Index your project
 
+Run this once per project, and again after large changes:
 ```bash
 yoyo bake --path /path/to/your/project
 ```
 
-Then start a session. The agent calls `llm_instructions` on first contact and picks up the tools automatically.
+---
+
+### 4. Add the hook (Claude Code only — strongly recommended)
+
+Without this, Claude sees yoyo but won't prefer it over grep/cat. Add to your project's `.claude/settings.local.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[yoyo] Use mcp__yoyo__supersearch instead of Grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__slice for line ranges.'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This injects a reminder on every prompt so Claude actively uses yoyo tools instead of falling back to file reads and grep.
+
+---
+
+You're set. Open Claude Code, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
 
 ---
 
