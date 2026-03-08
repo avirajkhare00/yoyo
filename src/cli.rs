@@ -468,9 +468,49 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
         Some(Command::Update(args)) => run_update(args).await?,
         None => {
-            eprintln!(
-                "No command provided. Run `yoyo --help` for available commands."
-            );
+            println!("yoyo v{} — code intelligence MCP server", env!("CARGO_PKG_VERSION"));
+            println!();
+            println!("Getting started:");
+            println!();
+            println!("  1. Index your project");
+            println!("     yoyo bake --path /path/to/your/project");
+            println!();
+            println!("  2. Connect to Claude Code");
+            println!("     Add to ~/.claude/settings.json:");
+            println!();
+            println!("     {{");
+            println!("       \"mcpServers\": {{");
+            println!("         \"yoyo\": {{");
+            println!("           \"type\": \"stdio\",");
+            println!("           \"command\": \"/usr/local/bin/yoyo\",");
+            println!("           \"args\": [\"--mcp-server\"]");
+            println!("         }}");
+            println!("       }}");
+            println!("     }}");
+            println!();
+            println!("  3. Add the hook (makes Claude prefer yoyo tools over grep/cat)");
+            println!("     In your project: .claude/settings.local.json");
+            println!();
+            println!("     {{");
+            println!("       \"hooks\": {{");
+            println!("         \"UserPromptSubmit\": [{{");
+            println!("           \"hooks\": [{{");
+            println!("             \"type\": \"command\",");
+            println!("             \"command\": \"echo '[yoyo] Use supersearch not grep. Use symbol+include_source not cat.'\"");
+            println!("           }}]");
+            println!("         }}]");
+            println!("       }}");
+            println!("     }}");
+            println!();
+            println!("  4. Restart Claude Code, then start a session");
+            println!("     Claude calls llm_instructions automatically on first contact.");
+            println!();
+            println!("Keep yoyo current:");
+            println!("  yoyo update          self-update binary");
+            println!("  brew upgrade yoyo    if installed via Homebrew");
+            println!();
+            println!("All 27 tools: yoyo --help");
+            println!("Full docs:    https://github.com/avirajkhare00/yoyo");
         }
     }
     Ok(())

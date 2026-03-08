@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.7] - 2026-03-08
+
+### Fixed
+- `yoyo` with no arguments now shows a 4-step getting-started guide: index project, Claude Code MCP config, hook setup, restart. No more "No command provided."
+
 ## [0.22.6] - 2026-03-08
 
 ### Added
