@@ -1,70 +1,24 @@
 # yoyo
 
-yoyo parses your codebase and gives Claude or Cursor 25 tools to read and edit it over MCP.
+yoyo gives Claude or Cursor 27 tools to read and edit your codebase over MCP. Every answer comes from the AST — not model memory.
 
-Without a tool to read your code, AI assistants guess — wrong file paths, stale function names, invented module structures. yoyo stops the guessing. Every answer comes from the AST.
-
-No API keys. No SaaS. No telemetry. Your code stays on your machine.
+**99% eval accuracy** across 7 real codebases (120 tasks) vs 26% baseline. No API keys. No SaaS. No telemetry.
 
 ---
 
-## What you get
+## Install
 
-- **Speed** — 8 parallel tool calls replace 15–20 minutes of manual file reading. A 400-file codebase in ~30 seconds.
-- **Accuracy** — file paths, function names, line numbers, and byte offsets come directly from the parsed AST, not from model memory.
-- **Semantic search** — find functions by intent ("semaphore acquisition", "spawn blocking task") using local ONNX embeddings. No API key required.
-
-Evaluated on 7 real codebases (Rust, Go, Python): **119/120 tasks — 99%** vs Claude Code baseline at 26% (30/114). Full report: [`evals/REPORT.md`](./evals/REPORT.md)
-
----
-
-## How it works
-
-```
-bake  →  parse source files with ast-grep  →  write bake.json
-read  →  symbol / supersearch / slice / ...   →  read from bake.json
-write →  patch / graph_rename / ...           →  write file + reindex
-```
-
-**Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically.
-
----
-
-## Installation
-
-**macOS (Apple Silicon)**
 ```bash
-curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz \
-  | tar xz
+# macOS Apple Silicon
+curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
-```
 
-**Linux (x86_64)**
-```bash
-curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz \
-  | tar xz
+# Linux x86_64
+curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz | tar xz
 sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 ```
 
-**Build from source** (requires [Rust stable](https://rustup.rs)):
-```bash
-git clone https://github.com/avirajkhare00/yoyo.git
-cd yoyo
-cargo build --release
-sudo cp target/release/yoyo /usr/local/bin/yoyo
-```
-
-**Quick start:**
-```bash
-yoyo bake --path /path/to/your/project
-yoyo shake --path /path/to/your/project
-yoyo symbol --path /path/to/your/project --name myFunction
-yoyo supersearch --path /path/to/your/project --query myFunction
-```
-
----
-
-## Use with Claude or Cursor (MCP)
+## Connect to Claude or Cursor
 
 Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 
@@ -80,40 +34,13 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
-**Recommended: add a `UserPromptSubmit` hook** so Claude is reminded to prefer yoyo tools on every turn. Add this to your project's `.claude/settings.local.json`:
+Then index your project:
 
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '[yoyo] Use mcp__yoyo__supersearch instead of Grep/Bash grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__slice for line ranges. yoyo tools must be loaded via ToolSearch first if not yet loaded.'"
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+yoyo bake --path /path/to/your/project
 ```
 
-Claude calls the tools automatically. You don't manage it.
-
----
-
-## How Claude works with yoyo
-
-Claude treats yoyo as its primary interface to the codebase. Here's what happens each session:
-
-1. **Bootstrap** — Claude loads `llm_instructions` on first contact. This returns the tool list, workflows, and prime directives in one call. No file reading, no grepping.
-2. **Read** — Instead of `grep` or `cat`, Claude uses `supersearch`, `symbol`, and `slice`. These return structured data from the AST index — not line matches.
-3. **Understand** — `blast_radius`, `trace_down`, `flow`, and `health` answer structural questions that no text tool can: who calls this? what does this function touch? is this dead?
-4. **Write** — `patch`, `graph_rename`, `graph_create`, `graph_add`, `graph_move`, `graph_delete` mutate code and auto-reindex. Claude never edits files directly when a yoyo write tool applies.
-5. **Dogfood** — every session building yoyo is also a yoyo session. Gaps found while building get filed as issues immediately.
-
-The result: Claude answers questions about the codebase from facts, not memory. No hallucinated file paths. No stale function names.
+Claude calls the tools automatically.
 
 ---
 
@@ -121,116 +48,36 @@ The result: Claude answers questions about the codebase from facts, not memory. 
 
 | Tool | What it does |
 |---|---|
-| `bake` | Parse the project and write the index. Run this first. |
+| `bake` | Parse the project, write the index. Run first. |
 | `shake` | Language breakdown, file count, top-complexity functions. |
-| `symbol` | Find a function by name. Returns file, line range, optionally the full body. |
+| `symbol` | Find a function by name — file, line, optionally full body. |
 | `slice` | Read any line range from any file. |
-| `file_functions` | Every function in a file with line ranges and complexity scores. |
-| `supersearch` | AST-aware search. Finds call sites, assignments, identifiers across all files. |
-| `blast_radius` | All functions that transitively call a symbol. Affected file list included. |
-| `trace_down` | BFS call chain from a function to db/http/queue boundaries. Rust + Go. |
-| `health` | Dead code, high-complexity functions, and duplicate function name hints. |
-| `package_summary` | All functions, endpoints, and complexity in a module path. |
-| `architecture_map` | Directory tree with inferred roles (routes, services, models, etc.). |
+| `supersearch` | AST-aware search across all files. |
+| `file_functions` | Every function in a file with complexity scores. |
+| `blast_radius` | All transitive callers of a symbol + affected files. |
+| `trace_down` | Call chain to db/http/queue boundary. Rust + Go. |
+| `flow` | Endpoint → handler → call chain in one call. Replaces `api_trace` + `trace_down` + `symbol`. |
+| `health` | Dead code, god functions, duplicate names. |
+| `package_summary` | Functions, endpoints, complexity for a module path. |
+| `architecture_map` | Directory tree with inferred roles. |
 | `api_surface` | Exported functions grouped by module. |
-| `suggest_placement` | Ranked list of files to add a new function to. |
-| `find_docs` | Locate README, .env, Dockerfile, and config files. |
-| `all_endpoints` | All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo). |
-| `api_trace` | Trace a route path + HTTP method to its handler function. |
-| `crud_operations` | Create/read/update/delete matrix inferred from routes. |
-| `patch` | Write changes by symbol name, line range, or exact string match. Auto-reindexes. |
-| `patch_bytes` | Write at exact byte offsets from the index. |
-| `multi_patch` | Apply N edits across M files in one call. |
-| `graph_rename` | Rename a symbol at its definition and every call site atomically. |
-| `graph_create` | Create a new file with an initial function scaffold. Errors if file exists. |
-| `graph_add` | Insert a new function scaffold into an existing file. |
-| `graph_move` | Move a function from one file to another. |
-| `flow` | Vertical slice: endpoint → handler → call chain to db/http/queue in one call. Replaces `api_trace` + `trace_down` + `symbol`. |
-| `semantic_search` | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
+| `suggest_placement` | Ranked files to add a new function to. |
+| `find_docs` | Locate README, .env, Dockerfile, config files. |
+| `all_endpoints` | All detected HTTP routes. |
+| `api_trace` | Route path + method → handler function. |
+| `crud_operations` | CRUD matrix inferred from routes. |
+| `semantic_search` | Find functions by intent. Local ONNX, no API key. |
+| `patch` | Write by symbol name, line range, or string match. Auto-reindexes. |
+| `patch_bytes` | Write at exact byte offsets. |
+| `multi_patch` | N edits across M files in one call. |
+| `graph_rename` | Rename a symbol at definition + every call site, atomically. |
+| `graph_create` | Create a new file with an initial function scaffold. |
+| `graph_add` | Insert a function scaffold into an existing file. |
+| `graph_move` | Move a function between files. |
 | `graph_delete` | Remove a function by name. |
 
 **Languages:** TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash
 
-**Route detection:** Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http
-
 ---
 
-## Language support matrix
-
-| Language | Functions | Types | Endpoints | Import graph | AST search | trace_down |
-|---|---|---|---|---|---|---|
-| Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Go | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Python | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| JavaScript | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| C | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| C++ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| C# | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Java | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Kotlin | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| PHP | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Ruby | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Swift | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-
-**Endpoints** — route detection via `all_endpoints`, `api_trace`, `crud_operations`.  
-**Import graph** — used by `blast_radius` to expand affected files.  
-**AST search** — `supersearch` uses the AST walker for this language.  
-**trace_down** — BFS call chain to db/http/queue boundaries.
-
----
-
-## Known limitations
-
-- **Route detection is partial** — `api_trace` and `crud_operations` work with the frameworks listed above. Axum, NestJS, Fastify, Django, and dynamic routers are not detected. See [#19](https://github.com/avirajkhare00/yoyo/issues/19).
-- **`health` false positives for HTTP handlers** — functions registered via a router (not via direct calls) are flagged as dead code because the static call graph can't see the registration. Tracked in [#39](https://github.com/avirajkhare00/yoyo/issues/39).
-- **`trace_down` is Rust + Go only** — call chain tracing doesn't work in TypeScript or Python yet.
-- **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
-- **`graph_move` doesn't update imports** — it relocates the function body but doesn't add or remove `use`/`import` statements.
-- **Common search terms explode** — `symbol` and `supersearch` return many matches for generic names like `parse` or `connect`. Use `--file` to scope to a directory and `--limit` to cap results.
-- **C++ namespace false positives** — `namespace` blocks may appear as top-complexity entries. See [#66](https://github.com/avirajkhare00/yoyo/issues/66).
-
-Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkhare00/yoyo/issues)
-
----
-
-## Project layout
-
-```
-src/
-  main.rs        binary entrypoint, CLI vs MCP switch
-  cli.rs         CLI (clap)
-  mcp.rs         MCP JSON-RPC server over stdio
-  engine/
-    index.rs     bake, shake, llm_instructions
-    search.rs    symbol, supersearch, file_functions
-    edit.rs      patch, patch_bytes, multi_patch, slice
-    graph.rs     graph_rename, graph_add, graph_move
-    analysis.rs  blast_radius, find_docs, health, graph_delete
-    embed.rs     semantic_search — fastembed ONNX embeddings + SQLite store
-    api.rs       all_endpoints, api_surface, api_trace, crud_operations
-    nav.rs       architecture_map, package_summary, suggest_placement
-    types.rs     shared payload structs
-    util.rs      resolve_project_root, load_bake_index, reindex_files
-  lang/
-    typescript.rs
-    rust.rs
-    python.rs
-    go.rs
-    c.rs
-    cpp.rs
-    csharp.rs
-    java.rs
-    kotlin.rs
-    php.rs
-    ruby.rs
-    swift.rs
-    bash.rs
-```
-
----
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
+Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Changelog](./CHANGELOG.md) · MIT

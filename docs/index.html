@@ -222,6 +222,7 @@
     <span class="logo">yo<span>yo</span></span>
     <ul>
       <li><a href="#how">How it works</a></li>
+      <li><a href="#claude">How Claude works</a></li>
       <li><a href="#tools">Tools</a></li>
       <li><a href="#install">Install</a></li>
       <li><a href="https://github.com/avirajkhare00/yoyo">GitHub</a></li>
@@ -233,7 +234,7 @@
   <div class="container">
     <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo parses your codebase into a searchable index and gives Claude or Cursor 25 tools to read and edit it.
+      yoyo parses your codebase into a searchable index and gives Claude or Cursor 27 tools to read and edit it.
       No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
@@ -254,7 +255,7 @@
       <div class="stat-label">faster than manual file reading</div>
     </div>
     <div class="stat">
-      <div class="stat-num">25</div>
+      <div class="stat-num">27</div>
       <div class="stat-label">tools over MCP</div>
     </div>
     <div class="stat">
@@ -319,6 +320,11 @@
       </div>
 
       <div class="card">
+        <h3>Vertical slice in one call</h3>
+        <p><code>flow</code> resolves an HTTP endpoint to its handler, then traces the call chain to db/http/queue boundaries — replacing three sequential tool calls with one. Handler source optional.</p>
+      </div>
+
+      <div class="card">
         <h3>Edits code safely</h3>
         <p><code>patch</code> writes changes by symbol name, line range, or exact string match. Validates syntax after every write. Reindexes automatically so the next read is always fresh.</p>
       </div>
@@ -344,9 +350,37 @@
 
 <hr class="section-divider">
 
+<section id="claude">
+  <div class="container">
+    <h2>How Claude works with yoyo</h2>
+    <p class="section-sub">Claude treats yoyo as its primary interface to the codebase. You don't manage the tool calls.</p>
+    <div class="grid">
+      <div class="card">
+        <h3>1. Bootstrap</h3>
+        <p>Claude loads <code>llm_instructions</code> on first contact. Returns the tool list, workflows, and prime directives in one call. No file reading, no grepping.</p>
+      </div>
+      <div class="card">
+        <h3>2. Read</h3>
+        <p><code>supersearch</code>, <code>symbol</code>, and <code>slice</code> replace grep and cat. Structured data from the AST index — not line matches from raw source.</p>
+      </div>
+      <div class="card">
+        <h3>3. Understand</h3>
+        <p><code>blast_radius</code>, <code>flow</code>, <code>trace_down</code>, and <code>health</code> answer structural questions no text tool can: who calls this? what does this touch? is this dead?</p>
+      </div>
+      <div class="card">
+        <h3>4. Write</h3>
+        <p><code>patch</code>, <code>graph_rename</code>, <code>graph_create</code>, <code>graph_add</code>, <code>graph_move</code>, <code>graph_delete</code> mutate code and auto-reindex. No direct file edits.</p>
+      </div>
+    </div>
+    <p style="margin-top:24px; font-size:0.9rem; color:var(--muted);">Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.</p>
+  </div>
+</section>
+
+<hr class="section-divider">
+
 <section id="tools">
   <div class="container">
-    <h2>All 25 tools</h2>
+    <h2>All 27 tools</h2>
     <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
@@ -374,7 +408,9 @@
         <tr><td><code>patch_bytes</code></td><td><span class="pill pill-green">Stable</span></td><td>Write at exact byte offsets from the index.</td></tr>
         <tr><td><code>multi_patch</code></td><td><span class="pill pill-green">Stable</span></td><td>Apply N edits across M files in one call, bottom-up so offsets stay valid.</td></tr>
         <tr><td><code>graph_rename</code></td><td><span class="pill pill-green">Stable</span></td><td>Rename a symbol at its definition and every call site atomically.</td></tr>
-        <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Stable</span></td><td>Insert a new function scaffold into a file.</td></tr>
+        <tr><td><code>flow</code></td><td><span class="pill pill-green">Stable</span></td><td>Endpoint → handler → call chain to db/http/queue in one call. Replaces <code>api_trace</code> + <code>trace_down</code> + <code>symbol</code>.</td></tr>
+        <tr><td><code>graph_create</code></td><td><span class="pill pill-green">Stable</span></td><td>Create a new file with an initial function scaffold. Errors if file exists or parent dir missing.</td></tr>
+        <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Stable</span></td><td>Insert a new function scaffold into an existing file.</td></tr>
         <tr><td><code>graph_move</code></td><td><span class="pill pill-green">Stable</span></td><td>Move a function from one file to another.</td></tr>
         <tr><td><code>graph_delete</code></td><td><span class="pill pill-green">Stable</span></td><td>Remove a function by name. Confirms safety first with <code>blast_radius</code>.</td></tr>
         <tr><td><code>semantic_search</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
