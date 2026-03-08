@@ -193,8 +193,8 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `graph_move` | Move a function between files. |
 | `graph_delete` | Remove a function by name. Checks blast radius first. |
 
-**Languages:** TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash
+**Languages:** TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash, Zig
 
 ---
 
-Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Changelog](./CHANGELOG.md) · MIT
+Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · MIT
