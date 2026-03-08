@@ -49,10 +49,19 @@ Result: Claude answers from facts, not memory. No hallucinated file paths. No st
 
 ## Installation
 
-**macOS (Apple Silicon)**
+**macOS — Homebrew (recommended)**
+```bash
+brew tap avirajkhare00/yoyo
+brew install yoyo
+```
+Homebrew handles signing and PATH. No `codesign`, no `sudo mv`.
+
+**macOS — manual (Apple Silicon)**
 ```bash
 curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz | tar xz
 sudo mv yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
+# Required: sign the binary or Gatekeeper kills it silently (exit 137)
+codesign --force --deep --sign - /usr/local/bin/yoyo
 ```
 
 **Linux (x86_64)**

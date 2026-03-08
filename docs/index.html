@@ -238,7 +238,7 @@
       No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
-      <a class="btn btn-primary" href="#install">Download binary</a>
+      <a class="btn btn-primary" href="#install">Install</a>
       <a class="btn btn-ghost" href="https://github.com/avirajkhare00/yoyo">View on GitHub</a>
     </div>
   </div>
@@ -426,15 +426,24 @@
     <h2>Installation</h2>
     <p class="section-sub">One binary, no runtime dependencies.</p>
 
-    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:12px;">Pre-built binary (recommended)</p>
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:12px;">macOS — Homebrew (recommended)</p>
 
-    <pre><span class="comment"># macOS Apple Silicon</span>
-<span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz \
+    <pre><span class="cmd">brew tap</span> avirajkhare00/yoyo
+<span class="cmd">brew install</span> yoyo</pre>
+
+    <p style="margin-top:8px; font-size:0.92rem; color:var(--muted);">Homebrew handles signing and PATH automatically. No <code>codesign</code>, no <code>sudo mv</code>.</p>
+
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">macOS — manual (Apple Silicon)</p>
+
+    <pre><span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz \
   | tar xz
-<span class="cmd">sudo mv</span> yoyo-aarch64-apple-darwin /usr/local/bin/yoyo</pre>
+<span class="cmd">sudo mv</span> yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
+<span class="comment"># Required: sign or Gatekeeper kills it silently (exit 137)</span>
+<span class="cmd">codesign</span> --force --deep --sign - /usr/local/bin/yoyo</pre>
 
-    <pre><span class="comment"># Linux x86_64</span>
-<span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz \
+    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Linux (x86_64)</p>
+
+    <pre><span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz \
   | tar xz
 <span class="cmd">sudo mv</span> yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo</pre>
 
