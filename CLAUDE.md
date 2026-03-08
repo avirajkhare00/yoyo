@@ -1,5 +1,8 @@
 # yoyo — Instructions for Claude
 
+## Operator
+Read [`AVIRAJ.md`](./AVIRAJ.md) to understand who you're working with. It is the operator profile — communication style, pace, values, and what he tolerates. Read it once per session if context is fresh.
+
 ## ⚠️ MANDATORY: Load yoyo tools before doing anything else
 yoyo MCP tools are deferred — they MUST be loaded before use. At the start of EVERY session, call `ToolSearch` with `"select:mcp__yoyo__llm_instructions"` immediately. Do not read files, grep, or search anything before doing this.
 
