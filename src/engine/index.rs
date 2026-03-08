@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::types::{
     BakeSummary, DecisionEntry, EndpointSummary, FunctionSummary, LlmInstructionsPayload,
-    ShakePayload, ToolDescription, Workflow, WorkflowStep,
+    Metapattern, MetapatternStep, ShakePayload, ToolDescription, Workflow, WorkflowStep,
 };
 use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
 
@@ -37,6 +37,7 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
             "After any write, do not call read-indexed tools on the same file until the write response is received.",
         ],
         workflows: workflow_catalog(),
+        metapatterns: metapattern_catalog(),
         decision_map: decision_map(),
         antipatterns: vec![
             "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use blast_radius.",
@@ -387,6 +388,63 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "trace_down", hint: "Pass symbol name; optionally set depth (default 5) and file to disambiguate" },
                 WorkflowStep { tool: "symbol",     hint: "Inspect any resolved callee with include_source=true" },
             ],
+        },
+    ]
+}
+
+fn metapattern_catalog() -> Vec<Metapattern> {
+    vec![
+        Metapattern {
+            shape: "Orient → Scope → Read",
+            when: "You're unfamiliar with a codebase, a module, or a domain area. Build the mental model before touching anything.",
+            steps: vec![
+                MetapatternStep { phase: "Orient",  tools: vec!["shake", "architecture_map"] },
+                MetapatternStep { phase: "Scope",   tools: vec!["package_summary", "api_surface", "all_endpoints"] },
+                MetapatternStep { phase: "Read",    tools: vec!["symbol", "slice"] },
+            ],
+            instances: vec!["Orient to an unfamiliar codebase", "Deep-dive into a module", "Find a function by intent (semantic search)"],
+        },
+        Metapattern {
+            shape: "Read → Safety → Write → Verify",
+            when: "You're about to mutate code. Never write blind — always read first, check blast radius, then patch.",
+            steps: vec![
+                MetapatternStep { phase: "Read",    tools: vec!["symbol", "slice"] },
+                MetapatternStep { phase: "Safety",  tools: vec!["blast_radius"] },
+                MetapatternStep { phase: "Write",   tools: vec!["patch", "multi_patch", "graph_rename"] },
+                MetapatternStep { phase: "Verify",  tools: vec!["symbol", "slice"] },
+            ],
+            instances: vec!["Edit a function", "Rename with safety check", "Fix a broken API endpoint end-to-end"],
+        },
+        Metapattern {
+            shape: "Suspect → Confirm → Remove",
+            when: "You think something is dead weight. Surface candidates, confirm no hidden callers, then delete.",
+            steps: vec![
+                MetapatternStep { phase: "Suspect", tools: vec!["health"] },
+                MetapatternStep { phase: "Confirm", tools: vec!["blast_radius"] },
+                MetapatternStep { phase: "Remove",  tools: vec!["graph_delete"] },
+            ],
+            instances: vec!["Safely delete dead code"],
+        },
+        Metapattern {
+            shape: "Orient → Place → Scaffold → Implement",
+            when: "You're adding new functionality. Find the right home first, scaffold the shape, then fill in the body.",
+            steps: vec![
+                MetapatternStep { phase: "Orient",    tools: vec!["architecture_map"] },
+                MetapatternStep { phase: "Place",     tools: vec!["suggest_placement"] },
+                MetapatternStep { phase: "Scaffold",  tools: vec!["graph_create", "graph_add"] },
+                MetapatternStep { phase: "Implement", tools: vec!["patch"] },
+            ],
+            instances: vec!["Add a new feature", "Add a function scaffold"],
+        },
+        Metapattern {
+            shape: "Trace → Read → Fix",
+            when: "Something is broken. Follow the path from entry point to failure, read each layer, then patch the root cause.",
+            steps: vec![
+                MetapatternStep { phase: "Trace", tools: vec!["flow", "supersearch", "trace_down"] },
+                MetapatternStep { phase: "Read",  tools: vec!["symbol", "slice"] },
+                MetapatternStep { phase: "Fix",   tools: vec!["multi_patch", "patch"] },
+            ],
+            instances: vec!["Fix a broken API endpoint end-to-end", "Trace a call chain", "Understand an API endpoint"],
         },
     ]
 }

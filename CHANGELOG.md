@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.23.0] - 2026-03-08
+
+### Added
+- **Metapatterns** — `llm_instructions` now includes a `metapatterns` key with five high-level workflow shapes: "Orient → Scope → Read", "Read → Safety → Write → Verify", "Suspect → Confirm → Remove", "Orient → Place → Scaffold → Implement", "Trace → Read → Fix". Each shape lists the abstract phases, the concrete yoyo tools that implement each phase, and the named workflows that are instances of it. Agents that learn the five shapes need fewer retries — the right tool sequence follows immediately from recognising the problem shape.
+- **`playbook/metapatterns.md`** — Documents the discovery, the five shapes, why order matters in each, and how they are encoded in the codebase.
+
 ## [0.22.9] - 2026-03-08
 
 ### Fixed
