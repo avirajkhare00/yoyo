@@ -12,7 +12,7 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 | `Grep` / `Bash grep` / `Bash rg` | `mcp__yoyo__supersearch` |
 | `Read` (to understand code) | `mcp__yoyo__symbol` with `include_source=true` |
 | `Read` (specific lines) | `mcp__yoyo__slice` |
-| `Edit` / `mcp__yoyo__patch` (function edits) | `mcp__yoyo__patch_by_symbol` |
+| `Edit` (function edits) | `mcp__yoyo__patch` with `name=` parameter |
 
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.

@@ -147,7 +147,7 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server — 27 tools to read and edit any codebase from the AST, not model memory. \
+                "instructions": "You have access to yoyo, a code intelligence MCP server — 28 tools to read and edit any codebase from the AST, not model memory. \
                     ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
                     `llm_instructions` returns the full tool catalog, 21 combination workflows, prime directives, and antipatterns. Read it before doing anything else. \
                     `bake` builds the index all read-indexed tools depend on. \
