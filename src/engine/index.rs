@@ -223,17 +223,17 @@ fn workflow_catalog() -> Vec<Workflow> {
             steps: vec![
                 WorkflowStep { tool: "architecture_map",  hint: "Understand directory roles; pass your intent (e.g. 'user handler')" },
                 WorkflowStep { tool: "suggest_placement", hint: "Get ranked file suggestions for the new function" },
-                WorkflowStep { tool: "graph_add",         hint: "Insert a scaffold at the right location (optionally after_symbol); index auto-updates" },
-                WorkflowStep { tool: "patch",   hint: "Fill in the scaffold body — use name mode (pass symbol name) or old_string/new_string mode" },
+                WorkflowStep { tool: "graph_create",      hint: "If adding to a new file: create the file + initial scaffold in one call. Errors if file exists." },
+                WorkflowStep { tool: "graph_add",         hint: "If adding to an existing file: insert a scaffold at the right location (optionally after_symbol); index auto-updates" },
+                WorkflowStep { tool: "patch",             hint: "Fill in the scaffold body — use name mode (pass symbol name) or old_string/new_string mode" },
             ],
         },
         Workflow {
             name: "Understand an API endpoint",
-            description: "Trace an HTTP route to its handler and read the implementation.",
+            description: "Trace an HTTP route to its handler and full call chain in one call.",
             steps: vec![
-                WorkflowStep { tool: "all_endpoints", hint: "List every detected route to find the one you need" },
-                WorkflowStep { tool: "api_trace",     hint: "Filter by path/method to get the handler file and name" },
-                WorkflowStep { tool: "symbol",        hint: "Look up the handler with include_source=true" },
+                WorkflowStep { tool: "flow", hint: "Pass endpoint path substring (and optional method). Returns handler + call chain + boundaries in one call. Prefer over api_trace + trace_down + symbol." },
+                WorkflowStep { tool: "all_endpoints", hint: "If flow returns no match, list all detected routes to find the right path substring" },
             ],
         },
         Workflow {
