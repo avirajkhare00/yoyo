@@ -14,6 +14,13 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 | `Read` (specific lines) | `mcp__yoyo__slice` |
 | `Edit` (function edits) | `mcp__yoyo__patch` with `name=` parameter |
 
+**Using `Edit` on a function body when yoyo tools are loaded is a process bug — not a judgment call.**
+The only valid reasons to reach for `Edit` over `patch`:
+- The change is not function-scoped (module declaration, `use` statement, `const` block, struct field)
+- `patch` errored and the error was not recoverable
+
+If neither condition is true and you used `Edit`, you did it wrong. Correct the habit.
+
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
 Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
