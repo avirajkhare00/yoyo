@@ -2,7 +2,7 @@
   <img src="logo.svg" width="80" height="96" alt="yoyo logo"/>
 </p>
 
-# yoyo 🪀
+# yoyo
 
 yoyo is a code intelligence MCP server. It gives your AI agent 28 tools to read and edit any codebase — grounded in the AST, not model memory.
 
