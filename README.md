@@ -1,10 +1,28 @@
-# yoyo
+# yoyo 🪀
 
 yoyo is a code intelligence MCP server. It gives your AI agent 27 tools to read and edit any codebase — grounded in the AST, not model memory.
 
 **Built for agents.** Drop it into Claude Code, Cursor, or any MCP-compatible agent. The agent calls the tools. You get better answers.
 
 **99% eval accuracy** across 7 real codebases (120 tasks) vs 26% baseline (Claude Code without yoyo). No API keys. No SaaS. No telemetry.
+
+---
+
+## Philosophy
+
+In yoyo tournaments, a yoyo is just a spinning disk on a string. The magic is in the combinations — string wraps, body movements, timing layered together. A single trick is fine. Fifty moves chained in sequence is something else entirely.
+
+yoyo works the same way. Each tool does one thing. The combinations are what's deadly:
+
+| Combination | What it does |
+|---|---|
+| `supersearch` → `symbol` → `patch` | find it, read it, change it ⚡ |
+| `blast_radius` → `health` → `graph_delete` | who calls this? is it dead? remove it safely |
+| `flow` → `multi_patch` | trace the full request path, fix it end-to-end in one shot |
+| `bake` → `semantic_search` → `suggest_placement` | where does this new function belong? |
+| `architecture_map` → `api_surface` → `graph_create` | understand the shape, find the gap, fill it |
+
+No single tool is the point. The orchestration is.
 
 ---
 
