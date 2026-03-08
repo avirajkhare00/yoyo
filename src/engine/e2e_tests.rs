@@ -203,6 +203,85 @@ mod tests {
         );
     }
 
+    // ── flow ──────────────────────────────────────────────────────────────────
+
+    fn setup_with_endpoint() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        // handler with a callout to a service function
+        fs::write(
+            dir.path().join("src/handlers.rs"),
+            r#"
+#[get("/users/{id}")]
+pub async fn get_user(id: u32) -> String {
+    fetch_user(id)
+}
+
+pub fn fetch_user(id: u32) -> String {
+    format!("user:{}", id)
+}
+"#,
+        ).unwrap();
+
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        dir
+    }
+
+    #[test]
+    fn e2e_flow_returns_endpoint_and_handler() {
+        let dir = setup_with_endpoint();
+        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, false).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        assert_eq!(v["tool"], "flow");
+        assert!(v["endpoint"]["path"].as_str().unwrap().contains("/users"));
+        assert_eq!(v["handler"]["name"], "get_user");
+        assert!(v["handler"]["file"].as_str().unwrap().contains("handlers.rs"));
+    }
+
+    #[test]
+    fn e2e_flow_includes_call_chain() {
+        let dir = setup_with_endpoint();
+        let out = crate::engine::flow(root(&dir), "/users".into(), None, Some(3), false).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        let chain = v["call_chain"].as_array().unwrap();
+        assert!(!chain.is_empty(), "expected non-empty call_chain");
+        // depth 0 is the handler itself
+        let handler_node = chain.iter().find(|n| n["name"] == "get_user");
+        assert!(handler_node.is_some(), "expected get_user in call_chain");
+    }
+
+    #[test]
+    fn e2e_flow_summary_contains_endpoint_and_handler() {
+        let dir = setup_with_endpoint();
+        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, false).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        let summary = v["summary"].as_str().unwrap();
+        assert!(summary.contains("get_user"), "summary missing handler: {}", summary);
+        assert!(summary.contains("/users"), "summary missing endpoint: {}", summary);
+    }
+
+    #[test]
+    fn e2e_flow_include_source_populates_handler_source() {
+        let dir = setup_with_endpoint();
+        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, true).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        let source = v["handler"]["source"].as_str();
+        assert!(source.is_some(), "expected source to be present with include_source=true");
+        assert!(source.unwrap().contains("fetch_user"), "source missing body content");
+    }
+
+    #[test]
+    fn e2e_flow_errors_on_unknown_endpoint() {
+        let dir = setup_with_endpoint();
+        let err = crate::engine::flow(root(&dir), "/nonexistent".into(), None, None, false).unwrap_err();
+        assert!(err.to_string().contains("No endpoint matching"), "unexpected error: {}", err);
+    }
+
     // ── graph_delete ──────────────────────────────────────────────────────────
 
     #[test]

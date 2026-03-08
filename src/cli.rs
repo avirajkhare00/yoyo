@@ -13,6 +13,8 @@ pub enum Command {
     Symbol(SymbolArgs),
     /// List all detected API endpoints from the bake index.
     AllEndpoints(AllEndpointsArgs),
+    /// Vertical slice: endpoint → handler → call chain in one call.
+    Flow(FlowArgs),
     /// Read a specific line range of a file.
     Slice(SliceArgs),
     /// Exported API summary grouped by module (TypeScript-only for now).
@@ -39,6 +41,8 @@ pub enum Command {
     BlastRadius(BlastRadiusArgs),
     /// Rename a symbol everywhere (definition + all call sites) atomically.
     GraphRename(GraphRenameArgs),
+    /// Create a new file with an initial function scaffold.
+    GraphCreate(GraphCreateArgs),
     /// Insert a new function scaffold into a file.
     GraphAdd(GraphAddArgs),
     /// Move a function from one file to another.
@@ -104,6 +108,29 @@ pub struct AllEndpointsArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct FlowArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// URL path substring to match (e.g. '/users' or '/api/login').
+    #[arg(long)]
+    pub endpoint: String,
+
+    /// Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH).
+    #[arg(long)]
+    pub method: Option<String>,
+
+    /// Max call chain depth (default 5).
+    #[arg(long)]
+    pub depth: Option<usize>,
+
+    /// Include the handler function source inline.
+    #[arg(long)]
+    pub include_source: bool,
 }
 
 #[derive(Args, Debug)]
@@ -357,6 +384,25 @@ pub struct GraphAddArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct GraphCreateArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// File path relative to project root (e.g. src/engine/foo.rs).
+    #[arg(long)]
+    pub file: String,
+
+    /// Name for the initial scaffolded function.
+    #[arg(long)]
+    pub function_name: String,
+
+    /// Override language detection (rust | typescript | python | go).
+    #[arg(long)]
+    pub language: Option<String>,
+}
+
+#[derive(Args, Debug)]
 pub struct GraphMoveArgs {
     /// Optional path to the project directory.
     #[arg(long)]
@@ -397,6 +443,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Bake(args)) => run_bake(args).await?,
         Some(Command::Symbol(args)) => run_symbol(args).await?,
         Some(Command::AllEndpoints(args)) => run_all_endpoints(args).await?,
+        Some(Command::Flow(args)) => run_flow(args).await?,
         Some(Command::Slice(args)) => run_slice(args).await?,
         Some(Command::ApiSurface(args)) => run_api_surface(args).await?,
         Some(Command::FileFunctions(args)) => run_file_functions(args).await?,
@@ -410,6 +457,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Patch(args)) => run_patch(args).await?,
         Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
         Some(Command::GraphRename(args)) => run_graph_rename(args).await?,
+        Some(Command::GraphCreate(args)) => run_graph_create(args).await?,
         Some(Command::GraphAdd(args)) => run_graph_add(args).await?,
         Some(Command::GraphMove(args)) => run_graph_move(args).await?,
         Some(Command::TraceDown(args)) => run_trace_down(args).await?,
@@ -451,6 +499,12 @@ async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
 
 async fn run_all_endpoints(args: AllEndpointsArgs) -> anyhow::Result<()> {
     let json = crate::engine::all_endpoints(args.path)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_flow(args: FlowArgs) -> anyhow::Result<()> {
+    let json = crate::engine::flow(args.path, args.endpoint, args.method, args.depth, args.include_source)?;
     println!("{json}");
     Ok(())
 }
@@ -551,6 +605,12 @@ async fn run_blast_radius(args: BlastRadiusArgs) -> anyhow::Result<()> {
 
 async fn run_graph_rename(args: GraphRenameArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_rename(args.path, args.name, args.new_name)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_graph_create(args: GraphCreateArgs) -> anyhow::Result<()> {
+    let json = crate::engine::graph_create(args.path, args.file, args.function_name, args.language)?;
     println!("{json}");
     Ok(())
 }

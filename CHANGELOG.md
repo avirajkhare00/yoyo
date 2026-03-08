@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.22.0] - 2026-03-08
+
+### Added
+- **`flow` tool** — vertical slice in one call: endpoint → handler → call chain to db/http/queue boundary.
+  Replaces the `api_trace` + `trace_down` + `symbol` three-step. Parameters: `endpoint` (path substring),
+  `method` (optional), `depth` (default 5), `include_source` (bool). Returns `endpoint`, `handler`,
+  `call_chain`, `boundaries`, `unresolved`, and a human-readable `summary`. Available via MCP and CLI.
+- **`graph_create` tool** — create a new file with an initial function scaffold and auto-reindex.
+  Errors if the file already exists or if the parent directory is missing. Language detected from
+  extension or overridden via `language` param. Supports Rust, Python, TypeScript, Go, and others.
+  Available via MCP and CLI (`yoyo graph-create --file <path> --function-name <name>`).
+
+### Fixed
+- **`slice` MCP params** renamed `start`/`end` → `start_line`/`end_line` to match the field names
+  returned by `symbol`. Agents can now pass `symbol` output directly to `slice` without translation.
+  CLI (`--start`/`--end`) unchanged.
+
+### Internal
+- Extracted `trace_chain` BFS helper from `trace_down` — shared by both `trace_down` and `flow`.
+- 11 new tests: 6 for `graph_create` (unit), 5 for `flow` (e2e with real endpoint fixture).
+
 ## [0.2.4] - 2026-03-04
 
 ### Added

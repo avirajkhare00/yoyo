@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
-use super::types::{GraphAddPayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
+use super::types::{GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
 use super::util::{detect_language, load_bake_index, reindex_files, resolve_project_root};
 use crate::lang::Visibility;
 
@@ -289,6 +289,67 @@ pub fn graph_add(
         name,
         file,
         inserted_at_byte: insert_at,
+    };
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+// ── graph_create ─────────────────────────────────────────────────────────────
+
+/// Create a new file with an initial function scaffold and reindex it.
+/// Errors if the file already exists or if the parent directory does not exist.
+pub fn graph_create(
+    path: Option<String>,
+    file: String,
+    function_name: String,
+    language: Option<String>,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let full_path = root.join(&file);
+
+    if full_path.exists() {
+        return Err(anyhow!(
+            "File {:?} already exists. Use graph_add to insert a function into an existing file.",
+            file
+        ));
+    }
+
+    if let Some(parent) = full_path.parent() {
+        if !parent.exists() {
+            return Err(anyhow!(
+                "Parent directory {:?} does not exist. Create it first.",
+                parent.display()
+            ));
+        }
+    }
+
+    let lang_owned;
+    let lang: &str = if let Some(ref l) = language {
+        l.as_str()
+    } else {
+        lang_owned = detect_language(&full_path).to_string();
+        &lang_owned
+    };
+
+    let entity_type = match lang {
+        "rust" => "fn",
+        "python" => "def",
+        "go" => "func",
+        _ => "function",
+    };
+
+    let scaffold = generate_scaffold(entity_type, &function_name, lang);
+    fs::write(&full_path, scaffold.trim_start())
+        .with_context(|| format!("Failed to create file {}", file))?;
+
+    let _ = reindex_files(&root, &[file.as_str()]);
+
+    let payload = GraphCreatePayload {
+        tool: "graph_create",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        file,
+        function_name,
+        language: lang.to_string(),
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
@@ -601,35 +662,14 @@ fn is_stdlib_symbol(callee: &str, qualifier: Option<&str>) -> bool {
     }
 }
 
-pub fn trace_down(
-    path: Option<String>,
-    symbol: String,
-    depth: Option<usize>,
-    file: Option<String>,
-) -> Result<String> {
-    let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
-
-    let max_depth = depth.unwrap_or(5);
-    let file_filter = file.as_deref().map(str::to_lowercase);
-    let needle = symbol.to_lowercase();
-
-    // Find the starting function
-    let start = bake
-        .functions
-        .iter()
-        .find(|f| {
-            f.name.to_lowercase() == needle
-                && file_filter
-                    .as_ref()
-                    .map(|ff| f.file.to_lowercase().contains(ff.as_str()))
-                    .unwrap_or(true)
-        })
-        .ok_or_else(|| anyhow!("Symbol '{}' not found. Run `bake` first or check the name.", symbol))?;
-
-    // Build lookup: name_lc -> vec of functions
-    let mut by_name: HashMap<String, Vec<&crate::lang::IndexedFunction>> = HashMap::new();
+/// Core BFS trace — reusable by both `trace_down` and `flow`.
+/// Returns (chain, unresolved) starting from `start`, up to `max_depth`.
+pub(crate) fn trace_chain<'a>(
+    bake: &'a super::types::BakeIndex,
+    start: &'a crate::lang::IndexedFunction,
+    max_depth: usize,
+) -> (Vec<TraceNode>, Vec<String>) {
+    let mut by_name: HashMap<String, Vec<&'a crate::lang::IndexedFunction>> = HashMap::new();
     for f in &bake.functions {
         by_name.entry(f.name.to_lowercase()).or_default().push(f);
     }
@@ -660,7 +700,6 @@ pub fn trace_down(
         for call in &func.calls {
             let cl = call.callee.to_lowercase();
 
-            // Check if this call site itself signals a boundary
             if let Some(b) = boundary_from_call(&call.callee, &call.qualifier) {
                 let key = format!("boundary:{}:{}", b, call.callee);
                 if !visited.contains(&key) {
@@ -687,7 +726,6 @@ pub fn trace_down(
                     }
                 }
             } else {
-                // Not in index and not a boundary — record as unresolved (skip stdlib/builtins)
                 let label = match &call.qualifier {
                     Some(q) => format!("{}.{}", q, call.callee),
                     None => call.callee.clone(),
@@ -700,6 +738,36 @@ pub fn trace_down(
     }
 
     chain.sort_by_key(|n| n.depth);
+    (chain, unresolved)
+}
+
+pub fn trace_down(
+    path: Option<String>,
+    symbol: String,
+    depth: Option<usize>,
+    file: Option<String>,
+) -> Result<String> {
+    let root = resolve_project_root(path)?;
+    let bake = load_bake_index(&root)?
+        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+
+    let max_depth = depth.unwrap_or(5);
+    let file_filter = file.as_deref().map(str::to_lowercase);
+    let needle = symbol.to_lowercase();
+
+    let start = bake
+        .functions
+        .iter()
+        .find(|f| {
+            f.name.to_lowercase() == needle
+                && file_filter
+                    .as_ref()
+                    .map(|ff| f.file.to_lowercase().contains(ff.as_str()))
+                    .unwrap_or(true)
+        })
+        .ok_or_else(|| anyhow!("Symbol '{}' not found. Run `bake` first or check the name.", symbol))?;
+
+    let (chain, unresolved) = trace_chain(&bake, start, max_depth);
 
     let payload = TraceDownPayload {
         tool: "trace_down",
@@ -809,6 +877,118 @@ mod tests {
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
         assert!(content.contains("new_helper"));
+    }
+
+    // ── graph_create ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn create_makes_new_file_with_scaffold() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        let result = graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "src/new_module.rs".into(),
+            "process_event".into(),
+            Some("rust".into()),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "graph_create");
+        assert_eq!(v["function_name"], "process_event");
+        assert_eq!(v["language"], "rust");
+
+        let content = fs::read_to_string(dir.path().join("src/new_module.rs")).unwrap();
+        assert!(content.contains("fn process_event"));
+        assert!(content.contains("todo!()"));
+    }
+
+    #[test]
+    fn create_errors_if_file_already_exists() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/existing.rs", "fn old() {}\n");
+
+        let err = graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "src/existing.rs".into(),
+            "new_fn".into(),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn create_errors_if_parent_dir_missing() {
+        let dir = TempDir::new().unwrap();
+
+        let err = graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "nonexistent/dir/foo.rs".into(),
+            "my_fn".into(),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn create_python_scaffold() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        let result = graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "src/handler.py".into(),
+            "handle_request".into(),
+            Some("python".into()),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["language"], "python");
+
+        let content = fs::read_to_string(dir.path().join("src/handler.py")).unwrap();
+        assert!(content.contains("def handle_request"));
+        assert!(content.contains("pass"));
+    }
+
+    #[test]
+    fn create_typescript_scaffold() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        let result = graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "src/service.ts".into(),
+            "fetchUser".into(),
+            Some("typescript".into()),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["language"], "typescript");
+
+        let content = fs::read_to_string(dir.path().join("src/service.ts")).unwrap();
+        assert!(content.contains("function fetchUser"));
+    }
+
+    #[test]
+    fn create_detects_language_from_extension() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        graph_create(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "src/utils.go".into(),
+            "parseArgs".into(),
+            None, // no explicit language
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/utils.go")).unwrap();
+        assert!(content.contains("func parseArgs"));
     }
 
     // ── graph_move ────────────────────────────────────────────────────────────

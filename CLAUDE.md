@@ -3,11 +3,11 @@
 ## Operator
 Read [`AVIRAJ.md`](./AVIRAJ.md) to understand who you're working with. It is the operator profile — communication style, pace, values, and what he tolerates. Read it once per session if context is fresh.
 
-## ⚠️ MANDATORY: Load yoyo tools before doing anything else
-yoyo MCP tools are deferred — they MUST be loaded before use. At the start of EVERY session, call `ToolSearch` with `"select:mcp__yoyo__llm_instructions"` immediately. Do not read files, grep, or search anything before doing this.
+## Load yoyo tools before doing anything else
+yoyo MCP tools are deferred — load them before use. At the start of every session, call `ToolSearch` with `"select:mcp__yoyo__llm_instructions"` first.
 
-**Replacement rules — no exceptions:**
-| Instead of... | Use... |
+**Preferred tools — use these first, fall back when they fail:**
+| Instead of... | Prefer... |
 |---|---|
 | `Grep` / `Bash grep` / `Bash rg` | `mcp__yoyo__supersearch` |
 | `Read` (to understand code) | `mcp__yoyo__symbol` with `include_source=true` |
@@ -16,7 +16,7 @@ yoyo MCP tools are deferred — they MUST be loaded before use. At the start of 
 
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
-Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are last-resort fallbacks — only reach for them when yoyo tools are repeatedly erroring out and blocking progress. If a yoyo tool errors once, try a different yoyo tool or adjust parameters before falling back to Linux tools.
+Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
 

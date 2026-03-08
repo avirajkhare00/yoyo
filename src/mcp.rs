@@ -211,11 +211,18 @@ fn list_tools() -> Value {
             "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
         })),
         tool("all_endpoints", "List all detected API endpoints from the bake index.", json!({"path": p()})),
+        tool_req("flow", "Vertical slice: resolve an endpoint to its handler, then trace the call chain to database/http/queue boundaries. Replaces api_trace + trace_down + symbol in one call.", &["endpoint"], json!({
+            "path": p(),
+            "endpoint": s("URL path substring to match (e.g. '/users' or '/api/login')"),
+            "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
+            "depth": i("Max call chain depth (default 5)"),
+            "include_source": b("If true, include the handler function source inline")
+        })),
         tool("slice", "Read a specific line range of a file.", json!({
             "path": p(),
             "file": s("File path relative to the project root"),
-            "start": i("1-based start line (inclusive)"),
-            "end": i("1-based end line (inclusive)")
+            "start_line": i("1-based start line (inclusive). Matches the start_line field from symbol output."),
+            "end_line": i("1-based end line (inclusive). Matches the end_line field from symbol output.")
         })),
         tool("api_surface", "Exported API summary grouped by module (TypeScript-only for now).", json!({
             "path": p(),
@@ -308,6 +315,12 @@ fn list_tools() -> Value {
             "name": s("Current identifier name to rename"),
             "new_name": s("New identifier name")
         })),
+        tool_req("graph_create", "Create a new file with an initial function scaffold. Errors if the file already exists or if the parent directory is missing. Reindexes automatically.", &["file", "function_name"], json!({
+            "path": p(),
+            "file": s("File path relative to project root (e.g. 'src/engine/foo.rs')"),
+            "function_name": s("Name for the initial scaffolded function"),
+            "language": s("Optional: override language detection (rust | typescript | python | go | java | c | cpp)")
+        })),
         tool_req("graph_add", "Insert a new function or struct scaffold into a file. Optionally place it after an existing symbol (resolved from the bake index). Reindexes the file automatically.", &["entity_type", "name", "file"], json!({
             "path": p(),
             "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
@@ -390,6 +403,13 @@ async fn call_tool(params: Value) -> Result<Value> {
         "shake"            => ok_text(crate::engine::shake(path)?),
         "bake"             => ok_text(crate::engine::bake(path)?),
         "all_endpoints"    => ok_text(crate::engine::all_endpoints(path)?),
+        "flow" => ok_text(crate::engine::flow(
+            path,
+            a.str_req("endpoint", "flow")?,
+            a.str_opt("method"),
+            a.uint_opt("depth"),
+            a.bool_opt("include_source").unwrap_or(false),
+        )?),
         "symbol" => ok_text(crate::engine::symbol(
             path,
             a.str_req("name", "symbol")?,
@@ -400,8 +420,8 @@ async fn call_tool(params: Value) -> Result<Value> {
         "slice" => ok_text(crate::engine::slice(
             path,
             a.str_req("file", "slice")?,
-            a.uint_req("start", "slice")? as u32,
-            a.uint_req("end", "slice")? as u32,
+            a.uint_req("start_line", "slice")? as u32,
+            a.uint_req("end_line", "slice")? as u32,
         )?),
         "api_surface" => ok_text(crate::engine::api_surface(
             path, a.str_opt("package"), a.uint_opt("limit"),
@@ -482,6 +502,12 @@ async fn call_tool(params: Value) -> Result<Value> {
         )?),
         "graph_rename" => ok_text(crate::engine::graph_rename(
             path, a.str_req("name", "graph_rename")?, a.str_req("new_name", "graph_rename")?,
+        )?),
+        "graph_create" => ok_text(crate::engine::graph_create(
+            path,
+            a.str_req("file", "graph_create")?,
+            a.str_req("function_name", "graph_create")?,
+            a.str_opt("language"),
         )?),
         "graph_add" => ok_text(crate::engine::graph_add(
             path,

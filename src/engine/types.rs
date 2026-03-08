@@ -381,6 +381,16 @@ pub(crate) struct GraphAddPayload {
 }
 
 #[derive(Serialize)]
+pub(crate) struct GraphCreatePayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) file: String,
+    pub(crate) function_name: String,
+    pub(crate) language: String,
+}
+
+#[derive(Serialize)]
 pub(crate) struct GraphMovePayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
@@ -464,6 +474,30 @@ pub(crate) struct TraceDownPayload {
     pub(crate) symbol: String,
     pub(crate) chain: Vec<TraceNode>,
     pub(crate) unresolved: Vec<String>,
+}
+
+// ── flow ──────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct FlowHandlerInfo {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) source: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct FlowPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) endpoint: EndpointSummary,
+    pub(crate) handler: FlowHandlerInfo,
+    pub(crate) call_chain: Vec<TraceNode>,
+    pub(crate) boundaries: Vec<String>,
+    pub(crate) unresolved: Vec<String>,
+    pub(crate) summary: String,
 }
 
 // ── health ────────────────────────────────────────────────────────────────────
