@@ -5,8 +5,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::types::{
-    DeadFunction, DocMatch, DuplicateEntry, DuplicateGroup, FindDocsPayload, GodFunction,
-    GraphDeletePayload, HealthPayload,
+    DeadFunction, DocMatch, DuplicateEntry, DuplicateGroup, FeatureEnvy, FindDocsPayload,
+    GraphDeletePayload, HealthPayload, InsiderTrading, LargeFunction, LongMethod, ShotgunSurgery,
 };
 use super::util::{load_bake_index, reindex_files, resolve_project_root};
 
@@ -231,18 +231,31 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
 
     let top_n = top.unwrap_or(10);
 
-    // Set of every callee name ever called (lowercased).
-    let all_callees: HashSet<String> = bake
+    // ── shared indexes ────────────────────────────────────────────────────────
+
+    // callee_name (lowercased) → set of caller files
+    let mut callee_to_caller_files: HashMap<String, HashSet<String>> = HashMap::new();
+    // name → file (for feature envy cross-file resolution)
+    let name_to_file: HashMap<String, &str> = bake
         .functions
         .iter()
-        .flat_map(|f| f.calls.iter().map(|c| c.callee.to_lowercase()))
+        .map(|f| (f.name.to_lowercase(), f.file.as_str()))
         .collect();
 
-    // Dead code: indexed but never called; skip main, tests, examples, benches,
-    // HTTP handlers, public API (reachable externally), and very short names.
-    // Examples/benches are entry points — not called by the project itself.
-    // HTTP handlers are registered via router (dynamic dispatch) — static call graph can't see them.
-    // Public functions in libraries are part of the exported API — external callers are invisible to static analysis.
+    for f in &bake.functions {
+        for c in &f.calls {
+            callee_to_caller_files
+                .entry(c.callee.to_lowercase())
+                .or_default()
+                .insert(f.file.clone());
+        }
+    }
+
+    let all_callees: HashSet<String> = callee_to_caller_files.keys().cloned().collect();
+
+    // ── 1. Dead Code (Fowler: Dead Code) ─────────────────────────────────────
+    // Threshold: never called, non-public, non-test, non-handler, name > 2 chars.
+    // Public functions are externally reachable; HTTP handlers use dynamic dispatch.
     let mut dead_code: Vec<DeadFunction> = bake
         .functions
         .iter()
@@ -256,9 +269,9 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
                 && !f.file.contains("test")
                 && !file_lc.contains("example")
                 && !file_lc.contains("/bench")
-                && !lc.starts_with("handle_")  // HTTP handlers registered via router
-                && !file_lc.contains("handler") // handler files — same reason
-                && f.visibility != crate::lang::Visibility::Public // public API is externally callable
+                && !lc.starts_with("handle_")
+                && !file_lc.contains("handler")
+                && f.visibility != crate::lang::Visibility::Public
                 && f.name.len() > 2
         })
         .map(|f| DeadFunction {
@@ -267,32 +280,206 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
             start_line: f.start_line,
             end_line: f.end_line,
             lines: f.end_line.saturating_sub(f.start_line) + 1,
+            smell: "Dead Code",
+            refactoring: "Delete Dead Code",
         })
         .collect();
     dead_code.sort_by(|a, b| b.lines.cmp(&a.lines));
 
-    // God functions: ranked by complexity × unique fan-out.
-    let mut god_functions: Vec<GodFunction> = bake
+    // ── 2. Large Function (Fowler: Long Method — complexity × fan-out) ────────
+    // Threshold: complexity > 10 (McCabe high-risk) AND fan_out > 5.
+    // Score = complexity × fan_out; ranked descending, capped at top_n.
+    let mut large_functions: Vec<LargeFunction> = bake
         .functions
         .iter()
         .map(|f| {
             let fan_out = f.calls.iter().map(|c| c.callee.as_str()).collect::<HashSet<_>>().len();
             let score = f.complexity.saturating_mul(fan_out as u32);
-            GodFunction {
+            (f, fan_out, score)
+        })
+        .filter(|(f, fan_out, _)| f.complexity > 10 && *fan_out > 5)
+        .map(|(f, fan_out, score)| LargeFunction {
+            name: f.name.clone(),
+            file: f.file.clone(),
+            start_line: f.start_line,
+            complexity: f.complexity,
+            fan_out,
+            score,
+            smell: "Large Function",
+            refactoring: "Extract Function",
+            why: format!(
+                "complexity={}, fan_out={}; exceeds thresholds (complexity>10, fan_out>5)",
+                f.complexity, fan_out
+            ),
+        })
+        .collect();
+    large_functions.sort_by(|a, b| b.score.cmp(&a.score));
+    large_functions.truncate(top_n);
+
+    // ── 3. Long Method (Fowler: Long Method — lines) ─────────────────────────
+    // Threshold: > 30 lines. Fowler's rule: if you can't read it on one screen, extract it.
+    // Skip functions already in large_functions to avoid double-reporting.
+    let large_names: HashSet<(&str, u32)> = large_functions
+        .iter()
+        .map(|g| (g.file.as_str(), g.start_line))
+        .collect();
+    let mut long_methods: Vec<LongMethod> = bake
+        .functions
+        .iter()
+        .filter(|f| {
+            let lines = f.end_line.saturating_sub(f.start_line) + 1;
+            lines > 30 && !large_names.contains(&(f.file.as_str(), f.start_line))
+        })
+        .map(|f| {
+            let lines = f.end_line.saturating_sub(f.start_line) + 1;
+            LongMethod {
                 name: f.name.clone(),
                 file: f.file.clone(),
                 start_line: f.start_line,
-                complexity: f.complexity,
-                fan_out,
-                score,
+                end_line: f.end_line,
+                lines,
+                smell: "Long Method",
+                refactoring: "Extract Function",
+                why: format!("{} lines; threshold: >30 (Fowler: fits on one screen)", lines),
             }
         })
-        .filter(|g| g.score > 0)
         .collect();
-    god_functions.sort_by(|a, b| b.score.cmp(&a.score));
-    god_functions.truncate(top_n);
+    long_methods.sort_by(|a, b| b.lines.cmp(&a.lines));
+    long_methods.truncate(top_n);
 
-    // Duplicate hints: group by stem (name with common verb prefix stripped).
+    // ── 4. Feature Envy (Fowler: Feature Envy) ────────────────────────────────
+    // Threshold: cross-file calls > same-file calls AND cross-file calls >= 3.
+    // "A function that seems more interested in a class other than the one it's in."
+    let mut feature_envy: Vec<FeatureEnvy> = bake
+        .functions
+        .iter()
+        .filter_map(|f| {
+            let mut cross_file_by_target: HashMap<&str, usize> = HashMap::new();
+            let mut same_file = 0usize;
+            for c in &f.calls {
+                match name_to_file.get(&c.callee.to_lowercase()) {
+                    Some(&target_file) if target_file == f.file => same_file += 1,
+                    Some(&target_file) => {
+                        *cross_file_by_target.entry(target_file).or_default() += 1;
+                    }
+                    None => {}
+                }
+            }
+            let cross_file: usize = cross_file_by_target.values().sum();
+            if cross_file <= same_file || cross_file < 3 {
+                return None;
+            }
+            let envies = cross_file_by_target
+                .into_iter()
+                .max_by_key(|(_, n)| *n)
+                .map(|(file, _)| file.to_string())
+                .unwrap_or_default();
+            Some(FeatureEnvy {
+                why: format!(
+                    "{} cross-file calls vs {} same-file calls; most calls go to {}",
+                    cross_file, same_file, envies
+                ),
+                name: f.name.clone(),
+                file: f.file.clone(),
+                start_line: f.start_line,
+                envies,
+                cross_file_calls: cross_file,
+                same_file_calls: same_file,
+                smell: "Feature Envy",
+                refactoring: "Move Method",
+            })
+        })
+        .collect();
+    feature_envy.sort_by(|a, b| b.cross_file_calls.cmp(&a.cross_file_calls));
+    feature_envy.truncate(top_n);
+
+    // ── 5. Shotgun Surgery (Fowler: Shotgun Surgery) ──────────────────────────
+    // Threshold: called from >= 4 different files.
+    // "Every time you make a change you have to make a lot of little changes in many classes."
+    let mut shotgun_surgery: Vec<ShotgunSurgery> = bake
+        .functions
+        .iter()
+        .filter_map(|f| {
+            let caller_files = callee_to_caller_files
+                .get(&f.name.to_lowercase())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            if caller_files < 4 {
+                return None;
+            }
+            Some(ShotgunSurgery {
+                why: format!(
+                    "called from {} different files; threshold: >=4",
+                    caller_files
+                ),
+                name: f.name.clone(),
+                file: f.file.clone(),
+                start_line: f.start_line,
+                caller_files,
+                smell: "Shotgun Surgery",
+                refactoring: "Move Method / Extract Class",
+            })
+        })
+        .collect();
+    shotgun_surgery.sort_by(|a, b| b.caller_files.cmp(&a.caller_files));
+    shotgun_surgery.truncate(top_n);
+
+    // ── 6. Insider Trading (Fowler: Insider Trading) ──────────────────────────
+    // Threshold: file A calls into file B AND file B calls into file A, each >= 2 times.
+    // "Classes that trade data between themselves too much."
+    // Build file → set of files it calls into.
+    let mut file_to_called_files: HashMap<&str, HashMap<&str, usize>> = HashMap::new();
+    for f in &bake.functions {
+        for c in &f.calls {
+            if let Some(&target_file) = name_to_file.get(&c.callee.to_lowercase()) {
+                if target_file != f.file.as_str() {
+                    *file_to_called_files
+                        .entry(f.file.as_str())
+                        .or_default()
+                        .entry(target_file)
+                        .or_default() += 1;
+                }
+            }
+        }
+    }
+    let mut insider_trading: Vec<InsiderTrading> = Vec::new();
+    let files: Vec<&str> = file_to_called_files.keys().copied().collect();
+    let mut seen_pairs: HashSet<(&str, &str)> = HashSet::new();
+    for &file_a in &files {
+        if let Some(a_calls) = file_to_called_files.get(file_a) {
+            for (&file_b, &a_calls_b) in a_calls {
+                let key = if file_a < file_b { (file_a, file_b) } else { (file_b, file_a) };
+                if seen_pairs.contains(&key) {
+                    continue;
+                }
+                let b_calls_a = file_to_called_files
+                    .get(file_b)
+                    .and_then(|m| m.get(file_a))
+                    .copied()
+                    .unwrap_or(0);
+                if a_calls_b >= 2 && b_calls_a >= 2 {
+                    seen_pairs.insert(key);
+                    insider_trading.push(InsiderTrading {
+                        why: format!(
+                            "{} calls {} functions in {}; {} calls {} functions back",
+                            file_a, a_calls_b, file_b, file_b, b_calls_a
+                        ),
+                        file_a: file_a.to_string(),
+                        file_b: file_b.to_string(),
+                        a_calls_b,
+                        b_calls_a,
+                        smell: "Insider Trading",
+                        refactoring: "Hide Delegate / Move Method",
+                    });
+                }
+            }
+        }
+    }
+    insider_trading.sort_by(|a, b| (b.a_calls_b + b.b_calls_a).cmp(&(a.a_calls_b + a.b_calls_a)));
+    insider_trading.truncate(top_n);
+
+    // ── 7. Duplicate Code (Fowler: Duplicate Code) ────────────────────────────
+    // Group by name stem (strip common verb prefixes). Flag stems appearing in >= 2 files.
     const PREFIXES: &[&str] = &[
         "get_", "set_", "create_", "update_", "delete_", "handle_", "run_",
         "fetch_", "load_", "save_", "parse_", "build_", "make_", "init_",
@@ -307,7 +494,6 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         }
         lc
     };
-
     let mut by_stem: HashMap<String, Vec<&crate::lang::IndexedFunction>> = HashMap::new();
     for f in &bake.functions {
         let s = stem(&f.name);
@@ -315,8 +501,7 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
             by_stem.entry(s).or_default().push(f);
         }
     }
-
-    let mut duplicate_hints: Vec<DuplicateGroup> = by_stem
+    let mut duplicate_code: Vec<DuplicateGroup> = by_stem
         .into_iter()
         .filter(|(_, funcs)| {
             funcs.len() >= 2
@@ -332,18 +517,24 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
                     start_line: f.start_line,
                 })
                 .collect(),
+            smell: "Duplicate Code",
+            refactoring: "Extract Function",
         })
         .collect();
-    duplicate_hints.sort_by(|a, b| a.stem.cmp(&b.stem));
-    duplicate_hints.truncate(top_n);
+    duplicate_code.sort_by(|a, b| a.stem.cmp(&b.stem));
+    duplicate_code.truncate(top_n);
 
     let payload = HealthPayload {
         tool: "health",
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         dead_code,
-        god_functions,
-        duplicate_hints,
+        large_functions,
+        long_methods,
+        feature_envy,
+        shotgun_surgery,
+        insider_trading,
+        duplicate_code,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }

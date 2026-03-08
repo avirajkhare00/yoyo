@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.0.0] - 2026-03-08
+
+### Breaking changes
+
+- **`health` tool schema rewritten** — all signals now grounded in Fowler's *Refactoring* catalog.
+  - `god_functions` → **`large_functions`** (Fowler: Large Function)
+  - `duplicate_hints` → **`duplicate_code`** (Fowler: Duplicate Code)
+  - Every entry gains `smell` (canonical name), `refactoring` (concrete move), `why` (human-readable reasoning with exact numbers)
+
+### Added
+
+- **`long_methods`** — Fowler: Long Method. Functions > 30 lines (screen-size rule). Refactoring: Extract Function.
+- **`feature_envy`** — Fowler: Feature Envy. Functions with more cross-file calls than same-file calls (≥ 3 cross-file). Refactoring: Move Method.
+- **`shotgun_surgery`** — Fowler: Shotgun Surgery. Functions called from ≥ 4 different files; one change, many edit sites. Refactoring: Move Method / Extract Class.
+- **`insider_trading`** — Fowler: Insider Trading. File pairs with bidirectional coupling (≥ 2 calls each direction). Refactoring: Hide Delegate / Move Method.
+
+### Thresholds and rationale
+
+| Signal | Threshold | Source |
+|---|---|---|
+| Large Function | complexity > 10 AND fan_out > 5 | McCabe: > 10 is high risk; fan_out > 5 = too many dependencies |
+| Long Method | lines > 30 | Fowler: fits on one screen |
+| Feature Envy | cross-file > same-file AND cross-file ≥ 3 | Fowler: more interested in another module |
+| Shotgun Surgery | called from ≥ 4 files | Fowler: every change touches many places |
+| Insider Trading | ≥ 2 calls in each direction | Fowler: excessive bidirectional coupling |
+
 ## [0.23.1] - 2026-03-08
 
 ### Fixed
