@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.1] - 2026-03-08
+
+### Fixed
+- `yoyo` (no args) now shows the actual binary path in the MCP config snippet instead of the hardcoded `/usr/local/bin/yoyo`. Homebrew users now see `/opt/homebrew/bin/yoyo` — the correct path they can paste directly.
+
 ## [0.23.0] - 2026-03-08
 
 ### Added

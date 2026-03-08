@@ -468,6 +468,9 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
         Some(Command::Update(args)) => run_update(args).await?,
         None => {
+            let exe = std::env::current_exe()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "/usr/local/bin/yoyo".to_string());
             println!("yoyo v{} — code intelligence MCP server", env!("CARGO_PKG_VERSION"));
             println!();
             println!("Getting started:");
@@ -482,7 +485,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             println!("       \"mcpServers\": {{");
             println!("         \"yoyo\": {{");
             println!("           \"type\": \"stdio\",");
-            println!("           \"command\": \"/usr/local/bin/yoyo\",");
+            println!("           \"command\": \"{exe}\",");
             println!("           \"args\": [\"--mcp-server\"]");
             println!("         }}");
             println!("       }}");
