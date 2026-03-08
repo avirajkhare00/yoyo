@@ -14,25 +14,16 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 | `Read` (specific lines) | `mcp__yoyo__slice` |
 | `Edit` (function edits) | `mcp__yoyo__patch` with `name=` parameter |
 
-**Using `Edit` on a function body when yoyo tools are loaded is a process bug — not a judgment call.**
-The only valid reasons to reach for `Edit` over `patch`:
-- The change is not function-scoped (module declaration, `use` statement, `const` block, struct field)
-- `patch` errored and the error was not recoverable
-
-If neither condition is true and you used `Edit`, you did it wrong. Correct the habit.
-
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
 Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
-
-**Never use `python3` for one-off scripts or data manipulation in this project.** If a task needs a script, write it in Go. If it belongs in yoyo itself, write it in Rust. Shell (`bash`/`zsh`) is acceptable for simple glue. Python is not a systems language and has no place in yoyo's toolchain.
 ## How Claude works in this project
 
 Each session follows this sequence:
 1. Load `llm_instructions` via ToolSearch — this is the bootstrap, not optional
 2. Read with yoyo tools (`supersearch`, `symbol`, `slice`) — not grep, not cat
 3. Understand structure with `blast_radius`, `flow`, `health` before proposing changes
-4. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.) — not Edit/Write unless yoyo tools fail
+4. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.)
 5. Build → test → commit → tag → push in one session. Don't leave half-done work.
 
 ## Dogfooding
@@ -91,6 +82,14 @@ yoyo is systems infrastructure. Every line of code in this project — the engin
 - **Zig** — future. As the language and ecosystem mature, Zig is a natural fit for low-level tooling and performance-critical components.
 
 Python is explicitly excluded. It is a fine language for many things — this project is not one of them. When in doubt: if it's core logic, it's Rust. If it's a script, it's Go or shell. If a tool requires Python to run, reconsider the tool.
+
+## Poka-yoke — design over rules
+
+Encode constraints into the tool, not into instructions. A rule that exists because of a design gap is a symptom — fix the design, delete the rule.
+
+When the right tool produces richer output than the wrong one, models choose it without being told. When the wrong path produces friction, it gets avoided naturally. Rules get ignored; friction is always on.
+
+Apply this when building: if you find yourself writing a "never do X" instruction, ask whether X can be made harder than the alternative by design.
 
 ## Software philosophy
 Before writing any code, ask: does this already exist? Duplication is the first form of rot. Search before you create.
