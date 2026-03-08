@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.3] - 2026-03-08
+
+### Fixed
+- MCP `instructions` string rewritten: parallel `llm_instructions`+`bake` on first contact, combination philosophy front and centre, key combos listed, `patch_by_symbol` reference removed, `flow` added to replacements.
+
 ## [0.22.2] - 2026-03-08
 
 ### Added

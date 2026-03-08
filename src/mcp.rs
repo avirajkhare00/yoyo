@@ -146,13 +146,13 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server. \
-                    Always call `llm_instructions` first on any new project to learn available tools and workflows. \
-                    Call `bake` to build or refresh the index before using index-dependent tools. \
-                    Use `supersearch` for all code search (replaces grep). \
-                    Use `symbol` with include_source=true to read function bodies. \
-                    Use `slice` to read arbitrary line ranges. \
-                    Use `patch` or `patch_by_symbol` to write changes back."
+                "instructions": "You have access to yoyo, a code intelligence MCP server — 27 tools to read and edit any codebase from the AST, not model memory. \
+                    ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
+                    `llm_instructions` returns the full tool catalog, 21 combination workflows, prime directives, and antipatterns. Read it before doing anything else. \
+                    `bake` builds the index all read-indexed tools depend on. \
+                    THE COMBINATIONS ARE THE POINT: no single tool is impressive — the chains are. \
+                    Key combos: health→blast_radius→graph_delete (safe dead code removal), flow→symbol→multi_patch (fix endpoint end-to-end), blast_radius→graph_rename→symbol (safe rename). \
+                    REPLACEMENTS — no exceptions: supersearch replaces grep/rg. symbol+include_source replaces cat/Read. slice replaces line-range reads. patch replaces Edit for function-level changes. flow replaces api_trace+trace_down+symbol."
             });
 
             JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(result), error: None }
