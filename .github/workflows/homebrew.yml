@@ -1,0 +1,52 @@
+name: Update Homebrew formula
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-formula:
+    name: Update homebrew-yoyo formula
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Compute SHA256 for macOS tarball
+        id: sha_macos
+        run: |
+          sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-aarch64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Compute SHA256 for Linux tarball
+        id: sha_linux
+        run: |
+          sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-x86_64-unknown-linux-gnu.tar.gz | shasum -a 256 | awk '{print $1}')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Checkout homebrew-yoyo
+        uses: actions/checkout@v4
+        with:
+          repository: avirajkhare00/homebrew-yoyo
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-yoyo
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA_MACOS="${{ steps.sha_macos.outputs.sha }}"
+          SHA_LINUX="${{ steps.sha_linux.outputs.sha }}"
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" homebrew-yoyo/Formula/yoyo.rb
+          sed -i "/aarch64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${SHA_MACOS}\"/}" homebrew-yoyo/Formula/yoyo.rb
+          sed -i "/x86_64-unknown-linux-gnu/{n;s/sha256 \".*\"/sha256 \"${SHA_LINUX}\"/}" homebrew-yoyo/Formula/yoyo.rb
+
+      - name: Commit and push formula update
+        run: |
+          cd homebrew-yoyo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/yoyo.rb
+          git commit -m "chore: update yoyo to v${{ steps.version.outputs.version }}"
+          git push
