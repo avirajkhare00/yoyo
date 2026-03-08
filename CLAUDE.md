@@ -49,6 +49,18 @@ Before adding new functionality, search the codebase first. The feature may alre
 ## Self-improvement directive
 Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
 
+## Dev workflow — macOS binary signing
+
+After every `cargo build --release`, sign the binary before running it. macOS Gatekeeper kills unsigned binaries with exit 137 and no useful error.
+
+```bash
+codesign --force --deep --sign - target/release/yoyo
+# If downloaded/copied from elsewhere, also strip quarantine first:
+xattr -c target/release/yoyo
+```
+
+This applies to local dev binaries and the MCP server binary. CI handles this automatically via the `Sign binary (macOS ad-hoc)` step in `.github/workflows/release.yml`.
+
 ## Versioning (semver — strict)
 yoyo follows semver. Before bumping a version, ask: is this a fix or a feature?
 - **PATCH** (`0.x.Y`) — bug fixes, output caps, pattern corrections, anything broken now works

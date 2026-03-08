@@ -49,6 +49,11 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
+      - name: Sign binary (macOS ad-hoc)
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - target/${{ matrix.target }}/release/${{ matrix.binary }}
+
       - name: Package binary
         run: |
           mkdir -p dist
