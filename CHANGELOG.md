@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.8] - 2026-03-08
+
+### Fixed
+- Homebrew formula auto-update was never running — `GITHUB_TOKEN`-created releases don't trigger `release: published` events in other workflows. Moved `update-homebrew` job directly into `release.yml` so it runs reliably after every tag.
+
 ## [0.22.7] - 2026-03-08
 
 ### Fixed
