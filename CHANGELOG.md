@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.4] - 2026-03-08
+
+### Fixed
+- All 27 tool schema descriptions enriched with preference hints, pairing context, and gotchas. Agents now know *when* to use each tool, what to pair it with, and what to avoid — visible in tool schemas before any tool is called. Closes #76.
+
 ## [0.22.3] - 2026-03-08
 
 ### Fixed
