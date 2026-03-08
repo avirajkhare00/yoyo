@@ -535,9 +535,20 @@ pub(crate) struct HealthPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
     pub(crate) project_root: PathBuf,
+    /// Fowler: Dead Code — functions never called; safe to delete.
     pub(crate) dead_code: Vec<DeadFunction>,
-    pub(crate) god_functions: Vec<GodFunction>,
-    pub(crate) duplicate_hints: Vec<DuplicateGroup>,
+    /// Fowler: Large Function — high complexity × high fan-out composite.
+    pub(crate) large_functions: Vec<LargeFunction>,
+    /// Fowler: Long Method — functions too long to read on one screen.
+    pub(crate) long_methods: Vec<LongMethod>,
+    /// Fowler: Feature Envy — functions that reach into other modules more than their own.
+    pub(crate) feature_envy: Vec<FeatureEnvy>,
+    /// Fowler: Shotgun Surgery — functions called from many different files; one change, many edit sites.
+    pub(crate) shotgun_surgery: Vec<ShotgunSurgery>,
+    /// Fowler: Insider Trading — file pairs with bidirectional coupling.
+    pub(crate) insider_trading: Vec<InsiderTrading>,
+    /// Fowler: Duplicate Code — same-stem functions spread across multiple files.
+    pub(crate) duplicate_code: Vec<DuplicateGroup>,
 }
 
 #[derive(Serialize)]
@@ -547,22 +558,81 @@ pub(crate) struct DeadFunction {
     pub(crate) start_line: u32,
     pub(crate) end_line: u32,
     pub(crate) lines: u32,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
 }
 
+/// Formerly GodFunction. Renamed to match Fowler's vocabulary.
 #[derive(Serialize)]
-pub(crate) struct GodFunction {
+pub(crate) struct LargeFunction {
     pub(crate) name: String,
     pub(crate) file: String,
     pub(crate) start_line: u32,
     pub(crate) complexity: u32,
     pub(crate) fan_out: usize,
     pub(crate) score: u32,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
+    pub(crate) why: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct LongMethod {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) end_line: u32,
+    pub(crate) lines: u32,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
+    pub(crate) why: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct FeatureEnvy {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    /// The file this function calls most outside its own module.
+    pub(crate) envies: String,
+    pub(crate) cross_file_calls: usize,
+    pub(crate) same_file_calls: usize,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
+    pub(crate) why: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ShotgunSurgery {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    /// Number of distinct files that call this function.
+    pub(crate) caller_files: usize,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
+    pub(crate) why: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct InsiderTrading {
+    pub(crate) file_a: String,
+    pub(crate) file_b: String,
+    /// Calls from file_a into functions defined in file_b.
+    pub(crate) a_calls_b: usize,
+    /// Calls from file_b into functions defined in file_a.
+    pub(crate) b_calls_a: usize,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
+    pub(crate) why: String,
 }
 
 #[derive(Serialize)]
 pub(crate) struct DuplicateGroup {
     pub(crate) stem: String,
     pub(crate) functions: Vec<DuplicateEntry>,
+    pub(crate) smell: &'static str,
+    pub(crate) refactoring: &'static str,
 }
 
 #[derive(Serialize)]
