@@ -16,7 +16,9 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
-Linux tools (`grep`, `cat`, `sed`, `python3`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
+Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
+
+**Never use `python3` for one-off scripts or data manipulation in this project.** If a task needs a script, write it in Go. If it belongs in yoyo itself, write it in Rust. Shell (`bash`/`zsh`) is acceptable for simple glue. Python is not a systems language and has no place in yoyo's toolchain.
 ## How Claude works in this project
 
 Each session follows this sequence:
@@ -43,6 +45,28 @@ yoyo has two layers:
 - **Presentation** (`src/mcp.rs`, `src/cli.rs`) — adapters over the engine. MCP tool schemas, CLI commands, output formatting. These can and should evolve freely. Changing how a tool presents its output never requires touching the engine.
 
 Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
+
+## Code over documentation — read the source
+
+When adding a new language or integrating a new library, **read the source first**. Don't trust docs, blog posts, or AI memory of what node types exist. Docs go stale. The source doesn't lie.
+
+For tree-sitter grammars specifically:
+1. Fetch the crate (`cargo fetch`)
+2. Read `src/node-types.json` — every named node type, every field name, ground truth
+3. Read `grammar.js` for structure (field names, hidden rules, optional tokens)
+4. Read `queries/highlights.scm` — shows exactly how the grammar author intended nodes to be used
+
+This is not extra work. This is the work. A 5-minute source read prevents a day of wrong node types and silent empty results.
+
+## Language policy — systems languages only
+
+yoyo is systems infrastructure. Every line of code in this project — the engine, the tooling, the scripts, the evals — must be written in a systems programming language:
+
+- **Rust** — primary. The engine, MCP server, CLI, and all core logic live here.
+- **Go** — secondary. One-off tooling, scripts, automation, eval harnesses, CI helpers.
+- **Zig** — future. As the language and ecosystem mature, Zig is a natural fit for low-level tooling and performance-critical components.
+
+Python is explicitly excluded. It is a fine language for many things — this project is not one of them. When in doubt: if it's core logic, it's Rust. If it's a script, it's Go or shell. If a tool requires Python to run, reconsider the tool.
 
 ## Software philosophy
 Before writing any code, ask: does this already exist? Duplication is the first form of rot. Search before you create.

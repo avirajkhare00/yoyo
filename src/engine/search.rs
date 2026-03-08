@@ -227,10 +227,6 @@ pub fn supersearch(
         .files
         .par_iter()
         .filter(|file| {
-            let lang = file.language.as_str();
-            if !matches!(lang, "typescript" | "javascript" | "rust" | "python" | "go") {
-                return false;
-            }
             let path_str = file.path.to_string_lossy();
             if exclude_tests && (path_str.contains("test") || path_str.contains("spec")) {
                 return false;

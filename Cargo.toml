@@ -1,6 +1,6 @@
 [package]
 name = "yoyo"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 
 [dependencies]
@@ -15,6 +15,7 @@ ast-grep-core = "0.41.0"
 ast-grep-language = "0.41.0"
 fastembed = "5.12.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+tree-sitter-zig = "1.1.2"
 
 [dev-dependencies]
 tempfile = "3"

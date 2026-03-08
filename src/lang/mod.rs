@@ -11,6 +11,7 @@ pub mod ruby;
 pub mod rust;
 pub mod swift;
 pub mod typescript;
+pub mod zig;
 
 use std::path::Path;
 
@@ -230,6 +231,7 @@ pub fn find_analyzer(lang: &str) -> Option<Box<dyn LanguageAnalyzer>> {
         Box::new(rust::RustAnalyzer),
         Box::new(swift::SwiftAnalyzer),
         Box::new(typescript::TypeScriptAnalyzer),
+        Box::new(zig::ZigAnalyzer),
     ];
     all.into_iter().find(|a| a.language() == lang)
 }

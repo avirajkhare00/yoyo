@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0] - 2026-03-09
+
+### Added
+
+- **Zig language support** — `bake`, `symbol`, `supersearch`, `file_functions` all work on `.zig` files
+  - AST-aware parsing via `tree-sitter-zig v1.1.2`
+  - Indexes `function_declaration` nodes with correct visibility (`pub` = public, default = private)
+  - Complexity scoring: `if`, `for`, `while`, `switch`, `catch`, `try` branches counted
+  - Type indexing: `const Name = struct/enum/union/opaque { ... }` detected from `variable_declaration` nodes
+  - Call collection: `call_expression` with `field_expression` (obj.method) qualifier support
+  - Import extraction: line-based `@import("...")` detection
+
+### Fixed
+
+- **supersearch hardcoded language filter removed** — `supersearch` previously only searched TypeScript, JavaScript, Rust, Python, and Go files; all other indexed languages (C, C++, Java, Kotlin, Zig, etc.) were silently skipped. Now all indexed files are searched — AST search if the analyzer supports it, line-based fallback otherwise.
+
 ## [1.0.2] - 2026-03-08
 
 ### Fixed
