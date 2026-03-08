@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-03-08
+
+### Fixed
+
+- Stale `god_functions` references updated to `large_functions` in `index.rs`, `cli.rs`, and `evals/run.py` — health v2 renamed this field in v1.0.0 but these files were never updated; evals were silently scoring 0 for `health_large_functions` tasks
+
 ## [1.0.1] - 2026-03-08
 
 ### Fixed
