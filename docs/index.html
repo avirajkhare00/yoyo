@@ -234,7 +234,7 @@
   <div class="container">
     <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo parses your codebase into a searchable index and gives Claude or Cursor 27 tools to read and edit it.
+      yoyo parses your codebase into a searchable index and gives Claude or Cursor 28 tools to read and edit it.
       No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
@@ -255,7 +255,7 @@
       <div class="stat-label">faster than manual file reading</div>
     </div>
     <div class="stat">
-      <div class="stat-num">27</div>
+      <div class="stat-num">28</div>
       <div class="stat-label">tools over MCP</div>
     </div>
     <div class="stat">
@@ -380,7 +380,7 @@
 
 <section id="tools">
   <div class="container">
-    <h2>All 27 tools</h2>
+    <h2>All 28 tools</h2>
     <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
@@ -395,7 +395,7 @@
         <tr><td><code>supersearch</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, identifiers across all files.</td></tr>
         <tr><td><code>blast_radius</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions that transitively call a given symbol. Affected file list included.</td></tr>
         <tr><td><code>trace_down</code></td><td><span class="pill pill-green">Stable</span></td><td>BFS call chain from a function to db/http/queue boundaries. Rust + Go only.</td></tr>
-        <tr><td><code>health</code></td><td><span class="pill pill-green">Stable</span></td><td>Dead code, high-complexity god functions, and duplicate function name hints.</td></tr>
+        <tr><td><code>health</code></td><td><span class="pill pill-green">Stable</span></td><td>Dead code, high-complexity large functions, and duplicate function name hints.</td></tr>
         <tr><td><code>package_summary</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions, endpoints, and complexity in a module path.</td></tr>
         <tr><td><code>architecture_map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles (routes, services, models, etc.).</td></tr>
         <tr><td><code>api_surface</code></td><td><span class="pill pill-green">Stable</span></td><td>Exported functions grouped by module.</td></tr>
@@ -589,7 +589,7 @@
     </table>
 
     <p style="font-size:0.88rem; color:var(--muted); margin-bottom:20px;">
-      Tasks: definition location, complexity rank, fan-out, caller count, visibility, dead code, god functions, module path.<br>
+      Tasks: definition location, complexity rank, fan-out, caller count, visibility, dead code, large functions, module path.<br>
       Claude Code ceiling is ~26% — limited to single-file reads and lexical grep with no cross-file index.
     </p>
 

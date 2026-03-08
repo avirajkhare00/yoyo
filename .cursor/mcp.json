@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "yoyo": {
-      "type": "stdio",
-      "command": "/Users/avirajkhare/ttt/yoyo/target/release/yoyo",
-      "args": ["--mcp-server"]
-    }
-  }
-}

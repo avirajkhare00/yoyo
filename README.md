@@ -1,6 +1,6 @@
 # yoyo 🪀
 
-yoyo is a code intelligence MCP server. It gives your AI agent 27 tools to read and edit any codebase — grounded in the AST, not model memory.
+yoyo is a code intelligence MCP server. It gives your AI agent 28 tools to read and edit any codebase — grounded in the AST, not model memory.
 
 **Built for agents.** Drop it into Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, or any MCP-compatible agent. The agent calls the tools. You get better answers.
 
@@ -151,7 +151,7 @@ This injects a reminder on every prompt so Claude actively uses yoyo tools inste
 
 ---
 
-You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
+You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 28 tools.
 
 ---
 
@@ -180,7 +180,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `blast_radius` | All transitive callers of a symbol + affected files. |
 | `flow` | Endpoint → handler → call chain in one call. |
 | `trace_down` | BFS call chain to db/http/queue boundary. Rust + Go. |
-| `health` | Dead code, god functions, duplicate names. |
+| `health` | Dead code, large functions, duplicate names. |
 | `architecture_map` | Directory tree with inferred roles. |
 | `package_summary` | Functions, endpoints, complexity for a module path. |
 | `api_surface` | Exported functions grouped by module. |
