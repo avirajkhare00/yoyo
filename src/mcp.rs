@@ -211,6 +211,13 @@ fn build_registry() -> Vec<ToolEntry> {
     fn i(desc: &str) -> Value { json!({"type": "integer", "description": desc}) }
     fn b(desc: &str) -> Value { json!({"type": "boolean", "description": desc}) }
     fn p() -> Value { s("Optional path to project directory") }
+
+    // Canonical descriptions live in tool_catalog() — single source of truth.
+    // build_registry() adds the MCP parameter schema and handler on top.
+    let catalog: std::collections::HashMap<&'static str, &'static str> =
+        crate::engine::tool_catalog().into_iter().map(|t| (t.name, t.description)).collect();
+    let d = |name: &'static str| -> &'static str { catalog.get(name).copied().unwrap_or(name) };
+
     fn schema(name: &str, desc: &str, props: Value) -> Value {
         json!({"name": name, "description": desc, "inputSchema": {"type": "object", "properties": props}})
     }
@@ -220,19 +227,19 @@ fn build_registry() -> Vec<ToolEntry> {
 
     vec![
         ToolEntry {
-            schema: schema("llm_instructions", "Bootstrap: full tool catalog, 21 combination workflows, prime directives, and antipatterns. Call in parallel with bake on first contact — do not skip.", json!({"path": p()})),
+            schema: schema("llm_instructions", d("llm_instructions"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::llm_instructions(path)),
         },
         ToolEntry {
-            schema: schema("shake", "30-second codebase overview: language breakdown, file count, top-complexity functions. Use first when orienting to an unfamiliar project. Pair with architecture_map for full orientation.", json!({"path": p()})),
+            schema: schema("shake", d("shake"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::shake(path)),
         },
         ToolEntry {
-            schema: schema("bake", "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes (git pull, generated files).", json!({"path": p()})),
+            schema: schema("bake", d("bake"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::bake(path)),
         },
         ToolEntry {
-            schema: schema("symbol", "Find a function by name — returns file, line range, visibility, calls, and optionally full source. Always pass include_source=true when you need to read the body; never use Read/cat instead. Use file to scope when names collide across modules.", json!({
+            schema: schema("symbol", d("symbol"), json!({
                 "path": p(),
                 "name": s("Symbol (function) name to look up"),
                 "include_source": b("If true, include the function body (source code) in each match"),
@@ -248,11 +255,11 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("all_endpoints", "List all detected HTTP routes. Use when flow returns no match — find the exact path substring here, then retry flow. Frameworks: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Not supported: Axum, NestJS, Fastify, Django, dynamic routers.", json!({"path": p()})),
+            schema: schema("all_endpoints", d("all_endpoints"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
         },
         ToolEntry {
-            schema: schema_req("flow", "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Always prefer over api_trace+trace_down+symbol. Endpoint detection: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo. Call chain tracing: Rust and Go only — on other languages the handler is returned but the chain will be empty.", &["endpoint"], json!({
+            schema: schema_req("flow", d("flow"), &["endpoint"], json!({
                 "path": p(),
                 "endpoint": s("URL path substring to match (e.g. '/users' or '/api/login')"),
                 "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
@@ -268,7 +275,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("slice", "Read any line range from any file. Use start_line/end_line from symbol output directly — no arithmetic needed. Prefer over Read/cat for targeted reads; use symbol+include_source for full function bodies.", json!({
+            schema: schema("slice", d("slice"), json!({
                 "path": p(),
                 "file": s("File path relative to the project root"),
                 "start_line": i("1-based start line (inclusive). Matches the start_line field from symbol output."),
@@ -282,7 +289,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("api_surface", "All exported functions grouped by module — understand the public contract without reading files. TypeScript only. Use during orientation alongside shake and architecture_map.", json!({
+            schema: schema("api_surface", d("api_surface"), json!({
                 "path": p(),
                 "package": s("Optional package/module filter (substring match on module or file paths)"),
                 "limit": i("Maximum number of functions per module (default 20)")
@@ -290,7 +297,7 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: Box::new(|a, path| crate::engine::api_surface(path, a.str_opt("package"), a.uint_opt("limit"))),
         },
         ToolEntry {
-            schema: schema("file_functions", "Every function in a file with line ranges and cyclomatic complexity. Use after package_summary to drill into a specific file. Complexity scores flag candidates for refactoring.", json!({
+            schema: schema("file_functions", d("file_functions"), json!({
                 "path": p(),
                 "file": s("File path relative to the project root"),
                 "include_summaries": b("Whether to include summaries (currently a no-op placeholder)")
@@ -302,7 +309,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("supersearch", "AST-aware search — replaces grep/rg entirely, do not use grep. Use context=identifiers+pattern=call for call-site search. Pair with symbol+include_source to read matches in full context. Use file to restrict scope on large codebases.", json!({
+            schema: schema("supersearch", d("supersearch"), json!({
                 "path": p(),
                 "query": s("Search query text"),
                 "context": s("Search context: all | strings | comments | identifiers"),
@@ -322,21 +329,21 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("package_summary", "All functions, endpoints, and complexity for a module path substring. Use before file_functions when you don't know which file to drill into yet.", json!({
+            schema: schema("package_summary", d("package_summary"), json!({
                 "path": p(),
                 "package": s("Package/module name or directory substring")
             })),
             handler: Box::new(|a, path| crate::engine::package_summary(path, a.str_req("package", "package_summary")?)),
         },
         ToolEntry {
-            schema: schema("architecture_map", "Directory tree with inferred roles (routes, services, models, utils). Use at session start when orienting to a new codebase. Pass intent to get placement hints for a new feature.", json!({
+            schema: schema("architecture_map", d("architecture_map"), json!({
                 "path": p(),
                 "intent": s("Intent description, e.g. \"user handler\" or \"auth service\"")
             })),
             handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"))),
         },
         ToolEntry {
-            schema: schema("suggest_placement", "Ranked file suggestions for where to add a new function, based on related symbols. Use after architecture_map and before graph_create/graph_add.", json!({
+            schema: schema("suggest_placement", d("suggest_placement"), json!({
                 "path": p(),
                 "function_name": s("Name of the function to add"),
                 "function_type": s("Function type: handler | service | repository | model | util | test"),
@@ -350,14 +357,14 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("crud_operations", "Create/read/update/delete matrix per entity inferred from routes. Same framework support as all_endpoints: Express, Actix-web, Flask, FastAPI, gin, echo. Use to understand data flow before modifying endpoints.", json!({
+            schema: schema("crud_operations", d("crud_operations"), json!({
                 "path": p(),
                 "entity": s("Optional entity filter (e.g. \"user\")")
             })),
             handler: Box::new(|a, path| crate::engine::crud_operations(path, a.str_opt("entity"))),
         },
         ToolEntry {
-            schema: schema("api_trace", "Resolve a route path+method to its handler function. Prefer flow — it does this and more in one call. Same framework support as all_endpoints. Use api_trace only when you need the handler name without the full chain.", json!({
+            schema: schema("api_trace", d("api_trace"), json!({
                 "path": p(),
                 "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
                 "method": s("Optional HTTP method (GET, POST, etc.)")
@@ -369,7 +376,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("find_docs", "Locate README, .env, Dockerfile, and config files. Use at session start when you need project context. Pair with slice to read the first N lines of any matched file.", json!({
+            schema: schema("find_docs", d("find_docs"), json!({
                 "path": p(),
                 "doc_type": s("Documentation type: readme | env | config | docker | all")
             })),
@@ -380,7 +387,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("patch", "Write changes to a file. Three modes: name mode (pass name+new_content — safest for full function rewrites), line-range mode (file+start+end+new_content), content-match mode (file+old_string+new_string — immune to line drift, preferred for partial edits). Always read with symbol+include_source first.", json!({
+            schema: schema("patch", d("patch"), json!({
                 "path": p(),
                 "name": s("Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."),
                 "match_index": i("0-based index when multiple symbols match name (default 0)"),
@@ -412,7 +419,7 @@ fn build_registry() -> Vec<ToolEntry> {
             }),
         },
         ToolEntry {
-            schema: schema_req("patch_bytes", "Splice at exact byte offsets — use byte_start/byte_end from the bake index. For single-identifier replacements where name/content-match modes would affect too much. Prefer patch for function-level edits.", &["file", "byte_start", "byte_end", "new_content"], json!({
+            schema: schema_req("patch_bytes", d("patch_bytes"), &["file", "byte_start", "byte_end", "new_content"], json!({
                 "path": p(),
                 "file": s("File path relative to project root"),
                 "byte_start": i("Inclusive start byte offset"),
@@ -428,7 +435,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("multi_patch", "Apply N edits across M files in one call — bottom-up ordering is automatic so offsets stay valid. Use after flow to fix an entire call chain end-to-end, or after blast_radius to update all callers. Prefer graph_rename for pure renames.", &["edits"], json!({
+            schema: schema_req("multi_patch", d("multi_patch"), &["edits"], json!({
                 "path": p(),
                 "edits": json!({
                     "type": "array",
@@ -464,7 +471,7 @@ fn build_registry() -> Vec<ToolEntry> {
             }),
         },
         ToolEntry {
-            schema: schema_req("blast_radius", "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename. Import graph expansion (affected files): Rust, Go, Python, TypeScript, JavaScript only — C/C++/C#/Java/Kotlin/PHP/Ruby/Swift/Bash return caller list only. Prefer over grep: grep overcounts by hitting comments, strings, partial names.", &["symbol"], json!({
+            schema: schema_req("blast_radius", d("blast_radius"), &["symbol"], json!({
                 "path": p(),
                 "symbol": s("Function name to analyse (exact match on the callee name)"),
                 "depth": i("Maximum call-graph depth to traverse (default 2)")
@@ -476,7 +483,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("graph_rename", "Rename a symbol at its definition and every call site atomically. Word-boundary matching prevents partial renames (renaming 'parse' won't corrupt 'parse_all'). Always prefer over str.replace or multi_patch for renames. Run blast_radius first to understand scope.", &["name", "new_name"], json!({
+            schema: schema_req("graph_rename", d("graph_rename"), &["name", "new_name"], json!({
                 "path": p(),
                 "name": s("Current identifier name to rename"),
                 "new_name": s("New identifier name")
@@ -488,7 +495,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("graph_create", "Create a new file with an initial function scaffold and auto-reindex. Errors if file exists or parent dir is missing — check first with find_docs or architecture_map. Use graph_add instead when adding to an existing file.", &["file", "function_name"], json!({
+            schema: schema_req("graph_create", d("graph_create"), &["file", "function_name"], json!({
                 "path": p(),
                 "file": s("File path relative to project root (e.g. 'src/engine/foo.rs')"),
                 "function_name": s("Name for the initial scaffolded function"),
@@ -502,7 +509,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("graph_add", "Insert a function scaffold into an existing file, optionally after a named symbol. Auto-reindexes. Use graph_create for new files. Pair with patch to fill in the scaffold body immediately after.", &["entity_type", "name", "file"], json!({
+            schema: schema_req("graph_add", d("graph_add"), &["entity_type", "name", "file"], json!({
                 "path": p(),
                 "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
                 "name": s("Name for the new function/entity"),
@@ -520,7 +527,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("graph_move", "Move a function between files atomically — removes from source, appends to destination, reindexes both. Run bake first to ensure byte offsets are fresh. Check blast_radius to understand import impact before moving.", &["name", "to_file"], json!({
+            schema: schema_req("graph_move", d("graph_move"), &["name", "to_file"], json!({
                 "path": p(),
                 "name": s("Exact function name to move (matched case-insensitively in bake index)"),
                 "to_file": s("Destination file path relative to project root")
@@ -532,7 +539,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("trace_down", "BFS call chain from a function to db/http/queue boundaries. Rust and Go only. Prefer flow for endpoint tracing — flow calls trace_down internally and returns more context. Use trace_down directly for non-endpoint functions.", &["name"], json!({
+            schema: schema_req("trace_down", d("trace_down"), &["name"], json!({
                 "path": p(),
                 "name": s("Function name to start the trace from"),
                 "depth": i("Maximum call depth to follow (default 5)"),
@@ -546,7 +553,7 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("semantic_search", "Find functions by intent when you don't know the name. Local ONNX embeddings — no API key, no external calls. Pair with symbol+include_source to read top matches. Use when supersearch finds nothing (supersearch needs a name/pattern, semantic_search needs a description).", json!({
+            schema: schema("semantic_search", d("semantic_search"), json!({
                 "path": p(),
                 "query": s("Natural-language description, e.g. 'validate user token' or 'send email notification'"),
                 "limit": i("Max results (default 10, max 50)"),
@@ -560,14 +567,14 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("health", "Dead code, god functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", json!({
+            schema: schema("health", d("health"), json!({
                 "path": p(),
                 "top": i("Max results per category (default 10)")
             })),
             handler: Box::new(|a, path| crate::engine::health(path, a.uint_opt("top"))),
         },
         ToolEntry {
-            schema: schema_req("graph_delete", "Remove a function by name. Blocks if callers exist — this is a safety net, not an error. Always run health→blast_radius first to confirm the function is truly dead. Use force=true only when you have verified callers are intentional (e.g. test-only).", &["name"], json!({
+            schema: schema_req("graph_delete", d("graph_delete"), &["name"], json!({
                 "path": p(),
                 "name": s("Exact function name to delete (matched case-insensitively in bake index)"),
                 "file": s("Optional file path substring to disambiguate when multiple functions share the same name"),
@@ -638,4 +645,26 @@ async fn call_tool(params: Value) -> Result<Value> {
         .ok_or_else(|| anyhow::anyhow!("Unknown tool: {}", p.name))?;
 
     ok_text((entry.handler)(a, path)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn registry_and_catalog_names_are_in_sync() {
+        let catalog_names: HashSet<&str> =
+            crate::engine::tool_catalog().iter().map(|t| t.name).collect();
+        let registry_names: HashSet<&str> =
+            get_registry().iter().map(|t| t.name()).collect();
+
+        let only_in_catalog: Vec<_> = catalog_names.difference(&registry_names).copied().collect();
+        let only_in_registry: Vec<_> = registry_names.difference(&catalog_names).copied().collect();
+
+        assert!(only_in_catalog.is_empty(),
+            "In tool_catalog() but not build_registry(): {:?}", only_in_catalog);
+        assert!(only_in_registry.is_empty(),
+            "In build_registry() but not tool_catalog(): {:?}", only_in_registry);
+    }
 }

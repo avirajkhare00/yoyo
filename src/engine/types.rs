@@ -88,12 +88,12 @@ pub(crate) struct DecisionEntry {
 }
 
 #[derive(Serialize)]
-pub(crate) struct ToolDescription {
-    pub(crate) name: &'static str,
-    pub(crate) description: &'static str,
-    pub(crate) requires_bake: bool,
-    pub(crate) category: &'static str,
-    pub(crate) parallelisable: bool,
+pub struct ToolDescription {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub requires_bake: bool,
+    pub category: &'static str,
+    pub parallelisable: bool,
 }
 
 #[derive(Serialize)]
