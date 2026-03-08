@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for RubyAnalyzer {
     fn language(&self) -> &str { "ruby" }
-    fn extensions(&self) -> &[&str] { &["rb"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

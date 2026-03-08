@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for KotlinAnalyzer {
     fn language(&self) -> &str { "kotlin" }
-    fn extensions(&self) -> &[&str] { &["kt", "kts"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

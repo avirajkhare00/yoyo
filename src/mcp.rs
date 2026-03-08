@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 #[derive(Debug, Deserialize)]
@@ -187,176 +188,409 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
     }
 }
 
-fn list_tools() -> Value {
+// --- Tool registry ---
+//
+// Each tool is defined once: schema (for list_tools) and handler (for call_tool) live together.
+// Adding a tool = one ToolEntry in build_registry(). Nothing else in this file changes.
+
+type ToolHandler = Box<dyn Fn(Args, Option<String>) -> Result<String> + Send + Sync>;
+
+struct ToolEntry {
+    schema: Value,
+    handler: ToolHandler,
+}
+
+impl ToolEntry {
+    fn name(&self) -> &str {
+        self.schema["name"].as_str().unwrap_or("")
+    }
+}
+
+fn build_registry() -> Vec<ToolEntry> {
     fn s(desc: &str) -> Value { json!({"type": "string", "description": desc}) }
     fn i(desc: &str) -> Value { json!({"type": "integer", "description": desc}) }
     fn b(desc: &str) -> Value { json!({"type": "boolean", "description": desc}) }
     fn p() -> Value { s("Optional path to project directory") }
-    fn tool(name: &str, desc: &str, props: Value) -> Value {
+    fn schema(name: &str, desc: &str, props: Value) -> Value {
         json!({"name": name, "description": desc, "inputSchema": {"type": "object", "properties": props}})
     }
-    fn tool_req(name: &str, desc: &str, req: &[&str], props: Value) -> Value {
+    fn schema_req(name: &str, desc: &str, req: &[&str], props: Value) -> Value {
         json!({"name": name, "description": desc, "inputSchema": {"type": "object", "required": req, "properties": props}})
     }
 
-    json!({ "tools": [
-        tool("llm_instructions", "Bootstrap: full tool catalog, 21 combination workflows, prime directives, and antipatterns. Call in parallel with bake on first contact — do not skip.", json!({"path": p()})),
-        tool("shake", "30-second codebase overview: language breakdown, file count, top-complexity functions. Use first when orienting to an unfamiliar project. Pair with architecture_map for full orientation.", json!({"path": p()})),
-        tool("bake", "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes (git pull, generated files).", json!({"path": p()})),
-        tool("symbol", "Find a function by name — returns file, line range, visibility, calls, and optionally full source. Always pass include_source=true when you need to read the body; never use Read/cat instead. Use file to scope when names collide across modules.", json!({
-            "path": p(),
-            "name": s("Symbol (function) name to look up"),
-            "include_source": b("If true, include the function body (source code) in each match"),
-            "file": s("Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"),
-            "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
-        })),
-        tool("all_endpoints", "List all detected HTTP routes. Use when flow returns no match — find the exact path substring here, then retry flow. Frameworks: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Not supported: Axum, NestJS, Fastify, Django, dynamic routers.", json!({"path": p()})),
-        tool_req("flow", "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Always prefer over api_trace+trace_down+symbol. Endpoint detection: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo. Call chain tracing: Rust and Go only — on other languages the handler is returned but the chain will be empty.", &["endpoint"], json!({
-            "path": p(),
-            "endpoint": s("URL path substring to match (e.g. '/users' or '/api/login')"),
-            "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
-            "depth": i("Max call chain depth (default 5)"),
-            "include_source": b("If true, include the handler function source inline")
-        })),
-        tool("slice", "Read any line range from any file. Use start_line/end_line from symbol output directly — no arithmetic needed. Prefer over Read/cat for targeted reads; use symbol+include_source for full function bodies.", json!({
-            "path": p(),
-            "file": s("File path relative to the project root"),
-            "start_line": i("1-based start line (inclusive). Matches the start_line field from symbol output."),
-            "end_line": i("1-based end line (inclusive). Matches the end_line field from symbol output.")
-        })),
-        tool("api_surface", "All exported functions grouped by module — understand the public contract without reading files. TypeScript only. Use during orientation alongside shake and architecture_map.", json!({
-            "path": p(),
-            "package": s("Optional package/module filter (substring match on module or file paths)"),
-            "limit": i("Maximum number of functions per module (default 20)")
-        })),
-        tool("file_functions", "Every function in a file with line ranges and cyclomatic complexity. Use after package_summary to drill into a specific file. Complexity scores flag candidates for refactoring.", json!({
-            "path": p(),
-            "file": s("File path relative to the project root"),
-            "include_summaries": b("Whether to include summaries (currently a no-op placeholder)")
-        })),
-        tool("supersearch", "AST-aware search — replaces grep/rg entirely, do not use grep. Use context=identifiers+pattern=call for call-site search. Pair with symbol+include_source to read matches in full context. Use file to restrict scope on large codebases.", json!({
-            "path": p(),
-            "query": s("Search query text"),
-            "context": s("Search context: all | strings | comments | identifiers"),
-            "pattern": s("Pattern: all | call | assign | return"),
-            "exclude_tests": b("Whether to exclude likely test files"),
-            "file": s("Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"),
-            "limit": i("Max matches to return (default 200). Reduce for large codebases with common terms.")
-        })),
-        tool("package_summary", "All functions, endpoints, and complexity for a module path substring. Use before file_functions when you don't know which file to drill into yet.", json!({
-            "path": p(),
-            "package": s("Package/module name or directory substring")
-        })),
-        tool("architecture_map", "Directory tree with inferred roles (routes, services, models, utils). Use at session start when orienting to a new codebase. Pass intent to get placement hints for a new feature.", json!({
-            "path": p(),
-            "intent": s("Intent description, e.g. \"user handler\" or \"auth service\"")
-        })),
-        tool("suggest_placement", "Ranked file suggestions for where to add a new function, based on related symbols. Use after architecture_map and before graph_create/graph_add.", json!({
-            "path": p(),
-            "function_name": s("Name of the function to add"),
-            "function_type": s("Function type: handler | service | repository | model | util | test"),
-            "related_to": s("Existing related symbol or substring (optional)")
-        })),
-        tool("crud_operations", "Create/read/update/delete matrix per entity inferred from routes. Same framework support as all_endpoints: Express, Actix-web, Flask, FastAPI, gin, echo. Use to understand data flow before modifying endpoints.", json!({
-            "path": p(),
-            "entity": s("Optional entity filter (e.g. \"user\")")
-        })),
-        tool("api_trace", "Resolve a route path+method to its handler function. Prefer flow — it does this and more in one call. Same framework support as all_endpoints. Use api_trace only when you need the handler name without the full chain.", json!({
-            "path": p(),
-            "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
-            "method": s("Optional HTTP method (GET, POST, etc.)")
-        })),
-        tool("find_docs", "Locate README, .env, Dockerfile, and config files. Use at session start when you need project context. Pair with slice to read the first N lines of any matched file.", json!({
-            "path": p(),
-            "doc_type": s("Documentation type: readme | env | config | docker | all")
-        })),
-        tool("patch", "Write changes to a file. Three modes: name mode (pass name+new_content — safest for full function rewrites), line-range mode (file+start+end+new_content), content-match mode (file+old_string+new_string — immune to line drift, preferred for partial edits). Always read with symbol+include_source first.", json!({
-            "path": p(),
-            "name": s("Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."),
-            "match_index": i("0-based index when multiple symbols match name (default 0)"),
-            "file": s("File path relative to project root (for range-based or content-match patch)"),
-            "start": i("1-based start line (inclusive), for range-based patch"),
-            "end": i("1-based end line (inclusive), for range-based patch"),
-            "new_content": s("Replacement content for range-based patch"),
-            "old_string": s("Exact string to find and replace (content-match mode — immune to line drift)"),
-            "new_string": s("Replacement string for content-match mode")
-        })),
-        tool_req("patch_bytes", "Splice at exact byte offsets — use byte_start/byte_end from the bake index. For single-identifier replacements where name/content-match modes would affect too much. Prefer patch for function-level edits.", &["file", "byte_start", "byte_end", "new_content"], json!({
-            "path": p(),
-            "file": s("File path relative to project root"),
-            "byte_start": i("Inclusive start byte offset"),
-            "byte_end": i("Exclusive end byte offset"),
-            "new_content": s("Replacement text")
-        })),
-        tool_req("multi_patch", "Apply N edits across M files in one call — bottom-up ordering is automatic so offsets stay valid. Use after flow to fix an entire call chain end-to-end, or after blast_radius to update all callers. Prefer graph_rename for pure renames.", &["edits"], json!({
-            "path": p(),
-            "edits": json!({
-                "type": "array",
-                "description": "Array of edit operations",
-                "items": {
-                    "type": "object",
-                    "required": ["file", "byte_start", "byte_end", "new_content"],
-                    "properties": {
-                        "file": {"type": "string"},
-                        "byte_start": {"type": "integer"},
-                        "byte_end": {"type": "integer"},
-                        "new_content": {"type": "string"}
+    vec![
+        ToolEntry {
+            schema: schema("llm_instructions", "Bootstrap: full tool catalog, 21 combination workflows, prime directives, and antipatterns. Call in parallel with bake on first contact — do not skip.", json!({"path": p()})),
+            handler: Box::new(|_a, path| crate::engine::llm_instructions(path)),
+        },
+        ToolEntry {
+            schema: schema("shake", "30-second codebase overview: language breakdown, file count, top-complexity functions. Use first when orienting to an unfamiliar project. Pair with architecture_map for full orientation.", json!({"path": p()})),
+            handler: Box::new(|_a, path| crate::engine::shake(path)),
+        },
+        ToolEntry {
+            schema: schema("bake", "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes (git pull, generated files).", json!({"path": p()})),
+            handler: Box::new(|_a, path| crate::engine::bake(path)),
+        },
+        ToolEntry {
+            schema: schema("symbol", "Find a function by name — returns file, line range, visibility, calls, and optionally full source. Always pass include_source=true when you need to read the body; never use Read/cat instead. Use file to scope when names collide across modules.", json!({
+                "path": p(),
+                "name": s("Symbol (function) name to look up"),
+                "include_source": b("If true, include the function body (source code) in each match"),
+                "file": s("Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"),
+                "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
+            })),
+            handler: Box::new(|a, path| crate::engine::symbol(
+                path,
+                a.str_req("name", "symbol")?,
+                a.bool_opt("include_source").unwrap_or(false),
+                a.str_opt("file"),
+                a.uint_opt("limit"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("all_endpoints", "List all detected HTTP routes. Use when flow returns no match — find the exact path substring here, then retry flow. Frameworks: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Not supported: Axum, NestJS, Fastify, Django, dynamic routers.", json!({"path": p()})),
+            handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
+        },
+        ToolEntry {
+            schema: schema_req("flow", "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Always prefer over api_trace+trace_down+symbol. Endpoint detection: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo. Call chain tracing: Rust and Go only — on other languages the handler is returned but the chain will be empty.", &["endpoint"], json!({
+                "path": p(),
+                "endpoint": s("URL path substring to match (e.g. '/users' or '/api/login')"),
+                "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
+                "depth": i("Max call chain depth (default 5)"),
+                "include_source": b("If true, include the handler function source inline")
+            })),
+            handler: Box::new(|a, path| crate::engine::flow(
+                path,
+                a.str_req("endpoint", "flow")?,
+                a.str_opt("method"),
+                a.uint_opt("depth"),
+                a.bool_opt("include_source").unwrap_or(false),
+            )),
+        },
+        ToolEntry {
+            schema: schema("slice", "Read any line range from any file. Use start_line/end_line from symbol output directly — no arithmetic needed. Prefer over Read/cat for targeted reads; use symbol+include_source for full function bodies.", json!({
+                "path": p(),
+                "file": s("File path relative to the project root"),
+                "start_line": i("1-based start line (inclusive). Matches the start_line field from symbol output."),
+                "end_line": i("1-based end line (inclusive). Matches the end_line field from symbol output.")
+            })),
+            handler: Box::new(|a, path| crate::engine::slice(
+                path,
+                a.str_req("file", "slice")?,
+                a.uint_req("start_line", "slice")? as u32,
+                a.uint_req("end_line", "slice")? as u32,
+            )),
+        },
+        ToolEntry {
+            schema: schema("api_surface", "All exported functions grouped by module — understand the public contract without reading files. TypeScript only. Use during orientation alongside shake and architecture_map.", json!({
+                "path": p(),
+                "package": s("Optional package/module filter (substring match on module or file paths)"),
+                "limit": i("Maximum number of functions per module (default 20)")
+            })),
+            handler: Box::new(|a, path| crate::engine::api_surface(path, a.str_opt("package"), a.uint_opt("limit"))),
+        },
+        ToolEntry {
+            schema: schema("file_functions", "Every function in a file with line ranges and cyclomatic complexity. Use after package_summary to drill into a specific file. Complexity scores flag candidates for refactoring.", json!({
+                "path": p(),
+                "file": s("File path relative to the project root"),
+                "include_summaries": b("Whether to include summaries (currently a no-op placeholder)")
+            })),
+            handler: Box::new(|a, path| crate::engine::file_functions(
+                path,
+                a.str_req("file", "file_functions")?,
+                a.bool_opt("include_summaries"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("supersearch", "AST-aware search — replaces grep/rg entirely, do not use grep. Use context=identifiers+pattern=call for call-site search. Pair with symbol+include_source to read matches in full context. Use file to restrict scope on large codebases.", json!({
+                "path": p(),
+                "query": s("Search query text"),
+                "context": s("Search context: all | strings | comments | identifiers"),
+                "pattern": s("Pattern: all | call | assign | return"),
+                "exclude_tests": b("Whether to exclude likely test files"),
+                "file": s("Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"),
+                "limit": i("Max matches to return (default 200). Reduce for large codebases with common terms.")
+            })),
+            handler: Box::new(|a, path| crate::engine::supersearch(
+                path,
+                a.str_req("query", "supersearch")?,
+                a.str_opt("context").unwrap_or_else(|| "all".to_string()),
+                a.str_opt("pattern").unwrap_or_else(|| "all".to_string()),
+                a.bool_opt("exclude_tests"),
+                a.str_opt("file"),
+                a.uint_opt("limit"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("package_summary", "All functions, endpoints, and complexity for a module path substring. Use before file_functions when you don't know which file to drill into yet.", json!({
+                "path": p(),
+                "package": s("Package/module name or directory substring")
+            })),
+            handler: Box::new(|a, path| crate::engine::package_summary(path, a.str_req("package", "package_summary")?)),
+        },
+        ToolEntry {
+            schema: schema("architecture_map", "Directory tree with inferred roles (routes, services, models, utils). Use at session start when orienting to a new codebase. Pass intent to get placement hints for a new feature.", json!({
+                "path": p(),
+                "intent": s("Intent description, e.g. \"user handler\" or \"auth service\"")
+            })),
+            handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"))),
+        },
+        ToolEntry {
+            schema: schema("suggest_placement", "Ranked file suggestions for where to add a new function, based on related symbols. Use after architecture_map and before graph_create/graph_add.", json!({
+                "path": p(),
+                "function_name": s("Name of the function to add"),
+                "function_type": s("Function type: handler | service | repository | model | util | test"),
+                "related_to": s("Existing related symbol or substring (optional)")
+            })),
+            handler: Box::new(|a, path| crate::engine::suggest_placement(
+                path,
+                a.str_req("function_name", "suggest_placement")?,
+                a.str_req("function_type", "suggest_placement")?,
+                a.str_opt("related_to"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("crud_operations", "Create/read/update/delete matrix per entity inferred from routes. Same framework support as all_endpoints: Express, Actix-web, Flask, FastAPI, gin, echo. Use to understand data flow before modifying endpoints.", json!({
+                "path": p(),
+                "entity": s("Optional entity filter (e.g. \"user\")")
+            })),
+            handler: Box::new(|a, path| crate::engine::crud_operations(path, a.str_opt("entity"))),
+        },
+        ToolEntry {
+            schema: schema("api_trace", "Resolve a route path+method to its handler function. Prefer flow — it does this and more in one call. Same framework support as all_endpoints. Use api_trace only when you need the handler name without the full chain.", json!({
+                "path": p(),
+                "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
+                "method": s("Optional HTTP method (GET, POST, etc.)")
+            })),
+            handler: Box::new(|a, path| crate::engine::api_trace(
+                path,
+                a.str_req("endpoint", "api_trace")?,
+                a.str_opt("method"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("find_docs", "Locate README, .env, Dockerfile, and config files. Use at session start when you need project context. Pair with slice to read the first N lines of any matched file.", json!({
+                "path": p(),
+                "doc_type": s("Documentation type: readme | env | config | docker | all")
+            })),
+            handler: Box::new(|a, path| crate::engine::find_docs(
+                path,
+                a.str_req("doc_type", "find_docs")?,
+                a.uint_opt("limit"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("patch", "Write changes to a file. Three modes: name mode (pass name+new_content — safest for full function rewrites), line-range mode (file+start+end+new_content), content-match mode (file+old_string+new_string — immune to line drift, preferred for partial edits). Always read with symbol+include_source first.", json!({
+                "path": p(),
+                "name": s("Symbol name to patch (resolves location from bake index). Use with new_content; optional match_index when multiple matches."),
+                "match_index": i("0-based index when multiple symbols match name (default 0)"),
+                "file": s("File path relative to project root (for range-based or content-match patch)"),
+                "start": i("1-based start line (inclusive), for range-based patch"),
+                "end": i("1-based end line (inclusive), for range-based patch"),
+                "new_content": s("Replacement content for range-based patch"),
+                "old_string": s("Exact string to find and replace (content-match mode — immune to line drift)"),
+                "new_string": s("Replacement string for content-match mode")
+            })),
+            handler: Box::new(|a, path| {
+                if let Some(old_string) = a.str_opt("old_string") {
+                    let new_string = a.str_req("new_string", "patch")?;
+                    crate::engine::patch_string(path, a.str_req("file", "patch")?, old_string, new_string)
+                } else {
+                    let new_content = a.str_req("new_content", "patch")?;
+                    if let Some(name) = a.str_opt("name") {
+                        crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))
+                    } else {
+                        crate::engine::patch(
+                            path,
+                            a.str_req("file", "patch")?,
+                            a.uint_req("start", "patch")? as u32,
+                            a.uint_req("end", "patch")? as u32,
+                            new_content,
+                        )
                     }
                 }
-            })
-        })),
-        tool_req("blast_radius", "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename. Import graph expansion (affected files): Rust, Go, Python, TypeScript, JavaScript only — C/C++/C#/Java/Kotlin/PHP/Ruby/Swift/Bash return caller list only. Prefer over grep: grep overcounts by hitting comments, strings, partial names.", &["symbol"], json!({
-            "path": p(),
-            "symbol": s("Function name to analyse (exact match on the callee name)"),
-            "depth": i("Maximum call-graph depth to traverse (default 2)")
-        })),
-        tool_req("graph_rename", "Rename a symbol at its definition and every call site atomically. Word-boundary matching prevents partial renames (renaming 'parse' won't corrupt 'parse_all'). Always prefer over str.replace or multi_patch for renames. Run blast_radius first to understand scope.", &["name", "new_name"], json!({
-            "path": p(),
-            "name": s("Current identifier name to rename"),
-            "new_name": s("New identifier name")
-        })),
-        tool_req("graph_create", "Create a new file with an initial function scaffold and auto-reindex. Errors if file exists or parent dir is missing — check first with find_docs or architecture_map. Use graph_add instead when adding to an existing file.", &["file", "function_name"], json!({
-            "path": p(),
-            "file": s("File path relative to project root (e.g. 'src/engine/foo.rs')"),
-            "function_name": s("Name for the initial scaffolded function"),
-            "language": s("Optional: override language detection (rust | typescript | python | go | java | c | cpp)")
-        })),
-        tool_req("graph_add", "Insert a function scaffold into an existing file, optionally after a named symbol. Auto-reindexes. Use graph_create for new files. Pair with patch to fill in the scaffold body immediately after.", &["entity_type", "name", "file"], json!({
-            "path": p(),
-            "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
-            "name": s("Name for the new function/entity"),
-            "file": s("File path relative to project root"),
-            "after_symbol": s("Optional: insert after this existing symbol (name or substring)"),
-            "language": s("Optional: override language detection (rust | typescript | python | go)")
-        })),
-        tool_req("graph_move", "Move a function between files atomically — removes from source, appends to destination, reindexes both. Run bake first to ensure byte offsets are fresh. Check blast_radius to understand import impact before moving.", &["name", "to_file"], json!({
-            "path": p(),
-            "name": s("Exact function name to move (matched case-insensitively in bake index)"),
-            "to_file": s("Destination file path relative to project root")
-        })),
-        tool_req("trace_down", "BFS call chain from a function to db/http/queue boundaries. Rust and Go only. Prefer flow for endpoint tracing — flow calls trace_down internally and returns more context. Use trace_down directly for non-endpoint functions.", &["name"], json!({
-            "path": p(),
-            "name": s("Function name to start the trace from"),
-            "depth": i("Maximum call depth to follow (default 5)"),
-            "file": s("Optional file path substring to disambiguate when multiple functions share the same name")
-        })),
-        tool("semantic_search", "Find functions by intent when you don't know the name. Local ONNX embeddings — no API key, no external calls. Pair with symbol+include_source to read top matches. Use when supersearch finds nothing (supersearch needs a name/pattern, semantic_search needs a description).", json!({
-            "path": p(),
-            "query": s("Natural-language description, e.g. 'validate user token' or 'send email notification'"),
-            "limit": i("Max results (default 10, max 50)"),
-            "file": s("Optional file path substring to restrict scope")
-        })),
-        tool("health", "Dead code, god functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", json!({
-            "path": p(),
-            "top": i("Max results per category (default 10)")
-        })),
-        tool_req("graph_delete", "Remove a function by name. Blocks if callers exist — this is a safety net, not an error. Always run health→blast_radius first to confirm the function is truly dead. Use force=true only when you have verified callers are intentional (e.g. test-only).", &["name"], json!({
-            "path": p(),
-            "name": s("Exact function name to delete (matched case-insensitively in bake index)"),
-            "file": s("Optional file path substring to disambiguate when multiple functions share the same name"),
-            "force": b("Delete even if active callers exist (default false)")
-        })),
-    ]})
+            }),
+        },
+        ToolEntry {
+            schema: schema_req("patch_bytes", "Splice at exact byte offsets — use byte_start/byte_end from the bake index. For single-identifier replacements where name/content-match modes would affect too much. Prefer patch for function-level edits.", &["file", "byte_start", "byte_end", "new_content"], json!({
+                "path": p(),
+                "file": s("File path relative to project root"),
+                "byte_start": i("Inclusive start byte offset"),
+                "byte_end": i("Exclusive end byte offset"),
+                "new_content": s("Replacement text")
+            })),
+            handler: Box::new(|a, path| crate::engine::patch_bytes(
+                path,
+                a.str_req("file", "patch_bytes")?,
+                a.uint_req("byte_start", "patch_bytes")? as usize,
+                a.uint_req("byte_end", "patch_bytes")? as usize,
+                a.str_req("new_content", "patch_bytes")?,
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("multi_patch", "Apply N edits across M files in one call — bottom-up ordering is automatic so offsets stay valid. Use after flow to fix an entire call chain end-to-end, or after blast_radius to update all callers. Prefer graph_rename for pure renames.", &["edits"], json!({
+                "path": p(),
+                "edits": json!({
+                    "type": "array",
+                    "description": "Array of edit operations",
+                    "items": {
+                        "type": "object",
+                        "required": ["file", "byte_start", "byte_end", "new_content"],
+                        "properties": {
+                            "file": {"type": "string"},
+                            "byte_start": {"type": "integer"},
+                            "byte_end": {"type": "integer"},
+                            "new_content": {"type": "string"}
+                        }
+                    }
+                })
+            })),
+            handler: Box::new(|a, path| {
+                let edits_val = a.0.get("edits").and_then(|v| v.as_array())
+                    .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for multi_patch"))?;
+                let mut edits = Vec::new();
+                for item in edits_val {
+                    let file = item.get("file").and_then(|v| v.as_str())
+                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?.to_string();
+                    let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
+                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))? as usize;
+                    let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
+                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))? as usize;
+                    let new_content = item.get("new_content").and_then(|v| v.as_str())
+                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?.to_string();
+                    edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
+                }
+                crate::engine::multi_patch(path, edits)
+            }),
+        },
+        ToolEntry {
+            schema: schema_req("blast_radius", "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename. Import graph expansion (affected files): Rust, Go, Python, TypeScript, JavaScript only — C/C++/C#/Java/Kotlin/PHP/Ruby/Swift/Bash return caller list only. Prefer over grep: grep overcounts by hitting comments, strings, partial names.", &["symbol"], json!({
+                "path": p(),
+                "symbol": s("Function name to analyse (exact match on the callee name)"),
+                "depth": i("Maximum call-graph depth to traverse (default 2)")
+            })),
+            handler: Box::new(|a, path| crate::engine::blast_radius(
+                path,
+                a.str_req("symbol", "blast_radius")?,
+                a.uint_opt("depth"),
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("graph_rename", "Rename a symbol at its definition and every call site atomically. Word-boundary matching prevents partial renames (renaming 'parse' won't corrupt 'parse_all'). Always prefer over str.replace or multi_patch for renames. Run blast_radius first to understand scope.", &["name", "new_name"], json!({
+                "path": p(),
+                "name": s("Current identifier name to rename"),
+                "new_name": s("New identifier name")
+            })),
+            handler: Box::new(|a, path| crate::engine::graph_rename(
+                path,
+                a.str_req("name", "graph_rename")?,
+                a.str_req("new_name", "graph_rename")?,
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("graph_create", "Create a new file with an initial function scaffold and auto-reindex. Errors if file exists or parent dir is missing — check first with find_docs or architecture_map. Use graph_add instead when adding to an existing file.", &["file", "function_name"], json!({
+                "path": p(),
+                "file": s("File path relative to project root (e.g. 'src/engine/foo.rs')"),
+                "function_name": s("Name for the initial scaffolded function"),
+                "language": s("Optional: override language detection (rust | typescript | python | go | java | c | cpp)")
+            })),
+            handler: Box::new(|a, path| crate::engine::graph_create(
+                path,
+                a.str_req("file", "graph_create")?,
+                a.str_req("function_name", "graph_create")?,
+                a.str_opt("language"),
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("graph_add", "Insert a function scaffold into an existing file, optionally after a named symbol. Auto-reindexes. Use graph_create for new files. Pair with patch to fill in the scaffold body immediately after.", &["entity_type", "name", "file"], json!({
+                "path": p(),
+                "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
+                "name": s("Name for the new function/entity"),
+                "file": s("File path relative to project root"),
+                "after_symbol": s("Optional: insert after this existing symbol (name or substring)"),
+                "language": s("Optional: override language detection (rust | typescript | python | go)")
+            })),
+            handler: Box::new(|a, path| crate::engine::graph_add(
+                path,
+                a.str_req("entity_type", "graph_add")?,
+                a.str_req("name", "graph_add")?,
+                a.str_req("file", "graph_add")?,
+                a.str_opt("after_symbol"),
+                a.str_opt("language"),
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("graph_move", "Move a function between files atomically — removes from source, appends to destination, reindexes both. Run bake first to ensure byte offsets are fresh. Check blast_radius to understand import impact before moving.", &["name", "to_file"], json!({
+                "path": p(),
+                "name": s("Exact function name to move (matched case-insensitively in bake index)"),
+                "to_file": s("Destination file path relative to project root")
+            })),
+            handler: Box::new(|a, path| crate::engine::graph_move(
+                path,
+                a.str_req("name", "graph_move")?,
+                a.str_req("to_file", "graph_move")?,
+            )),
+        },
+        ToolEntry {
+            schema: schema_req("trace_down", "BFS call chain from a function to db/http/queue boundaries. Rust and Go only. Prefer flow for endpoint tracing — flow calls trace_down internally and returns more context. Use trace_down directly for non-endpoint functions.", &["name"], json!({
+                "path": p(),
+                "name": s("Function name to start the trace from"),
+                "depth": i("Maximum call depth to follow (default 5)"),
+                "file": s("Optional file path substring to disambiguate when multiple functions share the same name")
+            })),
+            handler: Box::new(|a, path| crate::engine::trace_down(
+                path,
+                a.str_req("name", "trace_down")?,
+                a.uint_opt("depth"),
+                a.str_opt("file"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("semantic_search", "Find functions by intent when you don't know the name. Local ONNX embeddings — no API key, no external calls. Pair with symbol+include_source to read top matches. Use when supersearch finds nothing (supersearch needs a name/pattern, semantic_search needs a description).", json!({
+                "path": p(),
+                "query": s("Natural-language description, e.g. 'validate user token' or 'send email notification'"),
+                "limit": i("Max results (default 10, max 50)"),
+                "file": s("Optional file path substring to restrict scope")
+            })),
+            handler: Box::new(|a, path| crate::engine::semantic_search(
+                path,
+                a.str_req("query", "semantic_search")?,
+                a.uint_opt("limit"),
+                a.str_opt("file"),
+            )),
+        },
+        ToolEntry {
+            schema: schema("health", "Dead code, god functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", json!({
+                "path": p(),
+                "top": i("Max results per category (default 10)")
+            })),
+            handler: Box::new(|a, path| crate::engine::health(path, a.uint_opt("top"))),
+        },
+        ToolEntry {
+            schema: schema_req("graph_delete", "Remove a function by name. Blocks if callers exist — this is a safety net, not an error. Always run health→blast_radius first to confirm the function is truly dead. Use force=true only when you have verified callers are intentional (e.g. test-only).", &["name"], json!({
+                "path": p(),
+                "name": s("Exact function name to delete (matched case-insensitively in bake index)"),
+                "file": s("Optional file path substring to disambiguate when multiple functions share the same name"),
+                "force": b("Delete even if active callers exist (default false)")
+            })),
+            handler: Box::new(|a, path| crate::engine::graph_delete(
+                path,
+                a.str_req("name", "graph_delete")?,
+                a.str_opt("file"),
+                a.bool_opt("force").unwrap_or(false),
+            )),
+        },
+    ]
+}
+
+static REGISTRY: OnceLock<Vec<ToolEntry>> = OnceLock::new();
+
+fn get_registry() -> &'static Vec<ToolEntry> {
+    REGISTRY.get_or_init(build_registry)
+}
+
+fn list_tools() -> Value {
+    json!({ "tools": get_registry().iter().map(|t| t.schema.clone()).collect::<Vec<_>>() })
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,139 +632,10 @@ async fn call_tool(params: Value) -> Result<Value> {
     let a = Args(p.arguments);
     let path = a.str_opt("path");
 
-    match p.name.as_str() {
-        "llm_instructions" => ok_text(crate::engine::llm_instructions(path)?),
-        "shake"            => ok_text(crate::engine::shake(path)?),
-        "bake"             => ok_text(crate::engine::bake(path)?),
-        "all_endpoints"    => ok_text(crate::engine::all_endpoints(path)?),
-        "flow" => ok_text(crate::engine::flow(
-            path,
-            a.str_req("endpoint", "flow")?,
-            a.str_opt("method"),
-            a.uint_opt("depth"),
-            a.bool_opt("include_source").unwrap_or(false),
-        )?),
-        "symbol" => ok_text(crate::engine::symbol(
-            path,
-            a.str_req("name", "symbol")?,
-            a.bool_opt("include_source").unwrap_or(false),
-            a.str_opt("file"),
-            a.uint_opt("limit"),
-        )?),
-        "slice" => ok_text(crate::engine::slice(
-            path,
-            a.str_req("file", "slice")?,
-            a.uint_req("start_line", "slice")? as u32,
-            a.uint_req("end_line", "slice")? as u32,
-        )?),
-        "api_surface" => ok_text(crate::engine::api_surface(
-            path, a.str_opt("package"), a.uint_opt("limit"),
-        )?),
-        "file_functions" => ok_text(crate::engine::file_functions(
-            path, a.str_req("file", "file_functions")?, a.bool_opt("include_summaries"),
-        )?),
-        "supersearch" => ok_text(crate::engine::supersearch(
-            path,
-            a.str_req("query", "supersearch")?,
-            a.str_opt("context").unwrap_or_else(|| "all".to_string()),
-            a.str_opt("pattern").unwrap_or_else(|| "all".to_string()),
-            a.bool_opt("exclude_tests"),
-            a.str_opt("file"),
-            a.uint_opt("limit"),
-        )?),
-        "package_summary"  => ok_text(crate::engine::package_summary(path, a.str_req("package", "package_summary")?)?),
-        "architecture_map" => ok_text(crate::engine::architecture_map(path, a.str_opt("intent"))?),
-        "suggest_placement" => ok_text(crate::engine::suggest_placement(
-            path,
-            a.str_req("function_name", "suggest_placement")?,
-            a.str_req("function_type", "suggest_placement")?,
-            a.str_opt("related_to"),
-        )?),
-        "crud_operations" => ok_text(crate::engine::crud_operations(path, a.str_opt("entity"))?),
-        "api_trace" => ok_text(crate::engine::api_trace(
-            path, a.str_req("endpoint", "api_trace")?, a.str_opt("method"),
-        )?),
-        "find_docs" => ok_text(crate::engine::find_docs(
-            path, a.str_req("doc_type", "find_docs")?, a.uint_opt("limit"),
-        )?),
-        "patch" => {
-            if let Some(old_string) = a.str_opt("old_string") {
-                let new_string = a.str_req("new_string", "patch")?;
-                ok_text(crate::engine::patch_string(path, a.str_req("file", "patch")?, old_string, new_string)?)
-            } else {
-                let new_content = a.str_req("new_content", "patch")?;
-                let json = if let Some(name) = a.str_opt("name") {
-                    crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))?
-                } else {
-                    crate::engine::patch(
-                        path,
-                        a.str_req("file", "patch")?,
-                        a.uint_req("start", "patch")? as u32,
-                        a.uint_req("end", "patch")? as u32,
-                        new_content,
-                    )?
-                };
-                ok_text(json)
-            }
-        }
-        "patch_bytes" => ok_text(crate::engine::patch_bytes(
-            path,
-            a.str_req("file", "patch_bytes")?,
-            a.uint_req("byte_start", "patch_bytes")? as usize,
-            a.uint_req("byte_end", "patch_bytes")? as usize,
-            a.str_req("new_content", "patch_bytes")?,
-        )?),
-        "multi_patch" => {
-            let edits_val = a.0.get("edits").and_then(|v| v.as_array())
-                .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for multi_patch"))?;
-            let mut edits = Vec::new();
-            for item in edits_val {
-                let file = item.get("file").and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?.to_string();
-                let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))? as usize;
-                let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))? as usize;
-                let new_content = item.get("new_content").and_then(|v| v.as_str())
-                    .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?.to_string();
-                edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
-            }
-            ok_text(crate::engine::multi_patch(path, edits)?)
-        }
-        "blast_radius" => ok_text(crate::engine::blast_radius(
-            path, a.str_req("symbol", "blast_radius")?, a.uint_opt("depth"),
-        )?),
-        "graph_rename" => ok_text(crate::engine::graph_rename(
-            path, a.str_req("name", "graph_rename")?, a.str_req("new_name", "graph_rename")?,
-        )?),
-        "graph_create" => ok_text(crate::engine::graph_create(
-            path,
-            a.str_req("file", "graph_create")?,
-            a.str_req("function_name", "graph_create")?,
-            a.str_opt("language"),
-        )?),
-        "graph_add" => ok_text(crate::engine::graph_add(
-            path,
-            a.str_req("entity_type", "graph_add")?,
-            a.str_req("name", "graph_add")?,
-            a.str_req("file", "graph_add")?,
-            a.str_opt("after_symbol"),
-            a.str_opt("language"),
-        )?),
-        "graph_move" => ok_text(crate::engine::graph_move(
-            path, a.str_req("name", "graph_move")?, a.str_req("to_file", "graph_move")?,
-        )?),
-        "trace_down" => ok_text(crate::engine::trace_down(
-            path, a.str_req("name", "trace_down")?, a.uint_opt("depth"), a.str_opt("file"),
-        )?),
-        "semantic_search" => ok_text(crate::engine::semantic_search(
-            path, a.str_req("query", "semantic_search")?, a.uint_opt("limit"), a.str_opt("file"),
-        )?),
-        "health" => ok_text(crate::engine::health(path, a.uint_opt("top"))?),
-        "graph_delete" => ok_text(crate::engine::graph_delete(
-            path, a.str_req("name", "graph_delete")?, a.str_opt("file"),
-            a.bool_opt("force").unwrap_or(false),
-        )?),
-        other => Err(anyhow::anyhow!("Unknown tool: {other}")),
-    }
+    let entry = get_registry()
+        .iter()
+        .find(|t| t.name() == p.name.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Unknown tool: {}", p.name))?;
+
+    ok_text((entry.handler)(a, path)?)
 }

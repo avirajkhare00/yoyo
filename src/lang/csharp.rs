@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for CSharpAnalyzer {
     fn language(&self) -> &str { "csharp" }
-    fn extensions(&self) -> &[&str] { &["cs"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

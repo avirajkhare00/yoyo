@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for CppAnalyzer {
     fn language(&self) -> &str { "cpp" }
-    fn extensions(&self) -> &[&str] { &["cpp", "cc", "cxx", "hpp", "hh"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

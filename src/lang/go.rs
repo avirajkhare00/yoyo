@@ -27,10 +27,6 @@ impl LanguageAnalyzer for GoAnalyzer {
         "go"
     }
 
-    fn extensions(&self) -> &[&str] {
-        &["go"]
-    }
-
     fn extract_imports(&self, source: &str) -> Vec<String> {
         let mut imports = Vec::new();
         let mut in_block = false;

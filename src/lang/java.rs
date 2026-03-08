@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for JavaAnalyzer {
     fn language(&self) -> &str { "java" }
-    fn extensions(&self) -> &[&str] { &["java"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()
