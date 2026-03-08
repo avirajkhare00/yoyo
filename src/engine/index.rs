@@ -127,7 +127,7 @@ fn decision_map() -> Vec<DecisionEntry> {
             wrong_tool: "none — no text tool can answer this",
             wrong_because: "Complexity requires parsing AST and counting branches across the whole codebase.",
             right_tool: "health",
-            right_field: "god_functions[{name, file, score}]",
+            right_field: "large_functions[{name, file, score}]",
         },
         DecisionEntry {
             question: "What code is unused / dead?",
@@ -196,7 +196,7 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "graph_add",        description: "Insert a function scaffold into an existing file, optionally after a named symbol. Auto-reindexes. Use graph_create for new files. Pair with patch to fill in the scaffold body immediately after.", requires_bake: false, category: "write", parallelisable: false },
         ToolDescription { name: "graph_move",       description: "Move a function between files atomically — removes from source, appends to destination, reindexes both. Run bake first to ensure byte offsets are fresh. Check blast_radius to understand import impact before moving.", requires_bake: true, category: "write", parallelisable: false },
         ToolDescription { name: "graph_delete",     description: "Remove a function by name. Blocks if callers exist — this is a safety net, not an error. Always run health→blast_radius first to confirm the function is truly dead. Use force=true only when you have verified callers are intentional (e.g. test-only).", requires_bake: true, category: "write", parallelisable: false },
-        ToolDescription { name: "health",           description: "Dead code, god functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "health",           description: "Dead code, large functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", requires_bake: true, category: "read-indexed", parallelisable: true },
     ]
 }
 
@@ -357,7 +357,7 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "architecture_map", hint: "Directory tree with inferred roles (routes, services, models, etc.)" },
                 WorkflowStep { tool: "api_surface",      hint: "All exported functions grouped by module — understand the public contract" },
                 WorkflowStep { tool: "all_endpoints",    hint: "All HTTP routes — understand the API surface" },
-                WorkflowStep { tool: "health",           hint: "Dead code and god functions — where is the rot?" },
+                WorkflowStep { tool: "health",           hint: "Dead code and large functions — where is the rot?" },
             ],
         },
         Workflow {
