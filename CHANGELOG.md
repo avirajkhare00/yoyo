@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1] - 2026-03-09
+
+### Fixed
+
+- **`trace_chain` / `trace_down` / `flow` resolution improved** — `resolve_candidate` now uses `qualified_name` and `module_path` before falling back to heuristics. Previously, ambiguous names like `process` or `get` in multiple files were resolved by file-path substring or directory proximity — frequently wrong. Now: exact `qualified_name` match first (e.g. `engine::process`), then exact `module_path` match (Go packages), then `crate::` prefix stripping for Rust, then existing heuristics as fallback. Closes #93.
+- 5 unit tests added for `resolve_candidate` covering Rust qualified names, `crate::` prefix, Go packages, and trivial receiver passthrough.
+
 ## [1.1.0] - 2026-03-09
 
 ### Added
