@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for BashAnalyzer {
     fn language(&self) -> &str { "bash" }
-    fn extensions(&self) -> &[&str] { &["sh", "bash"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

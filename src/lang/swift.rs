@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for SwiftAnalyzer {
     fn language(&self) -> &str { "swift" }
-    fn extensions(&self) -> &[&str] { &["swift"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

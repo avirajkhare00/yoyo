@@ -27,10 +27,6 @@ impl LanguageAnalyzer for RustAnalyzer {
         "rust"
     }
 
-    fn extensions(&self) -> &[&str] {
-        &["rs"]
-    }
-
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()
             .filter_map(|line| {

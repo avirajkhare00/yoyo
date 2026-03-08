@@ -35,6 +35,15 @@ We are approaching a point where AI systems will meaningfully contribute to buil
 ## Feedback loops
 Actively suggest and build feedback loop systems. A tool that cannot measure its own effectiveness cannot improve. Every feature should ask: how will we know if this worked? Instrument, score, report, iterate. The feedback loop is the product.
 
+## Architecture layers — bottom to top
+
+yoyo has two layers:
+
+- **Engine** (`src/engine/`, `src/lang/`) — the stable core. AST parsing, indexing, analysis, graph operations. Changes here are high-cost: they affect every presentation layer and every tool that builds on them. Fix the bottom before touching the top.
+- **Presentation** (`src/mcp.rs`, `src/cli.rs`) — adapters over the engine. MCP tool schemas, CLI commands, output formatting. These can and should evolve freely. Changing how a tool presents its output never requires touching the engine.
+
+Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
+
 ## Software philosophy
 Before writing any code, ask: does this already exist? Duplication is the first form of rot. Search before you create.
 

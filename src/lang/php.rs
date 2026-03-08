@@ -24,7 +24,6 @@ const KINDS: NodeKinds = NodeKinds {
 
 impl LanguageAnalyzer for PhpAnalyzer {
     fn language(&self) -> &str { "php" }
-    fn extensions(&self) -> &[&str] { &["php"] }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()

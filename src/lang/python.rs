@@ -27,10 +27,6 @@ impl LanguageAnalyzer for PythonAnalyzer {
         "python"
     }
 
-    fn extensions(&self) -> &[&str] {
-        &["py"]
-    }
-
     fn extract_imports(&self, source: &str) -> Vec<String> {
         source.lines()
             .filter_map(|line| {

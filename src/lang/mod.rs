@@ -124,8 +124,6 @@ pub struct AstMatch {
 
 pub trait LanguageAnalyzer: Send + Sync {
     fn language(&self) -> &str;
-    #[allow(dead_code)]
-    fn extensions(&self) -> &[&str];
     fn analyze_file(
         &self,
         root: &Path,

@@ -27,10 +27,6 @@ impl LanguageAnalyzer for TypeScriptAnalyzer {
         "typescript"
     }
 
-    fn extensions(&self) -> &[&str] {
-        &["ts", "tsx"]
-    }
-
     fn extract_imports(&self, source: &str) -> Vec<String> {
         let mut imports = Vec::new();
         for line in source.lines() {
