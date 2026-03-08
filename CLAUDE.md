@@ -46,6 +46,10 @@ Watch the binary size. A growing binary is a symptom, not a badge. Every depende
 
 Before adding new functionality, search the codebase first. The feature may already exist, partially or fully. If it does, refactor and extend — don't duplicate. New code is a liability until proven otherwise.
 
+## GitHub issue lifecycle
+
+`closes #N` in a commit message auto-closes the issue when pushed to main. No need to run `gh issue close` separately — it's already done by the time CI runs. Only use `gh issue close` when there's no associated commit (e.g. closing stale/duplicate issues manually).
+
 ## Self-improvement directive
 Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
 
