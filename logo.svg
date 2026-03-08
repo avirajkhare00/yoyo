@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="100" height="120">
+  <!-- String -->
+  <line x1="50" y1="0" x2="50" y2="38" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Left wing -->
+  <ellipse cx="50" cy="60" rx="32" ry="18" fill="#0f3460" transform="rotate(-15 50 60)"/>
+  <!-- Right wing -->
+  <ellipse cx="50" cy="60" rx="32" ry="18" fill="#0f3460" transform="rotate(15 50 60)"/>
+
+  <!-- Center axle -->
+  <ellipse cx="50" cy="60" rx="7" ry="7" fill="#e94560"/>
+  <ellipse cx="50" cy="60" rx="3.5" ry="3.5" fill="#1a1a2e"/>
+
+  <!-- Shine -->
+  <ellipse cx="38" cy="52" rx="6" ry="3" fill="white" opacity="0.12" transform="rotate(-15 38 52)"/>
+</svg>
