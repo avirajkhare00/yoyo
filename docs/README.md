@@ -121,6 +121,12 @@ Add to `~/.claude/settings.json` (Claude Code) or your Cursor MCP config:
 }
 ```
 
+For Codex CLI, add yoyo from your terminal:
+```bash
+codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
+```
+If you installed to `~/.local/bin/yoyo`, use that path in the command.
+
 **Recommended — add a `UserPromptSubmit` hook** so Claude is reminded to prefer yoyo tools on every turn. Add to your project's `.claude/settings.local.json`:
 
 ```json

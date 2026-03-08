@@ -95,7 +95,13 @@ yoyo --version
 
 **Cursor** — add the same block to your Cursor MCP config file.
 
-Then **restart Claude Code** (or run `/mcp` to reconnect) so it picks up the new server.
+**Codex CLI** — add yoyo as an MCP server from your terminal:
+```bash
+codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
+```
+If you installed to `~/.local/bin/yoyo`, use that path in the command.
+
+Then reconnect your agent client so it picks up the new server (for Claude Code, run `/mcp` or restart the app).
 
 ---
 
@@ -133,7 +139,7 @@ This injects a reminder on every prompt so Claude actively uses yoyo tools inste
 
 ---
 
-You're set. Open Claude Code, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
+You're set. Open Claude Code, Cursor, or Codex CLI, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
 
 ---
 
