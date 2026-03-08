@@ -46,6 +46,23 @@ yoyo has two layers:
 
 Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
 
+## DRY for markdown — single source of truth
+
+Every fact lives in exactly one file. Cross-reference, never duplicate.
+
+| What | Lives in | Everyone else does |
+|---|---|---|
+| Language support matrix | `METRICS.md` | Link to it |
+| Metrics (tools, tests, binary, eval) | `METRICS.md` | Link to it |
+| Competitive landscape | `COMPETITORS.md` | Link to it |
+| Version history | `CHANGELOG.md` | Link to it |
+| Architecture decisions | `CLAUDE.md` | Reference by section |
+| API / tool docs | `docs/README.md` | Link to it |
+
+When you update a fact, update it in one place. If you find the same number in two files, delete one and add a link. README.md is a front door — it summarises and links, it does not own data.
+
+Violations to fix on sight: language lists copied into README, version numbers in multiple files, eval scores duplicated across REPORT.md and README, tool counts hardcoded in multiple places.
+
 ## Code over documentation — read the source
 
 When adding a new language or integrating a new library, **read the source first**. Don't trust docs, blog posts, or AI memory of what node types exist. Docs go stale. The source doesn't lie.
