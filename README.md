@@ -2,7 +2,7 @@
 
 yoyo is a code intelligence MCP server. It gives your AI agent 27 tools to read and edit any codebase — grounded in the AST, not model memory.
 
-**Built for agents.** Drop it into Claude Code, Cursor, or any MCP-compatible agent. The agent calls the tools. You get better answers.
+**Built for agents.** Drop it into Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, or any MCP-compatible agent. The agent calls the tools. You get better answers.
 
 **99% eval accuracy** across 7 real codebases (120 tasks) vs 26% baseline (Claude Code without yoyo). No API keys. No SaaS. No telemetry.
 
@@ -101,6 +101,18 @@ codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
 ```
 If you installed to `~/.local/bin/yoyo`, use that path in the command.
 
+**Gemini CLI** — add yoyo as an MCP server from your terminal:
+```bash
+gemini mcp add yoyo /usr/local/bin/yoyo --mcp-server
+```
+If you installed to `~/.local/bin/yoyo`, use that path in the command.
+
+**OpenCode** — add yoyo as an MCP server from your terminal:
+```bash
+opencode mcp add
+```
+Then follow the prompts: `Local (stdio)` → name `yoyo` → command `/usr/local/bin/yoyo` → args `--mcp-server`.
+
 Then reconnect your agent client so it picks up the new server (for Claude Code, run `/mcp` or restart the app).
 
 ---
@@ -139,7 +151,7 @@ This injects a reminder on every prompt so Claude actively uses yoyo tools inste
 
 ---
 
-You're set. Open Claude Code, Cursor, or Codex CLI, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
+You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 27 tools.
 
 ---
 
