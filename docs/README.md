@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude or Cursor 27 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 27 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
 
@@ -126,6 +126,18 @@ For Codex CLI, add yoyo from your terminal:
 codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
 ```
 If you installed to `~/.local/bin/yoyo`, use that path in the command.
+
+For Gemini CLI, add yoyo from your terminal:
+```bash
+gemini mcp add yoyo /usr/local/bin/yoyo --mcp-server
+```
+If you installed to `~/.local/bin/yoyo`, use that path in the command.
+
+For OpenCode, add yoyo from your terminal:
+```bash
+opencode mcp add
+```
+Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`, args `--mcp-server`.
 
 **Recommended — add a `UserPromptSubmit` hook** so Claude is reminded to prefer yoyo tools on every turn. Add to your project's `.claude/settings.local.json`:
 
