@@ -1,12 +1,5 @@
 # Changelog
 
-## [1.0.3] - 2026-03-08
-
-### Added
-
-- macOS Intel (x86_64) binary — `yoyo-x86_64-apple-darwin.tar.gz` now ships with every release
-- Homebrew formula updated to serve the Intel binary on `Hardware::CPU.intel?` Macs
-
 ## [1.0.2] - 2026-03-08
 
 ### Fixed
