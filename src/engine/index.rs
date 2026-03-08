@@ -321,6 +321,44 @@ fn workflow_catalog() -> Vec<Workflow> {
             ],
         },
         Workflow {
+            name: "Safely delete dead code",
+            description: "Confirm a function is truly unused before removing it. The combination prevents broken builds.",
+            steps: vec![
+                WorkflowStep { tool: "health",       hint: "Get dead code candidates — functions with no detected callers" },
+                WorkflowStep { tool: "blast_radius", hint: "Cross-check: list all transitive callers of the candidate (health can miss router-registered handlers)" },
+                WorkflowStep { tool: "graph_delete", hint: "Remove the function — tool blocks if callers still exist, so this is safe to run" },
+            ],
+        },
+        Workflow {
+            name: "Fix a broken API endpoint end-to-end",
+            description: "Trace a route to its full call chain and patch every affected layer in one session.",
+            steps: vec![
+                WorkflowStep { tool: "flow",        hint: "Pass the endpoint path substring — returns handler + full call chain + boundaries in one call" },
+                WorkflowStep { tool: "symbol",      hint: "Read each function in the chain with include_source=true to understand the failure" },
+                WorkflowStep { tool: "multi_patch", hint: "Apply all fixes across all files in one call — bottom-up ordering is automatic" },
+            ],
+        },
+        Workflow {
+            name: "Rename with safety check",
+            description: "Understand the blast radius before renaming, then rename atomically.",
+            steps: vec![
+                WorkflowStep { tool: "blast_radius", hint: "Scope the impact — see all callers and affected files before touching anything" },
+                WorkflowStep { tool: "graph_rename", hint: "Rename at definition + every call site atomically; word-boundary matching prevents partial renames" },
+                WorkflowStep { tool: "symbol",       hint: "Verify the definition carries the new name" },
+            ],
+        },
+        Workflow {
+            name: "Orient to an unfamiliar codebase",
+            description: "Build a mental model of a new project from the outside in.",
+            steps: vec![
+                WorkflowStep { tool: "shake",            hint: "Language breakdown, file count, top-complexity functions — 30-second overview" },
+                WorkflowStep { tool: "architecture_map", hint: "Directory tree with inferred roles (routes, services, models, etc.)" },
+                WorkflowStep { tool: "api_surface",      hint: "All exported functions grouped by module — understand the public contract" },
+                WorkflowStep { tool: "all_endpoints",    hint: "All HTTP routes — understand the API surface" },
+                WorkflowStep { tool: "health",           hint: "Dead code and god functions — where is the rot?" },
+            ],
+        },
+        Workflow {
             name: "Graph-level rename (manual — prefer graph_rename)",
             description: "[DEPRECATED: use graph_rename for one-shot rename] Manual rename via byte-precise edits with multi_patch. Use only when you need fine-grained control over which occurrences to rename.",
             steps: vec![

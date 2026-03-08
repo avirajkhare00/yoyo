@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.2] - 2026-03-08
+
+### Added
+- `llm_instructions` now includes 4 combination-focused workflows: "Safely delete dead code" (`health` → `blast_radius` → `graph_delete`), "Fix a broken API endpoint end-to-end" (`flow` → `symbol` → `multi_patch`), "Rename with safety check" (`blast_radius` → `graph_rename` → `symbol`), and "Orient to an unfamiliar codebase" (`shake` → `architecture_map` → `api_surface` → `all_endpoints` → `health`). Agents now learn the combination patterns that make yoyo effective, not just individual tool names.
+
 ## [0.22.1] - 2026-03-08
 
 ### Fixed
