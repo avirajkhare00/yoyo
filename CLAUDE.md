@@ -46,6 +46,16 @@ Watch the binary size. A growing binary is a symptom, not a badge. Every depende
 
 Before adding new functionality, search the codebase first. The feature may already exist, partially or fully. If it does, refactor and extend — don't duplicate. New code is a liability until proven otherwise.
 
+## Philosophy — the combinations are the point
+
+yoyo is named after competitive yoyo. A yoyo is a spinning disk on a string — simple alone. The magic is in the combinations: string wraps, body movements, timing layered together. One trick is fine. Fifty moves chained is transcendent.
+
+yoyo tools work the same way. No single tool is impressive. The orchestration is. When building features, always ask: what is the combination that makes this powerful? A new tool is only worth adding if it unlocks a combination that wasn't possible before.
+
+## GitHub issues as project memory
+
+GitHub issues are the living memory of this project — decisions made, problems found, patterns discovered. Before starting any significant work, check open issues for context. When something important is learned (a gap, a pattern, a mistake), file an issue immediately — even if it won't be fixed this session. Issues outlive conversations.
+
 ## GitHub issue lifecycle
 
 `closes #N` in a commit message auto-closes the issue when pushed to main. No need to run `gh issue close` separately — it's already done by the time CI runs. Only use `gh issue close` when there's no associated commit (e.g. closing stale/duplicate issues manually).
