@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.1] - 2026-03-08
+
+### Fixed
+
+- Tool count corrected to 28 everywhere (was 27 in two hardcoded strings)
+- Stale `patch_by_symbol` reference in CLAUDE.md replaced with correct `patch` + `name=` usage
+
+### Refactored
+
+- **Tool registry unified**: `ToolEntry` in `build_registry()` is the single presentation-layer source of truth — schema and handler live adjacent. `list_tools()` and `call_tool()` both derive from it. Adding a tool = one entry.
+- **Tool descriptions unified**: `tool_catalog()` (engine layer) is now the canonical source for all tool descriptions. `build_registry()` derives via `d("name")` — no hardcoded description strings in the MCP layer.
+- **Drift prevention**: `mcp::tests::registry_and_catalog_names_are_in_sync` test — CI fails if a tool exists in one place but not the other.
+- **Dead code removed**: `extensions()` method removed from `LanguageAnalyzer` trait and all 13 language implementations (never called anywhere).
+- Architecture layers principle added to CLAUDE.md: engine is stable core, presentation layers (MCP + CLI) are adapters.
+
 ## [1.0.0] - 2026-03-08
 
 ### Breaking changes
