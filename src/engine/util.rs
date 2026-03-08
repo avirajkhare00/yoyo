@@ -211,6 +211,7 @@ pub(crate) fn detect_language(path: &Path) -> &'static str {
         Some("cpp") | Some("cc") | Some("cxx") | Some("hpp") | Some("hh") => "cpp",
         Some("cs") => "csharp",
         Some("sh") | Some("bash") => "bash",
+        Some("zig") => "zig",
         Some("scala") => "scala",
         Some("vue") => "vue",
         Some("sql") => "sql",
