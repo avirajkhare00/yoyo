@@ -41,21 +41,13 @@ result:     answers from facts, not memory. no hallucinated file paths.
 
 ### 1. Install
 
-**macOS — Homebrew (recommended)**
+**macOS (Intel + Apple Silicon)**
 ```bash
 brew tap avirajkhare00/yoyo
 brew install yoyo
 ```
 
-Homebrew handles signing and PATH automatically. No `codesign`, no `sudo mv`.
-
-**macOS — manual (Apple Silicon)**
-```bash
-curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-aarch64-apple-darwin.tar.gz | tar xz
-sudo mv yoyo-aarch64-apple-darwin /usr/local/bin/yoyo
-# Required: sign the binary or macOS Gatekeeper will kill it silently (exit 137)
-codesign --force --deep --sign - /usr/local/bin/yoyo
-```
+Homebrew resolves the right architecture automatically. No `codesign`, no `sudo mv`, works on both Intel and Apple Silicon.
 
 **Linux (x86_64)**
 ```bash
