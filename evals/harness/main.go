@@ -189,6 +189,13 @@ func setupTask(taskDir string) SetupResult {
 }
 
 func runTests(dir string, cmd []string) TestResult {
+	// Inject -v for go test to get per-test PASS/FAIL lines
+	if len(cmd) >= 2 && cmd[0] == "go" && cmd[1] == "test" {
+		injected := make([]string, 0, len(cmd)+1)
+		injected = append(injected, cmd[0], cmd[1], "-v")
+		injected = append(injected, cmd[2:]...)
+		cmd = injected
+	}
 	c := exec.Command(cmd[0], cmd[1:]...)
 	c.Dir = dir
 	out, err := c.CombinedOutput()
