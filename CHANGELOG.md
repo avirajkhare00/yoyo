@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.1] - 2026-03-09
+
+### Added
+
+- **`output_shape` on `ToolDescription`** — every read tool in the catalog now includes a JSON skeleton of its top-level output fields. Serialised as part of `llm_instructions`, so pipeline spec authors can see exact field names (e.g. `large_functions`, `dead_code`, `results`) without running the tool first. Closes #100.
+
 ## [1.2.0] - 2026-03-09
 
 ### Added

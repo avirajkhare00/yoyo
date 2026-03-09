@@ -94,6 +94,11 @@ pub struct ToolDescription {
     pub requires_bake: bool,
     pub category: &'static str,
     pub parallelisable: bool,
+    /// JSON skeleton of the top-level fields this tool returns.
+    /// Used by pipeline spec authors to write correct {{step.field}} refs.
+    /// None for tools with no structured output (write tools, bootstrap tools).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_shape: Option<&'static str>,
 }
 
 #[derive(Serialize)]
