@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.3] - 2026-03-09
+
+### Fixed
+
+- `patch`, `patch_string`, `patch_bytes`: pre-write AST validation via tree-sitter. Patch is now rejected with a structured error before any file is modified when the new content contains syntax errors. File is guaranteed unchanged on rejection. Closes #109.
+
 ## [1.3.2] - 2026-03-09
 
 ### Fixed
