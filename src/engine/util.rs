@@ -118,8 +118,9 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     let mut files: Vec<BakeFile> = Vec::new();
 
     for result in WalkBuilder::new(root)
-        .hidden(false)     // don't skip hidden files — .gitignore handles exclusions
-        .git_ignore(true)  // respect .gitignore (nested, global, .git/info/exclude)
+        .hidden(false)       // don't skip hidden files — .gitignore handles exclusions
+        .git_ignore(true)    // respect .gitignore (nested, global, .git/info/exclude)
+        .require_git(false)  // apply .gitignore rules even outside a git repo
         .build()
     {
         let entry = match result {
