@@ -5,6 +5,8 @@ use clap::{Args, Subcommand};
 pub enum Command {
     /// Prime directive and usage instructions for yoyo.
     LlmInstructions(LlmInstructionsArgs),
+    /// Full reference catalog: workflows, decision map, antipatterns, metapatterns.
+    LlmWorkflows(LlmWorkflowsArgs),
     /// Repository overview similar to Shake.readme.
     Shake(ShakeArgs),
     /// Build and persist a bake index under the project root.
@@ -65,6 +67,13 @@ pub enum Command {
 #[derive(Args, Debug)]
 pub struct LlmInstructionsArgs {
     /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct LlmWorkflowsArgs {
+    /// Optional path to the project directory (unused; kept for API symmetry).
     #[arg(long)]
     pub path: Option<String>,
 }
@@ -443,6 +452,7 @@ pub struct SemanticSearchArgs {
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
         Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
+        Some(Command::LlmWorkflows(args)) => run_llm_workflows(args).await?,
         Some(Command::Shake(args)) => run_shake(args).await?,
         Some(Command::Bake(args)) => run_bake(args).await?,
         Some(Command::Symbol(args)) => run_symbol(args).await?,
@@ -524,6 +534,12 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
 
 async fn run_llm_instructions(args: LlmInstructionsArgs) -> anyhow::Result<()> {
     let json = crate::engine::llm_instructions(args.path)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_llm_workflows(args: LlmWorkflowsArgs) -> anyhow::Result<()> {
+    let json = crate::engine::llm_workflows(args.path)?;
     println!("{json}");
     Ok(())
 }
