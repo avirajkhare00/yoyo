@@ -306,7 +306,7 @@
 
       <div class="card">
         <h3>Parses your code with ast-grep</h3>
-        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports 14 languages: TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, and Bash.</p>
+        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports 15 languages: TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash, and Zig.</p>
       </div>
 
       <div class="card">
@@ -326,7 +326,7 @@
 
       <div class="card">
         <h3>Edits code safely</h3>
-        <p><code>patch</code> writes changes by symbol name, line range, or exact string match. Validates syntax after every write. Reindexes automatically so the next read is always fresh.</p>
+        <p><code>patch</code> writes changes by symbol name, line range, or exact string match. Compiles after every write — rolls back to the original if the compiler rejects it. Reindexes automatically so the next read is always fresh.</p>
       </div>
 
       <div class="card">
@@ -519,7 +519,7 @@
 <section id="matrix">
   <div class="container">
     <h2>Language support matrix</h2>
-    <p class="section-sub">What works in each language. All 14 languages index functions and support AST-aware search.</p>
+    <p class="section-sub">What works in each language. All 15 languages index functions and support AST-aware search.</p>
 
     <table>
       <thead>
@@ -548,13 +548,15 @@
         <tr><td><strong>Ruby</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
         <tr><td><strong>Swift</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
         <tr><td><strong>Bash</strong></td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
+        <tr><td><strong>Zig</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
       </tbody>
     </table>
 
     <p style="font-size:0.85rem; color:var(--muted); margin-top:16px;">
       <strong>Endpoints</strong> — HTTP route detection for <code>all_endpoints</code>, <code>api_trace</code>, <code>crud_operations</code>.<br>
       <strong>Import graph</strong> — <code>blast_radius</code> uses imports to expand affected files.<br>
-      <strong>trace_down</strong> — BFS call chain to db/http/queue boundaries (Rust + Go only).
+      <strong>trace_down</strong> — BFS call chain to db/http/queue boundaries (Rust + Go only).<br>
+      <strong>Compiler guard</strong> — <code>patch</code> compiles after every write and rolls back if rejected (Rust, Go, Zig).
     </p>
   </div>
 </section>

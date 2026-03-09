@@ -194,7 +194,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 | Tool | What it does |
 |---|---|
-| `patch` | Write changes by symbol name, line range, or exact string match. Auto-reindexes. |
+| `patch` | Write changes by symbol name, line range, or exact string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
 | `patch_bytes` | Splice at exact byte offsets from the index. |
 | `multi_patch` | Apply N edits across M files in one call, bottom-up so offsets stay valid. |
 | `graph_rename` | Rename a symbol at its definition and every call site, atomically. |
@@ -254,7 +254,7 @@ src/
   engine/
     index.rs     bake, shake, llm_instructions
     search.rs    symbol, supersearch, file_functions, semantic_search
-    edit.rs      patch, patch_bytes, multi_patch, slice
+    edit.rs      patch, patch_bytes, multi_patch, slice (+ compiler guard)
     graph.rs     graph_rename, graph_create, graph_add, graph_move, trace_chain
     analysis.rs  blast_radius, find_docs, health, graph_delete
     embed.rs     fastembed ONNX embeddings + SQLite store
@@ -265,7 +265,11 @@ src/
   lang/
     mod.rs       IndexedFunction, IndexedEndpoint, LanguageAnalyzer trait
     rust.rs / go.rs / python.rs / typescript.rs / javascript.rs
-    c.rs / cpp.rs / csharp.rs / java.rs / kotlin.rs / php.rs / ruby.rs / swift.rs / bash.rs
+    c.rs / cpp.rs / csharp.rs / java.rs / kotlin.rs / php.rs / ruby.rs / swift.rs / bash.rs / zig.rs
+evals/
+  harness/       real-repo puncture eval (Go) — clone → patch → run own tests → score
+  tasks/         task.json + puncture.patch per codebase
+  results/       timestamped JSON score records
 ```
 
 ---
