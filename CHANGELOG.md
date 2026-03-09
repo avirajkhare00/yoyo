@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.6] - 2026-03-09
+
+### Added
+
+- `graph_add`: `entity_type="test"` generates a language-idiomatic test scaffold for the named function. Rust: `#[test] fn test_foo()`, Go: `func TestFoo(t *testing.T)`, TypeScript: `it("foo", () => {})`, Zig: `test "foo" {}`, Python: `def test_foo()`. No new tools — zero surface area added. Closes #111.
+
 ## [1.3.5] - 2026-03-09
 
 ### Added

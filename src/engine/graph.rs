@@ -122,6 +122,45 @@ fn generate_typed_scaffold(
     }
 }
 
+/// Generate a language-idiomatic test function scaffold for `fn_name`.
+fn generate_test_scaffold(fn_name: &str, lang: &str) -> String {
+    match lang {
+        "rust" => format!(
+            "\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n",
+            fn_name
+        ),
+        "go" => {
+            // Go test functions must be exported: TestFnName
+            let mut test_name = String::from("Test");
+            let mut chars = fn_name.chars();
+            if let Some(first) = chars.next() {
+                test_name.extend(first.to_uppercase());
+                test_name.push_str(chars.as_str());
+            }
+            format!(
+                "\nfunc {}(t *testing.T) {{\n    // TODO\n}}\n",
+                test_name
+            )
+        }
+        "typescript" | "javascript" => format!(
+            "\nit(\"{}\", () => {{\n    // TODO\n}});\n",
+            fn_name
+        ),
+        "zig" => format!(
+            "\ntest \"{}\" {{\n    // TODO\n}}\n",
+            fn_name
+        ),
+        "python" => format!(
+            "\ndef test_{}():\n    pass\n",
+            fn_name
+        ),
+        _ => format!(
+            "\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n",
+            fn_name
+        ),
+    }
+}
+
 fn generate_scaffold(entity_type: &str, name: &str, lang: &str) -> String {
     match entity_type {
         "fn" => format!("\nfn {}() {{\n    todo!()\n}}\n", name),
@@ -324,7 +363,9 @@ pub fn graph_add(
         }
     };
 
-    let scaffold = if let Some(ref p) = params {
+    let scaffold = if entity_type == "test" {
+        generate_test_scaffold(&name, lang)
+    } else if let Some(ref p) = params {
         generate_typed_scaffold(&name, lang, p, returns.as_deref(), on.as_deref())
     } else {
         generate_scaffold(&entity_type, &name, lang)
@@ -1108,6 +1149,96 @@ mod tests {
 
         let content = fs::read_to_string(dir.path().join("src/utils.go")).unwrap();
         assert!(content.contains("func parseArgs"));
+    }
+
+    // ── test scaffold ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_scaffold_rust_generates_test_fn() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "test".into(), "add".into(), "src/lib.rs".into(),
+            None, Some("rust".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("#[test]"), "#[test] missing:\n{}", content);
+        assert!(content.contains("fn test_add()"), "test fn name missing:\n{}", content);
+        assert!(content.contains("todo!()"), "todo!() missing:\n{}", content);
+    }
+
+    #[test]
+    fn test_scaffold_go_generates_test_fn() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.go", "package lib\nfunc Add(a, b int) int { return a + b }\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "test".into(), "Add".into(), "src/lib.go".into(),
+            None, Some("go".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.go")).unwrap();
+        assert!(content.contains("func TestAdd(t *testing.T)"), "Go test fn missing:\n{}", content);
+    }
+
+    #[test]
+    fn test_scaffold_typescript_generates_it_block() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/math.ts", "export function add(a: number, b: number): number { return a + b; }\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "test".into(), "add".into(), "src/math.ts".into(),
+            None, Some("typescript".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/math.ts")).unwrap();
+        assert!(content.contains("it(\"add\""), "it() block missing:\n{}", content);
+    }
+
+    #[test]
+    fn test_scaffold_zig_generates_test_block() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.zig", "pub fn add(a: i32, b: i32) i32 { return a + b; }\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "test".into(), "add".into(), "src/lib.zig".into(),
+            None, Some("zig".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.zig")).unwrap();
+        assert!(content.contains("test \"add\""), "Zig test block missing:\n{}", content);
+    }
+
+    #[test]
+    fn test_scaffold_python_generates_test_fn() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/math.py", "def add(a, b):\n    return a + b\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "test".into(), "add".into(), "src/math.py".into(),
+            None, Some("python".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/math.py")).unwrap();
+        assert!(content.contains("def test_add()"), "Python test fn missing:\n{}", content);
+        assert!(content.contains("pass"), "pass missing:\n{}", content);
     }
 
     // ── typed scaffold ────────────────────────────────────────────────────────
