@@ -543,7 +543,7 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema_req("graph_add", d("graph_add"), &["entity_type", "name", "file"], json!({
                 "path": p(),
-                "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go)"),
+                "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go) | test (generates idiomatic test fn for the named symbol)"),
                 "name": s("Name for the new function/entity"),
                 "file": s("File path relative to project root"),
                 "after_symbol": s("Optional: insert after this existing symbol (name or substring)"),
