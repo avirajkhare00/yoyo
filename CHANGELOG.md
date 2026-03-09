@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2] - 2026-03-09
+
+### Fixed
+
+- `bake`: replaced hardcoded directory exclusion list with `.gitignore`-aware walking via the `ignore` crate. Respects `.gitignore`, `.git/info/exclude`, and global gitignore. Build artifacts (`dist/`, `.next/`, etc.) are excluded automatically when listed in `.gitignore` — no yoyo-specific config needed. Closes #105.
+
 ## [1.3.1] - 2026-03-09
 
 ### Fixed

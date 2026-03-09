@@ -110,53 +110,41 @@ fn parse_semver(v: &str) -> (u32, u32, u32) {
 }
 
 pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
+    use ignore::WalkBuilder;
     use rayon::prelude::*;
 
-    // Phase 1: collect file metadata (sequential directory walk — fast).
+    // Phase 1: collect file metadata using .gitignore-aware walker.
     let mut languages = BTreeSet::new();
     let mut files: Vec<BakeFile> = Vec::new();
 
-    fn walk(
-        dir: &Path,
-        root: &Path,
-        languages: &mut BTreeSet<String>,
-        files: &mut Vec<BakeFile>,
-    ) -> Result<()> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if matches!(
-                        name,
-                        ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__"
-                    ) {
-                        continue;
-                    }
-                }
-                walk(&path, root, languages, files)?;
-            } else if path.is_file() {
-                let meta = entry.metadata()?;
-                let bytes = meta.len();
-                let lang = detect_language(&path);
-                if lang != "other" {
-                    languages.insert(lang.to_string());
-                }
-                let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-                files.push(BakeFile {
-                    path: rel,
-                    language: lang.to_string(),
-                    bytes,
-                    imports: vec![],
-                });
-            }
+    for result in WalkBuilder::new(root)
+        .hidden(false)     // don't skip hidden files — .gitignore handles exclusions
+        .git_ignore(true)  // respect .gitignore (nested, global, .git/info/exclude)
+        .build()
+    {
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path().to_path_buf();
+        if !path.is_file() {
+            continue;
         }
-        Ok(())
+        let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let lang = detect_language(&path);
+        if lang != "other" {
+            languages.insert(lang.to_string());
+        }
+        let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+        files.push(BakeFile {
+            path: rel,
+            language: lang.to_string(),
+            bytes,
+            imports: vec![],
+        });
     }
 
-    walk(root.as_path(), root.as_path(), &mut languages, &mut files)?;
     // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
-    // Returns (index, functions, endpoints, types, imports) per file.
     let results: Vec<_> = files
         .par_iter()
         .enumerate()
