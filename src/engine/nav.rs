@@ -10,12 +10,13 @@ use super::types::{
 use super::util::{load_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `package_summary` tool.
-pub fn package_summary(path: Option<String>, package: String) -> Result<String> {
+pub fn package_summary(path: Option<String>, package: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
 
-    let package_lc = package.to_lowercase();
+    let package_str = package.unwrap_or_default();
+    let package_lc = package_str.to_lowercase();
 
     let mut files = Vec::new();
     let mut functions = Vec::new();
@@ -59,7 +60,7 @@ pub fn package_summary(path: Option<String>, package: String) -> Result<String> 
         tool: "package_summary",
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
-        package,
+        package: package_str,
         files,
         functions,
         endpoints,
