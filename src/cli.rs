@@ -675,7 +675,7 @@ async fn run_graph_rename(args: GraphRenameArgs) -> anyhow::Result<()> {
 }
 
 async fn run_graph_create(args: GraphCreateArgs) -> anyhow::Result<()> {
-    let json = crate::engine::graph_create(args.path, args.file, args.function_name, args.language)?;
+    let json = crate::engine::graph_create(args.path, args.file, args.function_name, args.language, None, None)?;
     println!("{json}");
     Ok(())
 }
@@ -688,6 +688,7 @@ async fn run_graph_add(args: GraphAddArgs) -> anyhow::Result<()> {
         args.file,
         args.after_symbol,
         args.language,
+        None, None, None,
     )?;
     println!("{json}");
     Ok(())

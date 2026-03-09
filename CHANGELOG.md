@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.5] - 2026-03-09
+
+### Added
+
+- `graph_add`, `graph_create`: accept optional `params`, `returns`, and `on` arguments to generate typed, language-idiomatic function signatures. When params are provided, generates correct syntax for Rust, Go, TypeScript, Zig, and Python — including `impl` blocks (Rust) and method receivers (Go). Falls back to bare scaffold when omitted. Closes #110.
+
 ## [1.3.4] - 2026-03-09
 
 ### Fixed

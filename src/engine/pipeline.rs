@@ -692,7 +692,7 @@ fn dispatch(tool: &str, args: &Value, path: Option<String>) -> Result<String> {
             crate::engine::graph_rename(path, s_req("name")?, s_req("new_name")?)
         }
         "graph_create" => {
-            crate::engine::graph_create(path, s_req("file")?, s_req("function_name")?, s("language"))
+            crate::engine::graph_create(path, s_req("file")?, s_req("function_name")?, s("language"), None, None)
         }
         "graph_add" => crate::engine::graph_add(
             path,
@@ -701,6 +701,7 @@ fn dispatch(tool: &str, args: &Value, path: Option<String>) -> Result<String> {
             s_req("file")?,
             s("after_symbol"),
             s("language"),
+            None, None, None,
         ),
         "graph_move" => crate::engine::graph_move(path, s_req("name")?, s_req("to_file")?),
         "trace_down" => crate::engine::trace_down(path, s_req("name")?, u("depth"), s("file")),
