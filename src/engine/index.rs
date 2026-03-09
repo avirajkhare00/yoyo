@@ -398,6 +398,27 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "pipeline", hint: "Pass spec: a JSON array of steps. Each step has id, tool, args (with optional {{refs}}), and optional if condition. Output: {steps: [{id, tool, ok, result}]}." },
             ],
         },
+        Workflow {
+            name: "Pipeline: safe dead code removal",
+            description: "Find dead candidates, confirm zero callers, delete only if safe — in one atomic pipeline call. The if condition is the machine-enforced safety net: if blast_radius finds callers (e.g. a router registration invisible to the AST), the delete is skipped automatically.",
+            steps: vec![
+                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"audit","tool":"health"},{"id":"check","tool":"blast_radius","args":{"symbol":"{{audit.dead_code[0].name}}","depth":2}},{"id":"remove","tool":"graph_delete","args":{"name":"{{audit.dead_code[0].name}}"},"if":"{{check.callers | length == 0}}"}]"# },
+            ],
+        },
+        Workflow {
+            name: "Pipeline: find by intent, read source, check blast radius",
+            description: "Locate a function by natural-language description, read its full source, and measure its blast radius — before touching anything. All three steps in one call.",
+            steps: vec![
+                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"find","tool":"semantic_search","args":{"query":"<describe what the function does>"}},{"id":"read","tool":"symbol","args":{"name":"{{find.results[0].name}}","include_source":true}},{"id":"scope","tool":"blast_radius","args":{"symbol":"{{find.results[0].name}}"}}]"# },
+            ],
+        },
+        Workflow {
+            name: "Pipeline: trace endpoint, check blast radius only if handler found",
+            description: "Trace an HTTP endpoint to its handler, then measure the handler's blast radius — but only if the endpoint matched. The if guard prevents a spurious blast_radius call when the endpoint is not found.",
+            steps: vec![
+                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"trace","tool":"flow","args":{"endpoint":"/api/your-route"}},{"id":"scope","tool":"blast_radius","args":{"symbol":"{{trace.handler.name}}"},"if":"{{trace.handler.name}}"}]"# },
+            ],
+        },
     ]
 }
 
