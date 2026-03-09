@@ -571,6 +571,44 @@ pub fn fetch_user(id: u32) -> String {
         assert!(after.contains("saturating_add"), "file should contain the new content");
     }
 
+    // ── bake skips .git/ ──────────────────────────────────────────────────────
+
+    #[test]
+    fn e2e_bake_does_not_index_git_directory() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+
+        fs::write(root_path.join("main.rs"), "fn hello() {}\n").unwrap();
+
+        // Simulate a .git directory with object blobs (like a real repo has thousands of)
+        let git_dir = root_path.join(".git");
+        fs::create_dir_all(git_dir.join("objects/ab")).unwrap();
+        fs::write(git_dir.join("objects/ab/cdef1234"), b"blob content").unwrap();
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "hello".to_string(), false, None, None,
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        // .git/ blobs must not appear in the file list
+        let bake_json = std::fs::read_to_string(
+            root_path.join("bakes/latest/bake.json")
+        ).unwrap();
+        assert!(
+            !bake_json.contains(".git/objects"),
+            ".git/objects must not be indexed"
+        );
+        // main.rs must still be found
+        assert!(
+            v["matches"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
+            "main.rs should still be indexed"
+        );
+    }
+
     // ── bake .gitignore ───────────────────────────────────────────────────────
 
     #[test]
