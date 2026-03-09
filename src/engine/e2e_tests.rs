@@ -655,4 +655,81 @@ pub fn fetch_user(id: u32) -> String {
             "dist/bundle.rs should be excluded via .gitignore"
         );
     }
+
+    // ── compiler guard (write_with_compiler_guard) ────────────────────────────
+
+    #[test]
+    fn e2e_compiler_guard_rejects_zig_type_error() {
+        // zig ast-check catches undefined identifiers without needing a full build.
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+
+        fs::write(
+            root_path.join("main.zig"),
+            "const std = @import(\"std\");\npub fn main() void {\n    const x: u32 = 1;\n    _ = x;\n}\n",
+        ).unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        // Inject a type error: reference an undefined variable.
+        let result = crate::engine::patch_string(
+            Some(root_path.to_string_lossy().into_owned()),
+            "main.zig".into(),
+            "const x: u32 = 1;".into(),
+            "const x: u32 = undefined_symbol;".into(),
+        );
+
+        assert!(result.is_err(), "patch_string should reject Zig type errors");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("compiler") || msg.contains("zig") || msg.contains("error"),
+            "error should mention compiler rejection: {}", msg
+        );
+
+        // File must be restored to original.
+        let after = fs::read_to_string(root_path.join("main.zig")).unwrap();
+        assert!(
+            after.contains("const x: u32 = 1;"),
+            "file must be restored after compiler rejection"
+        );
+    }
+
+    #[test]
+    fn e2e_compiler_guard_rejects_rust_type_error() {
+        // A minimal Rust crate — cargo check can run against it.
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+
+        fs::write(root_path.join("Cargo.toml"),
+            "[package]\nname = \"guard_test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        ).unwrap();
+        fs::create_dir_all(root_path.join("src")).unwrap();
+        fs::write(
+            root_path.join("src/main.rs"),
+            "fn add(a: i32, b: i32) -> i32 { a + b }\nfn main() {}\n",
+        ).unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let original = fs::read_to_string(root_path.join("src/main.rs")).unwrap();
+
+        // Inject a type error: call undefined function (syntactically valid, semantically wrong).
+        let result = crate::engine::patch_string(
+            Some(root_path.to_string_lossy().into_owned()),
+            "src/main.rs".into(),
+            "a + b".into(),
+            "totally_undefined_fn_xyz(a, b)".into(),
+        );
+
+        assert!(result.is_err(), "patch_string should reject Rust type errors via cargo check");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("compiler") || msg.contains("cargo") || msg.contains("error"),
+            "error should mention compiler rejection: {}", msg
+        );
+
+        // File must be restored.
+        let after = fs::read_to_string(root_path.join("src/main.rs")).unwrap();
+        assert_eq!(original, after, "file must be restored after cargo check rejection");
+    }
 }

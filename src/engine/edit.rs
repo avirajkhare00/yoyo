@@ -140,6 +140,68 @@ fn go_build_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     errors
 }
 
+// zig ast-check performs full semantic analysis (type checking, undefined symbols)
+// on a single file without requiring a complete build system setup.
+fn zig_check_errors(file: &std::path::Path) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("zig")
+        .args(["ast-check", file.to_str().unwrap_or("")])
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() { return vec![]; }
+
+    // zig ast-check writes to stderr: path:line:col: error: message
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut errors = vec![];
+    for line in stderr.lines() {
+        if !line.contains("error:") { continue; }
+        let parts: Vec<&str> = line.splitn(5, ':').collect();
+        if parts.len() < 5 { continue; }
+        let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
+        let text: String = parts[4].trim().chars().take(120).collect();
+        errors.push(SyntaxError { line: line_num, kind: "zig".to_string(), text });
+    }
+    errors
+}
+
+// Write new_text to full_path, run the compiler, restore original if errors.
+// Guarantees: if this returns Ok, the file on disk compiles cleanly.
+fn write_with_compiler_guard(
+    root: &PathBuf,
+    full_path: &std::path::Path,
+    file: &str,
+    new_text: &str,
+    ext: &str,
+) -> Result<()> {
+    let original = fs::read_to_string(full_path).unwrap_or_default();
+
+    fs::write(full_path, new_text)
+        .with_context(|| format!("Failed to write {}", file))?;
+
+    let errors: Vec<SyntaxError> = match ext {
+        "rs"  => cargo_check_errors(root, file),
+        "go"  => go_build_errors(root, file),
+        "zig" => zig_check_errors(full_path),
+        _     => vec![],
+    };
+
+    if !errors.is_empty() {
+        // Restore the original — file must not be left corrupted.
+        let _ = fs::write(full_path, original);
+        let summary: Vec<String> = errors.iter()
+            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+            .collect();
+        return Err(anyhow!(
+            "patch rejected: compiler errors (file restored to original):\n{}",
+            summary.join("\n")
+        ));
+    }
+
+    Ok(())
+}
+
 /// Run `python -m py_compile <file>` and return syntax errors. Best-effort.
 fn python_compile_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     use std::process::Command;
@@ -358,8 +420,7 @@ pub fn patch_string(
         ));
     }
 
-    fs::write(&full_path, &new_content)
-        .with_context(|| format!("Failed to write {}", file))?;
+    write_with_compiler_guard(&root, &full_path, &file, &new_content, ext)?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
@@ -657,13 +718,7 @@ fn apply_patch_to_range(
         ));
     }
 
-    fs::write(&full_path, new_text).with_context(|| {
-        format!(
-            "Failed to write patched file {} (resolved to {})",
-            file,
-            full_path.display()
-        )
-    })?;
+    write_with_compiler_guard(&root, &full_path, file, &new_text, ext)?;
 
     Ok((file.to_string(), start, end, total_lines))
 }
