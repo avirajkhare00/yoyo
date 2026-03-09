@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0] - 2026-03-09
+
+### Added
+
+- **`pipeline` tool** — execute a sequential multi-tool workflow from a single JSON spec. Each step has `id`, `tool`, `args`, and an optional `if` condition. Steps can reference previous step output via `{{step_id.field[N].subfield}}` template refs. False conditions skip the step without stopping the pipeline. Errors stop the pipeline and report which step failed.
+  - Template resolver: whole-string refs preserve type (number stays number, array stays array); embedded refs do string interpolation
+  - Condition evaluator: `{{expr | length == N}}`, `!= N`, `> N`, `>= N`, `< N`, `<= N`; bare `{{expr}}` is a truthy check
+  - Full dispatcher: all 28 existing tools callable by name from a pipeline step
+  - CLI: `yoyo pipeline --spec '[...]'` or `--spec-file pipeline.json`
+  - 51 new tests (31 unit, 13 e2e) — 85 total passing
+- **`pipeline` in `llm_instructions`** — added to tool catalog (category: `orchestration`) and workflow catalog ("Run a multi-tool workflow")
+
 ## [1.1.2] - 2026-03-09
 
 ### Fixed

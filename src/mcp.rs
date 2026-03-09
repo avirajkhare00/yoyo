@@ -147,7 +147,7 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server — 28 tools to read and edit any codebase from the AST, not model memory. \
+                "instructions": "You have access to yoyo, a code intelligence MCP server — 29 tools to read and edit any codebase from the AST, not model memory. \
                     ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
                     `llm_instructions` returns the full tool catalog, 21 combination workflows, prime directives, and antipatterns. Read it before doing anything else. \
                     `bake` builds the index all read-indexed tools depend on. \
@@ -586,6 +586,30 @@ fn build_registry() -> Vec<ToolEntry> {
                 a.str_opt("file"),
                 a.bool_opt("force").unwrap_or(false),
             )),
+        },
+        ToolEntry {
+            schema: schema_req("pipeline", d("pipeline"), &["spec"], json!({
+                "path": p(),
+                "spec": json!({
+                    "type": "array",
+                    "description": "Ordered list of pipeline steps. Each step: {id, tool, args?, if?}. Args values may use {{step_id.field[N].subfield}} refs. if accepts {{expr | predicate}} e.g. {{s1.results | length > 0}}.",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "tool"],
+                        "properties": {
+                            "id":   {"type": "string", "description": "Step identifier — used for output refs in subsequent steps"},
+                            "tool": {"type": "string", "description": "Tool name (any tool in the catalog)"},
+                            "args": {"type": "object", "description": "Tool arguments; string values may embed {{step_id.path}} refs"},
+                            "if":   {"type": "string", "description": "Skip this step when false. E.g. {{s1.results | length == 0}}"}
+                        }
+                    }
+                })
+            })),
+            handler: Box::new(|a, path| {
+                let spec = a.0.get("spec").cloned()
+                    .ok_or_else(|| anyhow::anyhow!("Missing required 'spec' argument for pipeline"))?;
+                crate::engine::pipeline(path, spec)
+            }),
         },
     ]
 }
