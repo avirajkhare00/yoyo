@@ -4,12 +4,12 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 ---
 
-## Current (v1.2.1 — 2026-03-09)
+## Current (v1.3.0 — 2026-03-09)
 
 | Metric | Value |
 |---|---|
-| Version | v1.2.1 |
-| MCP tools | 29 |
+| Version | v1.3.0 |
+| MCP tools | 30 |
 | Languages supported | 15 |
 | Unit tests | 85 passing / 0 failing |
 | Binary size (macOS arm64, release) | 58 MB |
@@ -48,6 +48,7 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 | Version | Date | Languages | Tools | Tests | Binary | Eval |
 |---|---|---|---|---|---|---|
+| v1.3.0 | 2026-03-09 | 15 | 30 | 85 | 58 MB | 100% |
 | v1.2.1 | 2026-03-09 | 15 | 29 | 85 | 58 MB | 100% |
 | v1.2.0 | 2026-03-09 | 15 | 29 | 85 | 58 MB | 100% |
 | v1.1.1 | 2026-03-09 | 15 | 28 | 34 | 58 MB | 100% |

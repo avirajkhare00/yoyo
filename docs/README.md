@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 28 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 30 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
 
@@ -158,7 +158,8 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 | Tool | requires bake | What it does |
 |---|---|---|
-| `llm_instructions` | No | Prime directive: tool list, workflows, prime directives. Claude calls this first. |
+| `llm_instructions` | No | Lean bootstrap: tool catalog, prime directives, concurrency rules. Claude calls this first. |
+| `llm_workflows` | No | On-demand reference: 21 workflows, decision map, antipatterns, metapatterns. |
 | `bake` | No | Parse the project, write the index. Run before any indexed tool. |
 | `shake` | No | Language breakdown, file count, top-complexity functions. |
 
@@ -222,6 +223,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | Ruby | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Swift | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Zig | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 
 **Endpoints** — route detection via `all_endpoints`, `api_trace`, `crud_operations`, `flow`.
 **Import graph** — `blast_radius` uses imports to expand affected files.
