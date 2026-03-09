@@ -1,0 +1,462 @@
+{
+  "run_id": "2026-03-07-190017",
+  "codebase": "flask",
+  "yoyo_version": "0.20.5",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 10,
+  "totals": {
+    "cc": {
+      "correct": 0,
+      "total": 14
+    },
+    "yoyo": {
+      "correct": 13,
+      "total": 13
+    }
+  },
+  "tasks": [
+    {
+      "id": "fl-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn register' returned no results, which means either:\n\n1. The `register` function is not defined in `src/flask/sansio/blueprints.py`\n2. The grep pattern 'fn register' didn't match the actual function definition syntax in that file\n\nTo find the `register` definition, I would need search results that actually show the file contents or a grep search with a different pattern that matches the function definition in that file.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer despite ground truth existing at line 273"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified the file as src/flask/sansio/blueprints.py"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to provide the specific line number (273) despite it being determinable, though correctly acknowledged the file."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "The `register` function is defined in `src/flask/sansio/blueprints.py` at **line 273** (spanning to line 377).",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified line 273 as definition location"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path provided matches ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified the line number (273) and file path for the register function definition."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn register' returned no results, which means either:\n\n1. There is no `register` function in the file, or\n2. The search pattern didn't match the function definition syntax\n\nTo answer whether `register` is public or private, I would need to see the actual function definition in `src/flask/sansio/blueprints.py`, as Python conventionally marks private functions with a leading underscore (e.g., `_register` for private, `register` for public).",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to determine visibility despite ground truth being available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent failed to provide the answer, claiming inability to determine visibility when ground truth shows register is public."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `register` function in `src/flask/sansio/blueprints.py` is **public**. \n\nThis is indicated by the `\"visibility\": \"public\"` field in the match result.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies register as public, citing visibility field"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly determined that `register` is public based on ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn register' returned no results, which means the search tool didn't find a function named `register` in the codebase. To answer your question about what module the `register` function in `src/flask/sansio/blueprints.py` belongs to, I would need search results that specifically show that function definition.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth being available and the question being directly answerable."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer despite the ground truth being straightforward: the register function in src/flask/sansio/blueprints.py belongs to the src.flask.sansio module."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `register` function in `src/flask/sansio/blueprints.py` belongs to the module **`src.flask.sansio`**.\n\nThis is indicated by the `module_path` field in the match result, which shows `\"module_path\": \"src.flask.sansio\"`.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer explicitly states correct module path matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as src.flask.sansio with clear evidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-004",
+      "type": "caller_count",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search returned 0 total hits for 'register', which means either:\n\n1. There are no calls to a function named `register` in the Flask codebase being searched, or\n2. The search didn't find any matches for some other reason\n\nTo answer your question about how many distinct functions call `register` (excluding self-recursion), I would need search results that actually show functions calling `register`. The current output doesn't provide any information about function calls to analyze.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent claims inability to determine; ground truth shows 69 distinct callers exist"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer despite ground truth showing 69 distinct functions call register in Flask."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius tool output provided, there are **69 distinct callers** of the `register` function in flask (excluding self-recursion).",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies 69 distinct callers, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent provided the correct count of 69 distinct callers with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-005",
+      "type": "definition_location",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn run' returned no results, which means either:\n\n1. The `run` function is not defined in `src/flask/app.py`, or\n2. The search pattern 'fn run' didn't match the actual definition (the pattern might need adjustment for Python syntax)\n\nTo find the `run` function definition in `src/flask/app.py`, you would need to search with a pattern appropriate for Python syntax, such as 'def run' rather than 'fn run'.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide the answer, claiming inability to determine it"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified the file as src/flask/app.py"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to provide the required line number despite ground truth showing line 632 exists."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `run` is defined in `src/flask/app.py` starting at **line 632** and ending at line 753.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies line 632 as the definition start"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the line number where `run` is defined in src/flask/app.py."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-006",
+      "type": "visibility",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn run' returned no results, which means either:\n\n1. There is no `run` function in `src/flask/app.py`, or\n2. The search didn't capture the function definition\n\nTo answer whether `run` is public or private, I would need search results that show the actual function definition in `src/flask/app.py`, including whether it starts with an underscore (which would indicate it's private in Python convention).",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth being determinable"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to determine visibility when ground truth shows `run` is public."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `run` in `src/flask/app.py` is **public**. \n\nThe symbol information shows that the `run` function has `\"visibility\": \"public\"`.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified run as public, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly determined that `run` in `src/flask/app.py` is public."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-007",
+      "type": "module_path",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn run' returned no results, so there is no information about a `run` function in `src/flask/app.py` or what module it belongs to. To answer this question, I would need search results that show the `run` function definition and its module context.",
+        "score": {
+          "scores": {
+            "module_identification": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming grep found no results, but ground truth exists"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer despite verifiable ground truth showing the module is src.flask."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `run` function in `src/flask/app.py` belongs to the **`src.flask`** module, as indicated by its `module_path` field.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies module as src.flask matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately answered that the run function belongs to src.flask module."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-008",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. \n\nThe tool output indicates that no native code analysis tool is available, and manual analysis of all files would be required to calculate complexity scores for functions in Flask. To answer your question about which function has the highest complexity score, I would need either:\n\n1. A code complexity analysis tool output (such as from tools like radon, pylint, or similar)\n2. Pre-computed complexity metrics for Flask functions\n3. The ability to run complexity analysis on the Flask codebase\n\nWithout access to actual complexity measurements, I cannot provide the specific function name and file location you're asking for.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer; correct answer is 'register'"
+            },
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer; correct answer is 'src/flask/sansio/blueprints.py'"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer both dimensions despite ground truth being available; both function name and file location are incorrect."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score in flask is:\n\n**Function name:** `register`\n**File:** `src/flask/sansio/blueprints.py`\n**Complexity score:** 266",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'register' as the function"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'src/flask/sansio/blueprints.py'"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent accurately identified both the function name and file path matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-009",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require manual analysis of all files. Without access to the actual output from the health tool run on the Flask codebase, I cannot provide the specific number of items in the `dead_code` array.\n\nTo answer this question, I would need to see the actual results from running the health tool on the Flask codebase.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth being available (28 items)"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer when ground truth value of 28 was available."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array contains **28 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies 28 items in dead_code array"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately stated the dead_code array contains 28 items, matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "fl-010",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native search tool is available, and would require manual analysis of all files in the Flask codebase.\n\nTo answer this question accurately, I would need:\n1. Access to all Flask source files\n2. Complexity metrics for each function (such as cyclomatic complexity)\n3. A way to compare complexity across functions\n\nWithout the actual code search results or analysis, I cannot identify which function is the \"most complex\" in Flask.",
+        "score": {
+          "scores": {
+            "god_function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming insufficient tools/access"
+            },
+            "god_function_file": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide file location"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer the question despite having necessary information available, incorrectly claiming lack of tools or access."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top god function in flask is:\n\n**Name:** `register`\n**File:** `src/flask/sansio/blueprints.py`\n\n(with a complexity score of 266)",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'register' as the function"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'src/flask/sansio/blueprints.py' as the file"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the god function name and its file location."
+          }
+        }
+      }
+    }
+  ]
+}

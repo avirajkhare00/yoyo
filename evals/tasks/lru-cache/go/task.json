@@ -1,0 +1,26 @@
+{
+  "id": "lru-go-001",
+  "name": "lru-cache",
+  "language": "go",
+  "description": "Implement an LRU Cache with Get and Put. Capacity=2. Use a doubly linked list + hash map. Fill in NewLRUCache, Get, and Put.",
+  "source_file": "main.go",
+  "build": ["go", "build", "-o", "lru", "."],
+  "run": ["./lru"],
+  "functions": [
+    {
+      "name": "NewLRUCache",
+      "params": [{"name": "capacity", "type": "int"}],
+      "returns": "*LRUCache"
+    },
+    {
+      "name": "Get",
+      "params": [{"name": "key", "type": "int"}],
+      "returns": "int"
+    },
+    {
+      "name": "Put",
+      "params": [{"name": "key", "type": "int"}, {"name": "value", "type": "int"}],
+      "returns": ""
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "httprouter-go-001",
+  "name": "httprouter",
+  "language": "go",
+  "repo": "https://github.com/julienschmidt/httprouter",
+  "commit": "v1.3.0",
+  "test_cmd": ["go", "test", "./..."],
+  "punctures": 3,
+  "patch": "puncture.patch",
+  "hints": [
+    "3 functions broken across router.go, tree.go, and path.go",
+    "One breaks named URL parameter lookup",
+    "One breaks wildcard/catchAll route parameter counting",
+    "One breaks trailing slash detection in path cleaning"
+  ]
+}

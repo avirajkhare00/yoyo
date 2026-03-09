@@ -1,0 +1,19 @@
+{
+  "id": "dijkstra-go-001",
+  "name": "dijkstra",
+  "language": "go",
+  "description": "Implement Dijkstra's shortest path. Adjacency list graph ([][]Edge). Fill in dijkstra only.",
+  "source_file": "main.go",
+  "build": ["go", "build", "-o", "dijkstra", "."],
+  "run": ["./dijkstra"],
+  "functions": [
+    {
+      "name": "dijkstra",
+      "params": [
+        {"name": "graph", "type": "[][]Edge"},
+        {"name": "start", "type": "int"}
+      ],
+      "returns": "[]int"
+    }
+  ]
+}

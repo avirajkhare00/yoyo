@@ -1,0 +1,446 @@
+{
+  "run_id": "2026-03-07-181558",
+  "codebase": "gin",
+  "yoyo_version": "0.20.4",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 9,
+  "totals": {
+    "cc": {
+      "correct": 0,
+      "total": 13
+    },
+    "yoyo": {
+      "correct": 15,
+      "total": 16
+    }
+  },
+  "tasks": [
+    {
+      "id": "gn-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for `findCaseInsensitivePathRec` returned no results, which means either:\n\n1. This function does not exist in the codebase being searched\n2. The function name might be spelled differently\n3. The search tool may not have found it due to how it was invoked\n\nTo locate this function, you could try:\n- Searching with a broader pattern (e.g., without the \"Rec\" suffix)\n- Checking if it might be named differently in the gin codebase\n- Verifying the exact function name",
+        "score": {
+          "scores": {
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, claims function not found. Ground truth shows it exists in tree.go"
+            },
+            "line_number": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide line number. Ground truth specifies line 703"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent incorrectly refused to answer, claiming the function doesn't exist when it is actually defined at tree.go:703."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `findCaseInsensitivePathRec` is defined in **tree.go** at **line 703** (specifically spanning from line 703 to line 950).",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified tree.go as the file"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified line 703 as the starting line"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent provided accurate file and line number matching ground truth exactly."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search returned no results for `findCaseInsensitivePathRec`, so I cannot examine the function definition to determine whether it is public (capitalized first letter) or private (lowercase first letter).",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing function is private"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to determine visibility when ground truth clearly indicates private function."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `findCaseInsensitivePathRec` in `tree.go` is **private**. This is indicated by the `\"visibility\": \"private\"` field in the symbol information.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified function as private, matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified findCaseInsensitivePathRec as private."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for `findCaseInsensitivePathRec` returned no results, so I cannot verify that this function exists in `tree.go` or identify what module it belongs to.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing function exists in gin module"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the correct answer (gin module) based on grep limitations rather than providing known ground truth."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `findCaseInsensitivePathRec` in `tree.go` belongs to the **gin** module.",
+        "score": {
+          "scores": {
+            "module_identification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies the module as 'gin' matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified that findCaseInsensitivePathRec belongs to the gin module."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-004",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for `findCaseInsensitivePathRec` returned no results, so I cannot access the function definition or its `calls` array to count the entries.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing answer exists (2)"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer when ground truth indicates the correct value is 2 entries."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the symbol tool output, the `calls` array for `findCaseInsensitivePathRec` in `tree.go` has **2 entries**.\n\nThe two functions it calls are:\n1. `findCaseInsensitivePathRec`\n2. `shiftNRuneBytes`",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly states 2 entries in calls array with accurate function names"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified that findCaseInsensitivePathRec has 2 calls with accurate details."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-005",
+      "type": "definition_location",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search for 'fn getValue' returned no results, which means either:\n\n1. The function `getValue` is not defined in the codebase being searched\n2. The search pattern 'fn getValue' didn't match the actual definition syntax\n3. The function may be defined with a different naming convention or in a way that doesn't match the search pattern\n\nTo find this function, you would need to try alternative search patterns or search terms.",
+        "score": {
+          "scores": {
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, claimed function not found"
+            },
+            "line_number": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, claimed function not found"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer, claiming the function doesn't exist, despite ground truth showing it's at tree.go:418."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `getValue` is defined in the gin project at:\n\n- **File**: `tree.go`\n- **Line number**: 418-665 (the function spans from line 418 to line 665)",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified tree.go as the file"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line 418 is correct; span information adds context without contradicting"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Answer correctly identifies both file and line number, with additional helpful context about function span."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-006",
+      "type": "caller_count",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search returned 0 total hits for `getValue`, which means either:\n\n1. The function `getValue` does not exist in the gin codebase\n2. The search did not find any calls to `getValue`\n3. The function exists but is named differently or uses a different naming convention\n\nTo answer your question about how many distinct functions call `getValue`, I would need search results that actually show where `getValue` is being called in the code.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming no search results found getValue"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide an answer, incorrectly claiming getValue does not exist or cannot be found, when ground truth shows 14 distinct callers."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "I cannot determine this from the available output. The tool output only shows that there are 14 distinct callers of `getValue`, but it doesn't specify whether this is specific to the \"gin\" codebase or repository, nor does it clarify if self-recursion has already been excluded from this count. To answer your question accurately, I would need more detailed information about:\n\n1. Whether this result is filtered to only the \"gin\" codebase\n2. Whether the count of 14 already excludes self-recursive calls or not",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "low",
+              "failure_mode": "correct",
+              "note": "Agent identifies 14 callers but hedges on whether requirements met"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent states correct number (14) but expresses uncertainty about whether it satisfies the specific constraints."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-007",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. \n\nThe tool output indicates that no native tool is available to analyze code complexity, and would require manual analysis of all files. Without access to a code complexity analysis tool (such as a linter, static analyzer, or complexity measurement tool) or the actual source code files to analyze, I cannot identify which function in gin has the highest complexity score.\n\nTo answer this question, you would need to:\n1. Use a complexity analysis tool like `gocyclo` or `gocritic` on the gin codebase\n2. Manually review the code and calculate cyclomatic complexity\n3. Check if gin's repository documentation includes complexity metrics",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer instead of providing the correct function name"
+            },
+            "file_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer instead of providing the correct file name"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent declined to answer with specific function and file names despite ground truth being available."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score is:\n\n**Function name:** `findCaseInsensitivePathRec`\n**File:** `tree.go`\n**Complexity score:** 552\n\nHowever, I should note that this answer is based only on the single function shown in the tool output. To definitively answer which function has the highest complexity score across the entire gin codebase, I would need the tool output to show comparisons with all other functions in the project.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified findCaseInsensitivePathRec"
+            },
+            "file_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified tree.go"
+            },
+            "completeness": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "hallucinated",
+              "note": "Agent hedged answer despite having definitive ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 3,
+            "summary": "Agent provided correct function name and file but unnecessarily hedged with caveats about incomplete analysis."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-008",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require manual analysis of all files in the gin codebase. Without actual execution of a health tool or access to the specific results it generates, I cannot provide the count of items in the `dead_code` array.\n\nTo answer this question, you would need to:\n1. Run the health tool on the gin codebase\n2. Capture its output showing the `dead_code` array\n3. Count the items in that array",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth value being 7"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent declined to provide the answer rather than stating the correct count of 7 items."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array contains **7 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 7 items in dead_code array, matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly stated there are 7 items in the dead_code array."
+          }
+        }
+      }
+    },
+    {
+      "id": "gn-009",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native code analysis tool is available and would require manual analysis of all files in the gin codebase. Without actual code complexity metrics or analysis results, I cannot identify which functions are the most complex.\n\nTo answer this question accurately, you would need to:\n1. Run a code complexity analysis tool (such as a Go cyclomatic complexity analyzer)\n2. Manually review the gin codebase and analyze function complexity\n3. Use a code intelligence tool with complexity metrics enabled",
+        "score": {
+          "scores": {
+            "god_functions_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer despite clear ground truth available"
+            },
+            "files_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide file locations despite ground truth available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer when definitive ground truth was available, indicating failure to retrieve or apply known information."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top 2 god functions (most complex) in gin are:\n\n1. **findCaseInsensitivePathRec** in **tree.go** (score: 552)\n2. **getValue** in **tree.go** (score: 336)",
+        "score": {
+          "scores": {
+            "top_god_function_1_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "findCaseInsensitivePathRec matches ground truth exactly"
+            },
+            "top_god_function_1_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "tree.go matches ground truth exactly"
+            },
+            "top_god_function_2_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "getValue matches ground truth exactly"
+            },
+            "top_god_function_2_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "tree.go matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 4,
+            "total": 4,
+            "summary": "Agent correctly identified both top god functions and their files with supporting complexity scores."
+          }
+        }
+      }
+    }
+  ]
+}

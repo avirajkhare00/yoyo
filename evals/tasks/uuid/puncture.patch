@@ -1,0 +1,31 @@
+diff --git a/uuid.go b/uuid.go
+index dc75cee..d68077e 100644
+--- a/uuid.go
++++ b/uuid.go
+@@ -286,7 +286,7 @@ func (uuid UUID) URN() string {
+ 
+ func encodeHex(dst []byte, uuid UUID) {
+ 	hex.Encode(dst, uuid[:4])
+-	dst[8] = '-'
++	dst[8] = '_'
+ 	hex.Encode(dst[9:13], uuid[4:6])
+ 	dst[13] = '-'
+ 	hex.Encode(dst[14:18], uuid[6:8])
+@@ -299,7 +299,7 @@ func encodeHex(dst []byte, uuid UUID) {
+ // Variant returns the variant encoded in uuid.
+ func (uuid UUID) Variant() Variant {
+ 	switch {
+-	case (uuid[8] & 0xc0) == 0x80:
++	case (uuid[8] & 0xff) == 0x80:
+ 		return RFC4122
+ 	case (uuid[8] & 0xe0) == 0xc0:
+ 		return Microsoft
+@@ -312,7 +312,7 @@ func (uuid UUID) Variant() Variant {
+ 
+ // Version returns the version of uuid.
+ func (uuid UUID) Version() Version {
+-	return Version(uuid[6] >> 4)
++	return Version(uuid[6] >> 3)
+ }
+ 
+ func (v Version) String() string {

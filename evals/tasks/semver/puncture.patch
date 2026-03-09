@@ -1,0 +1,31 @@
+diff --git a/src/eval.rs b/src/eval.rs
+index a3cedd8..5ded769 100644
+--- a/src/eval.rs
++++ b/src/eval.rs
+@@ -87,7 +87,7 @@ fn matches_greater(cmp: &Comparator, ver: &Version) -> bool {
+ 
+ fn matches_less(cmp: &Comparator, ver: &Version) -> bool {
+     if ver.major != cmp.major {
+-        return ver.major < cmp.major;
++        return ver.major > cmp.major;
+     }
+ 
+     match cmp.minor {
+@@ -128,7 +128,7 @@ fn matches_tilde(cmp: &Comparator, ver: &Version) -> bool {
+         }
+     }
+ 
+-    ver.pre >= cmp.pre
++    ver.pre > cmp.pre
+ }
+ 
+ fn matches_caret(cmp: &Comparator, ver: &Version) -> bool {
+@@ -164,7 +164,7 @@ fn matches_caret(cmp: &Comparator, ver: &Version) -> bool {
+         return false;
+     }
+ 
+-    ver.pre >= cmp.pre
++    ver.pre > cmp.pre
+ }
+ 
+ fn pre_is_compatible(cmp: &Comparator, ver: &Version) -> bool {

@@ -1,0 +1,40 @@
+{
+  "id": "gol-rust-001",
+  "name": "game-of-life",
+  "language": "rust",
+  "description": "Implement Conway's Game of Life. Flat row-major grid (Vec<u8>). Fill in the three function bodies only.",
+  "source_file": "src/main.rs",
+  "build": ["cargo", "build", "--release"],
+  "run": ["./target/release/gol"],
+  "functions": [
+    {
+      "name": "count_neighbors",
+      "params": [
+        {"name": "grid", "type": "&[u8]"},
+        {"name": "row",  "type": "usize"},
+        {"name": "col",  "type": "usize"},
+        {"name": "rows", "type": "usize"},
+        {"name": "cols", "type": "usize"}
+      ],
+      "returns": "u8"
+    },
+    {
+      "name": "next_generation",
+      "params": [
+        {"name": "grid", "type": "&[u8]"},
+        {"name": "rows", "type": "usize"},
+        {"name": "cols", "type": "usize"}
+      ],
+      "returns": "Vec<u8>"
+    },
+    {
+      "name": "print_grid",
+      "params": [
+        {"name": "grid", "type": "&[u8]"},
+        {"name": "rows", "type": "usize"},
+        {"name": "cols", "type": "usize"}
+      ],
+      "returns": ""
+    }
+  ]
+}

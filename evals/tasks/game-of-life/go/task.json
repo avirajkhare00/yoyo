@@ -1,0 +1,40 @@
+{
+  "id": "gol-go-001",
+  "name": "game-of-life",
+  "language": "go",
+  "description": "Implement Conway's Game of Life. 2D slice grid ([][]byte). Fill in the three function bodies only.",
+  "source_file": "main.go",
+  "build": ["go", "build", "-o", "gol", "."],
+  "run": ["./gol"],
+  "functions": [
+    {
+      "name": "countNeighbors",
+      "params": [
+        {"name": "grid", "type": "[][]byte"},
+        {"name": "row",  "type": "int"},
+        {"name": "col",  "type": "int"},
+        {"name": "rows", "type": "int"},
+        {"name": "cols", "type": "int"}
+      ],
+      "returns": "int"
+    },
+    {
+      "name": "nextGeneration",
+      "params": [
+        {"name": "grid", "type": "[][]byte"},
+        {"name": "rows", "type": "int"},
+        {"name": "cols", "type": "int"}
+      ],
+      "returns": "[][]byte"
+    },
+    {
+      "name": "printGrid",
+      "params": [
+        {"name": "grid", "type": "[][]byte"},
+        {"name": "rows", "type": "int"},
+        {"name": "cols", "type": "int"}
+      ],
+      "returns": ""
+    }
+  ]
+}

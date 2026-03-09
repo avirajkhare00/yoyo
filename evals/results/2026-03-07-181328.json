@@ -1,0 +1,646 @@
+{
+  "run_id": "2026-03-07-181328",
+  "codebase": "axum",
+  "yoyo_version": "0.20.4",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 14,
+  "totals": {
+    "cc": {
+      "correct": 9,
+      "total": 18
+    },
+    "yoyo": {
+      "correct": 20,
+      "total": 21
+    }
+  },
+  "tasks": [
+    {
+      "id": "ax-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "According to the grep output, `expand` is defined at **line 93** in `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs`.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer states line 93, matches ground truth exactly"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path to axum-macros/src/from_request/mod.rs"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified that expand is defined at line 93 in the specified file."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `expand` is defined in `axum-macros/src/from_request/mod.rs` at **line 93** (start line).",
+        "score": {
+          "scores": {
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified file as axum-macros/src/from_request/mod.rs"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly stated line 93 matches ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number (93) where expand is defined."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, `expand` in `axum-macros/src/from_request/mod.rs` is **module-level (crate-private)**.\n\nThe function signature shows `pub(crate) fn expand(...)`, which means:\n- `pub(crate)` makes it publicly accessible within the crate, but not outside the crate\n- It's defined at the module level (not nested within another item)\n- It is not private to just the module, but not fully public either\n\nSo it's crate-public but module-level scoped.",
+        "score": {
+          "scores": {
+            "visibility_classification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identifies expand as module-level with pub(crate) visibility"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified expand as module-level, matching ground truth answer."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `expand` function in `axum-macros/src/from_request/mod.rs` is **module-level** (private).\n\nThis is indicated by the `\"visibility\": \"module\"` field in the match result, which means the function has module visibility and is not publicly exported.",
+        "score": {
+          "scores": {
+            "visibility_classification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Accurately identified as module-level visibility matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the expand function as module-level visibility."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "Based on the tool output, the `expand` function in `axum-macros/src/from_request/mod.rs` belongs to the **`from_request`** module.\n\nThis is evident from the file path itself: `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs` \u2014 the `mod.rs` file indicates this is the module definition file for the `from_request` module.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified the module as 'from_request' with proper reasoning from file path structure."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as 'from_request' with clear reasoning."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `expand` function in `axum-macros/src/from_request/mod.rs` belongs to the module **`axum-macros::from_request`**.\n\nThis is indicated by the `module_path` field in the match result, which shows `\"module_path\": \"axum-macros::from_request\"`.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies module as axum-macros::from_request"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-004",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep search only shows the function signature of `expand` at line 93, but does not display the function body or any `calls` array that might be defined within it. To answer your question, I would need to see the actual implementation of the `expand` function.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing definitive answer of 11"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer when ground truth establishes the calls array has 11 entries."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `calls` array for the `expand` function in `axum-macros/src/from_request/mod.rs` has **11 entries**.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies 11 entries in calls array"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately stated the calls array contains 11 entries, matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-005",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the grep output provided, I can count the distinct functions that call `expand` at depth=2 (functions that directly call an `expand` function):\n\n1. `expand_with` (line 724) - calls `expand`\n2. `expand_attr_with` (line 739) - calls `expand`\n3. Line 377 - calls `from_request::expand`\n4. Line 426 - calls `from_request::expand`\n5. Line 582 - calls `debug_handler::expand`\n6. Line 638 - calls `debug_handler::expand`\n7. Line 655 - calls `axum_test::expand`\n8. Line 665 - calls `typed_path::expand`\n9. Line 715 - calls `from_ref::expand`\n\nThe answer is **9 distinct functions** that call `expand` functions at depth=2.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent identified 9 distinct functions calling expand, matching ground truth exactly."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 9 distinct functions that call expand at depth=2."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "I cannot determine this from the available output.\n\nThe tool output shows \"distinct callers: 9\" for the `expand` function, but this appears to be from a general codebase analysis, not specifically for the axum project. Without confirmation that this output is specifically for the axum codebase, I cannot definitively state that 9 is the count of distinct functions calling `expand` in axum.",
+        "score": {
+          "scores": {
+            "distinct_functions_calling_expand_in_axum": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite tool output showing 'distinct callers: 9'"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to commit to the correct answer of 9 despite tool output explicitly stating it."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-006",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. To answer this question, I would need:\n\n1. Access to a code complexity analysis tool (such as a tool that measures cyclomatic complexity, cognitive complexity, or similar metrics)\n2. Results from running that tool against the axum codebase\n3. A ranking of functions by their complexity scores\n\nSince no tool output was provided and the note indicates \"no native tool available,\" I cannot identify which function has the highest complexity score in axum or specify its file location.\n\nTo get this information, you would need to:\n- Use a complexity analysis tool like `cargo-metrics`, `rust-analyzer` with complexity plugins, or similar tools\n- Run it against the axum repository\n- Review the generated report to find the highest-complexity function",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide function name, citing lack of tool access"
+            },
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide file location, citing lack of tool access"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer by claiming unavailable tools, when ground truth answer exists and is known."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score is:\n\n**Function name:** `expand`\n**File:** `axum-macros/src/from_request/mod.rs`\n**Complexity score:** 348\n\nHowever, I should note that this answer is based only on the single function result shown in the tool output. To definitively say this is the highest complexity score across the entire axum codebase, I would need to see the complete results from a full codebase scan.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'expand' as the function name"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'axum-macros/src/from_request/mod.rs' as the file"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the function name and file path matching ground truth, though with appropriate caveats about tool limitations."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-007",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, `extract_fields` is defined in:\n\n**File:** `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs`\n**Line:** 412",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line number 412 matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent provided correct file path and line number matching ground truth."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `extract_fields` is defined in:\n\n**File:** `axum-macros/src/from_request/mod.rs`\n**Lines:** 412-639",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Starting line 412 matches ground truth; range provided gives context"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified the file and starting line number of extract_fields definition."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-008",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, I can see that `extract_fields` is defined at line 412 in `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs`, but the grep output only shows the function signature line without any visibility modifier visible.\n\nHowever, based on the naming convention and the context of it being in a `mod.rs` file (which typically contains internal implementation details), `extract_fields` is most likely **private**. This is the Rust convention where functions without an explicit `pub` keyword are private to their module.\n\nTo be completely certain, I would need to see the actual function definition line including any `pub` keyword, which is not shown in the provided grep output.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Correct answer (private) but reached via inference rather than direct observation"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified visibility as private, though with appropriate hedging about incomplete evidence."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `extract_fields` in `axum-macros/src/from_request/mod.rs` is **private**.\n\nThis is indicated by the `\"visibility\": \"private\"` field in the match result.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies extract_fields as private, matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified extract_fields as private with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-009",
+      "type": "caller_count",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output shows where `into_response` is defined and where it appears in the code, but it doesn't provide enough context to accurately count the distinct functions that **call** `into_response` at a depth of 2 (i.e., functions that call functions which call `into_response`).\n\nTo answer this question properly, I would need:\n1. Complete information about which functions actually call `into_response`\n2. Which functions call those callers (depth=2)\n3. A way to disambiguate between definitions, comments, and actual function calls\n\nThe output is truncated (as indicated by the \"198:\" line cutting off mid-line) and doesn't provide sufficient context to make this determination accurately.",
+        "score": {
+          "scores": {
+            "distinct_functions_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent declined to answer, claiming insufficient data. Ground truth specifies 140."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide a count, stating data was insufficient, but ground truth value of 140 exists."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output provided, **140** distinct functions call `into_response` in axum at depth=2.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 140 distinct function callers at depth=2"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent provided the correct count of 140 distinct functions calling into_response at depth=2."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-010",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require reading all files and manual analysis. Without actual execution of the health tool on the axum codebase or access to its output, I cannot provide the specific count of items in the `dead_code` array.\n\nTo answer this question, you would need to:\n1. Run the health tool on the axum codebase\n2. Capture its output\n3. Parse the `dead_code` array from the results",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth being available (58 items)"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer when ground truth indicates 58 items in the dead_code array."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array contains **58 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 58 items in dead_code array, matching ground truth exactly."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately stated the dead_code array contains 58 items, matching verified ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-011",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native search tool is available and would require manual analysis of all files in the axum codebase.\n\nTo answer this question accurately, I would need:\n1. Access to a code analysis tool that can measure complexity metrics (cyclomatic complexity, lines of code, number of parameters, etc.)\n2. The ability to search and analyze all functions across the axum codebase\n3. A way to rank functions by complexity\n\nIf you have access to a code analysis tool or can provide the codebase files, I could help analyze them to identify the most complex functions.",
+        "score": {
+          "scores": {
+            "god_functions_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming inability to determine. Ground truth shows specific functions exist."
+            },
+            "files_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent did not provide file locations for any functions."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer the question despite verifiable ground truth existing, failing to identify the two most complex functions and their locations."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top 2 god functions (most complex) in axum are:\n\n1. **expand** - located in `axum-macros/src/from_request/mod.rs` (complexity score: 348)\n2. **extract_fields** - located in `axum-macros/src/from_request/mod.rs` (complexity score: 270)",
+        "score": {
+          "scores": {
+            "top_god_function_1_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'expand' as top god function"
+            },
+            "top_god_function_1_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path: axum-macros/src/from_request/mod.rs"
+            },
+            "top_god_function_2_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'extract_fields' as second god function"
+            },
+            "top_god_function_2_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path: axum-macros/src/from_request/mod.rs"
+            }
+          },
+          "overall": {
+            "correct_count": 4,
+            "total": 4,
+            "summary": "Agent correctly identified both top god functions and their file locations with accurate complexity scores."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-012",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output only shows the function definition location (`/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs:412:fn extract_fields(`) but does not contain the actual function implementation or any information about a `calls` array within it. To answer your question, I would need to see the full source code of the `extract_fields` function.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing answer is 4"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to determine the count of entries in the calls array when ground truth indicates the answer is 4."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `calls` array for `extract_fields` has **4 entries**.\n\nThe calls are: `into_inner`, `parse_attrs`, `peel_option`, and `peel_result_ok`.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent states 4 entries, matches ground truth exactly"
+            },
+            "calls_identification": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "All four call names listed correctly and verifiably"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified 4 entries in calls array with accurate call names."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-013",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the grep output, I can see that `extract_fields` is called in 2 locations:\n\n1. Line 342 in `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs`\n2. Line 345 in `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs`\n\nHowever, both of these calls appear to be within the same function (based on the proximity of the line numbers and the context showing they're part of a code generation sequence).\n\nTo definitively answer how many **distinct functions** call `extract_fields`, I would need to see the function context for each call location. From the available output, I cannot determine with certainty whether these are calls from one function or multiple functions.\n\n**Answer: I cannot determine this from the available output** - I would need the surrounding function definitions to count the distinct calling functions.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide count despite ground truth being 2; claimed insufficient context"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer the direct question despite having sufficient information to determine the count was 2."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output provided, **2** distinct functions call `extract_fields` (at depth=2).",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 2 distinct functions calling extract_fields at depth=2"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent provided the correct count of 2 distinct callers of extract_fields in axum at depth=2."
+          }
+        }
+      }
+    },
+    {
+      "id": "ax-014",
+      "type": "module_path",
+      "cc": {
+        "answer": "Based on the file path provided in the grep output, `extract_fields` belongs to the **`from_request`** module.\n\nThe full module path is: `axum_macros::from_request`\n\nThis can be determined from the file location: `/Users/avirajkhare/ttt/axum/axum-macros/src/from_request/mod.rs` \u2014 the `mod.rs` file indicates this is the module definition file for the `from_request` module.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified module as axum_macros::from_request"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as axum_macros::from_request with proper reasoning."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `extract_fields` belongs to the **`axum-macros::from_request`** module.\n\nThis is indicated by the `module_path` field in the match result: `\"module_path\": \"axum-macros::from_request\"`.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer explicitly states correct module path matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as axum-macros::from_request with high confidence."
+          }
+        }
+      }
+    }
+  ]
+}

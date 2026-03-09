@@ -1,0 +1,19 @@
+{
+  "id": "dijkstra-rust-001",
+  "name": "dijkstra",
+  "language": "rust",
+  "description": "Implement Dijkstra's shortest path using BinaryHeap (min-heap via Reverse). Fill in dijkstra only.",
+  "source_file": "src/main.rs",
+  "build": ["cargo", "build", "--release"],
+  "run": ["./target/release/dijkstra"],
+  "functions": [
+    {
+      "name": "dijkstra",
+      "params": [
+        {"name": "graph", "type": "&Vec<Vec<(usize, u64)>>"},
+        {"name": "start", "type": "usize"}
+      ],
+      "returns": "Vec<u64>"
+    }
+  ]
+}

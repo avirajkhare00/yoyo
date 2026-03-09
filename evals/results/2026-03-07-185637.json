@@ -1,0 +1,486 @@
+{
+  "run_id": "2026-03-07-185637",
+  "codebase": "jiff",
+  "yoyo_version": "0.20.5",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 10,
+  "totals": {
+    "cc": {
+      "correct": 5,
+      "total": 15
+    },
+    "yoyo": {
+      "correct": 16,
+      "total": 16
+    }
+  },
+  "tasks": [
+    {
+      "id": "jf-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, `fractional_time_to_span` is defined in:\n\n**File:** `/Users/avirajkhare/ttt/jiff/src/fmt/util.rs`\n**Line:** 794",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Matches ground truth file path (src/fmt/util.rs)"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Matches ground truth line number (794)"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number where fractional_time_to_span is defined."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `fractional_time_to_span` is defined in:\n\n**File:** `src/fmt/util.rs`\n**Line:** 794-903 (the function spans from line 794 to line 903)",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified src/fmt/util.rs"
+            },
+            "line": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified line 794 as definition start"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both file and line number; additional span information is accurate but not required."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, I can see that `fractional_time_to_span` is defined at line 794 in `/Users/avirajkhare/ttt/jiff/src/fmt/util.rs`.\n\nHowever, the grep output only shows the function name and location, not the function signature or visibility modifier. To determine whether it's public, module-level, or private, I would need to see the actual function definition including any `pub` keyword or visibility modifiers.\n\nI cannot determine this from the available output.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite having sufficient information available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent declined to determine visibility when ground truth shows it is private."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `fractional_time_to_span` is **private**. \n\nThe symbol information shows `\"visibility\": \"private\"`, indicating that this function is not publicly accessible outside its module.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified function as private, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately determined that fractional_time_to_span is a private function."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "Based on the tool output, `fractional_time_to_span` is located in `/Users/avirajkhare/ttt/jiff/src/fmt/util.rs`. \n\nThis indicates that the function belongs to the **`fmt::util`** module (as the file path is `src/fmt/util.rs`).",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent states 'fmt::util' but ground truth is 'fmt' only"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent incorrectly identified the module as 'fmt::util' instead of 'fmt'."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, `fractional_time_to_span` in `src/fmt/util.rs` belongs to the **`fmt`** module.\n\nThis is indicated by the `module_path` field in the match results, which shows `\"module_path\": \"fmt\"`, and the qualified name is `fmt::fractional_time_to_span`.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies module as 'fmt' with proper evidence"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as 'fmt' with explicit reference to tool output."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-004",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output only shows the location of the `fractional_time_to_span` function definition (line 794 in `/Users/avirajkhare/ttt/jiff/src/fmt/util.rs`), but does not include the actual function code or any information about a `calls` array within it.\n\nTo answer this question, I would need to see the full function implementation.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite ground truth showing 21 entries exist"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer when ground truth indicates the information was determinable."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `calls` array for `fractional_time_to_span` in `src/fmt/util.rs` has **21** entries.",
+        "score": {
+          "scores": {
+            "calls_array_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent states 21 entries, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 21 entries in the calls array with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-005",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, `since_with_largest_unit` is defined in:\n\n**File:** `/Users/avirajkhare/ttt/jiff/src/civil/date.rs`\n**Line:** `2814`",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified src/civil/date.rs"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified line 2814"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number matching ground truth."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `since_with_largest_unit` is defined in:\n\n**File:** `src/civil/date.rs`\n**Line:** 2814 (start of the function)\n\nThe function spans from line 2814 to line 2918.",
+        "score": {
+          "scores": {
+            "file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            },
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line number 2814 matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the file and line number where `since_with_largest_unit` is defined."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-006",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, `since_with_largest_unit` is **private**.\n\nThe function is defined with `fn` (not `pub fn`), which means it has private visibility in Rust. Additionally, the fact that it's defined within a file (`/Users/avirajkhare/ttt/jiff/src/civil/date.rs`) suggests it's a method (likely on the `Date` struct based on the `&self` parameter), which would be private to that implementation block by default.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified function as private based on absence of pub keyword"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly determined that since_with_largest_unit is private."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `since_with_largest_unit` is **private**. \n\nThe symbol information shows `\"visibility\": \"private\"`, and it also has `\"parent_type\": \"DateDifference\"`, indicating it is a private method belonging to the `DateDifference` type rather than a module-level function.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly identifies function as private, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified `since_with_largest_unit` as private with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-007",
+      "type": "caller_count",
+      "cc": {
+        "answer": "Based on the grep output, I can see that `since_with_largest_unit` is called in 2 distinct locations:\n\n1. Line 1755 in `/Users/avirajkhare/ttt/jiff/src/civil/date.rs`\n2. Line 1791 in `/Users/avirajkhare/ttt/jiff/src/civil/date.rs`\n\nLine 2814 is the function definition itself, not a call to it.\n\nTo determine how many distinct functions make these calls, I would need to see the function context for lines 1755 and 1791. However, since the output doesn't provide the surrounding function definitions for those lines, I cannot determine with certainty whether these calls are in the same function or different functions.\n\n**I cannot determine the exact count of distinct functions calling `since_with_largest_unit` from the available output.** I can only confirm there are at least 2 call sites, but they could be in 1 or 2 different functions.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "wrong_fact",
+              "note": "Agent claims 2 call sites max; ground truth is 33 distinct callers"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent severely undercounted callers (2 vs 33), appearing to miss most occurrences in grep results."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the blast-radius output provided, **33** distinct functions call `since_with_largest_unit` in jiff (excluding self-recursion).",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer states 33, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 33 distinct function callers of since_with_largest_unit."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-008",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool was available for automated analysis, and manual analysis of all files would be required to calculate complexity scores.\n\nTo answer this question accurately, I would need to either:\n1. Use a code complexity analysis tool (like cyclomatic complexity analyzers)\n2. Have access to a pre-existing complexity report for the jiff codebase\n3. Perform manual analysis of the source code files\n\nWithout this information in the provided output, I cannot identify which function has the highest complexity score or specify its location.",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming inability to determine result"
+            },
+            "file_location": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, claiming inability to determine result"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to provide the answer despite ground truth being available, claiming lack of tools/information."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score is:\n\n**Function name:** `parse`\n**File:** `src/fmt/strtime/parse.rs`\n**Complexity score:** 500",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies 'parse' as the function name"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies 'src/fmt/strtime/parse.rs' as the file"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified both the function name and file path matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-009",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require manual analysis of all files. Without the actual execution results from the health tool on the jiff codebase, I cannot provide the specific count of items in the `dead_code` array.\n\nTo answer this question, you would need to:\n1. Run the health tool on the jiff codebase\n2. Capture the output showing the `dead_code` array\n3. Count the items in that array",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, citing unavailable output when answer exists"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer despite ground truth being available (148 items)."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array contains **148 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent explicitly states 148 items, matching ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 148 items in the dead_code array with high confidence."
+          }
+        }
+      }
+    },
+    {
+      "id": "jf-010",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native code analysis tool is available, and manual analysis of all files would be required to identify the most complex functions in the jiff codebase. To answer this question accurately, I would need either:\n\n1. A code complexity analysis tool output (e.g., cyclomatic complexity metrics)\n2. Actual source code files to analyze\n3. Pre-existing documentation about function complexity\n\nWithout this information, I cannot reliably identify which functions are the \"top 2 most complex\" in jiff.",
+        "score": {
+          "scores": {
+            "top_2_god_functions_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, citing lack of tools rather than attempting analysis."
+            },
+            "parse_function_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Did not identify 'parse' from src/fmt/strtime/parse.rs as top function."
+            },
+            "fractional_time_to_span_identified": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Did not identify 'fractional_time_to_span' from src/fmt/util.rs as top function."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 3,
+            "summary": "Agent refused to provide the two god functions without specialized tooling rather than attempting to identify them."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top 2 god functions (most complex) in jiff are:\n\n1. **parse** - located in `src/fmt/strtime/parse.rs` (score: 500)\n2. **fractional_time_to_span** - located in `src/fmt/util.rs` (score: 408)",
+        "score": {
+          "scores": {
+            "first_god_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'parse' as first function"
+            },
+            "first_god_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified file as src/fmt/strtime/parse.rs"
+            },
+            "second_god_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified 'fractional_time_to_span' as second function"
+            },
+            "second_god_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correctly identified file as src/fmt/util.rs"
+            }
+          },
+          "overall": {
+            "correct_count": 4,
+            "total": 4,
+            "summary": "Agent correctly identified both top 2 god functions and their exact file locations."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "lru-rust-001",
+  "name": "lru-cache",
+  "language": "rust",
+  "description": "Implement an LRU Cache. Use a HashMap + VecDeque (or index-based doubly linked list). Fill in new, get, and put.",
+  "source_file": "src/main.rs",
+  "build": ["cargo", "build", "--release"],
+  "run": ["./target/release/lru"],
+  "functions": [
+    {
+      "name": "new",
+      "params": [{"name": "capacity", "type": "usize"}],
+      "returns": "LRUCache"
+    },
+    {
+      "name": "get",
+      "params": [{"name": "key", "type": "i32"}],
+      "returns": "i32"
+    },
+    {
+      "name": "put",
+      "params": [{"name": "key", "type": "i32"}, {"name": "value", "type": "i32"}],
+      "returns": ""
+    }
+  ]
+}

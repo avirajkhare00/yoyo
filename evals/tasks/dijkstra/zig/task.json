@@ -1,0 +1,20 @@
+{
+  "id": "dijkstra-zig-001",
+  "name": "dijkstra",
+  "language": "zig",
+  "description": "Implement Dijkstra using std.PriorityQueue. Graph as ArrayList of ArrayLists of Edge. Fill in dijkstra only.",
+  "source_file": "main.zig",
+  "build": ["zig", "build-exe", "main.zig"],
+  "run": ["./main"],
+  "functions": [
+    {
+      "name": "dijkstra",
+      "params": [
+        {"name": "alloc", "type": "std.mem.Allocator"},
+        {"name": "graph", "type": "[]const []const Edge"},
+        {"name": "start", "type": "usize"}
+      ],
+      "returns": "![]u64"
+    }
+  ]
+}

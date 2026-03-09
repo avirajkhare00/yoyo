@@ -1,0 +1,388 @@
+{
+  "run_id": "2026-03-07-185743",
+  "codebase": "serde",
+  "yoyo_version": "0.20.5",
+  "model_agent": "claude-haiku-4-5-20251001",
+  "model_judge": "claude-haiku-4-5-20251001",
+  "tasks_run": 8,
+  "totals": {
+    "cc": {
+      "correct": 5,
+      "total": 12
+    },
+    "yoyo": {
+      "correct": 11,
+      "total": 12
+    }
+  },
+  "tasks": [
+    {
+      "id": "sr-001",
+      "type": "definition_location",
+      "cc": {
+        "answer": "Based on the grep output, `from_ast` is defined in `serde_derive_internals/src/attr.rs` at three locations:\n\n1. **Line 237**\n2. **Line 748**\n3. **Line 1015**\n\nThese appear to be method definitions for different types (likely struct, enum variant, and field implementations respectively).",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Line 237 correctly identified as primary definition location"
+            },
+            "file_location": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Correct file path provided: serde_derive_internals/src/attr.rs"
+            },
+            "completeness": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Answer provides line 237 plus additional occurrences; goes beyond ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Answer correctly identifies line 237 as the primary definition location and provides additional context about other occurrences."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `from_ast` is defined in multiple locations in `serde_derive_internals/src/attr.rs`:\n\n1. **Line 237-545** - The primary `from_ast` function (for `Container`)\n2. **Line 748-915** - A `from_ast` function (for `Variant`)\n3. **Line 1015-1262** - A `from_ast` function (for `Field`)\n\nIf you're looking for the main/primary definition, it starts at **line 237**.",
+        "score": {
+          "scores": {
+            "line_number": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies line 237 as primary definition"
+            },
+            "completeness": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent provides comprehensive answer with multiple definitions and clarifies primary one"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified line 237 as the primary from_ast definition and provided valuable additional context about other definitions."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-002",
+      "type": "visibility",
+      "cc": {
+        "answer": "Based on the grep output, `from_ast` in `serde_derive_internals/src/attr.rs` is **public**. \n\nAll three occurrences of `from_ast` shown in the output use the `pub` keyword:\n- Line 237: `pub fn from_ast(...)`\n- Line 748: `pub fn from_ast(...)`\n- Line 1015: `pub fn from_ast(...)`\n\nThese are public methods (likely associated functions on structs/types defined in that file), not module-level functions or private methods.",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies `from_ast` as public based on `pub` keyword evidence"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly determined that `from_ast` is public with strong supporting evidence from grep output."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, `from_ast` in `serde_derive_internals/src/attr.rs` is **public**.\n\nAll three matches for `from_ast` show `\"visibility\": \"public\"` in the output. Additionally, they all have `\"module_path\": \"serde_derive_internals::src\"`, indicating they are module-level functions (not nested within other functions or types, though they are associated with different parent types like Container, Variant, and Field through generics/implementations).",
+        "score": {
+          "scores": {
+            "visibility": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identifies `from_ast` as public, matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the visibility of `from_ast` as public."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-003",
+      "type": "module_path",
+      "cc": {
+        "answer": "Based on the grep output, `from_ast` appears in `/Users/avirajkhare/ttt/serde/serde_derive_internals/src/attr.rs`, which is the `attr` module (or more precisely, the `serde_derive_internals` crate's `attr` module).\n\nHowever, without seeing the actual code context around these `from_ast` definitions, I cannot determine which specific struct or type each `from_ast` method belongs to. The grep output shows there are at least 3 different `from_ast` function definitions at lines 237, 748, and 1015, but I would need to see the surrounding code to tell you which struct/type each one is associated with.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Correctly identifies serde_derive_internals crate and attr module, but ground truth format differs slightly"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identifies the module as serde_derive_internals::attr, though ground truth specifies src as the module path."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the `from_ast` function(s) in `serde_derive_internals/src/attr.rs` belong to the module:\n\n**`serde_derive_internals::src`**\n\nThis is shown in the `module_path` field for all three `from_ast` function matches in the output.",
+        "score": {
+          "scores": {
+            "module_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer explicitly states correct module path matching ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified the module path as serde_derive_internals::src"
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-004",
+      "type": "fan_out",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep output shows that there are three `from_ast` functions defined in the file at lines 237, 748, and 1015, but it doesn't show the implementation details of these functions, including any `calls` array. To answer your question, I would need to see the actual implementation code of at least one of these `from_ast` functions.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide the count despite it being determinable from code"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent declined to answer with the correct value of 35, claiming insufficient information."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `calls` array for `from_ast` has a length of **35** entries.",
+        "score": {
+          "scores": {
+            "calls_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly states 35 entries in calls array"
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent accurately identified the exact count of 35 entries in the from_ast calls array."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-005",
+      "type": "caller_count",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The grep results show that `from_ast` is *defined* in `attr.rs` (at lines 237, 748, and 1015), but the output does not contain the actual function bodies or implementations of these `from_ast` methods in `attr.rs`. To count how many distinct functions call `from_ast` within `attr.rs` itself (excluding self-recursion), I would need to see the code inside these `from_ast` function definitions and any other functions in that file, which is not provided in the current grep output.",
+        "score": {
+          "scores": {
+            "caller_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide a count, claimed insufficient data available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer with a specific count despite ground truth showing answer is 12."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "I cannot determine this from the available output. The tool output shows that `from_ast` has 12 distinct callers overall, but it does not specify which of these callers are located in `serde_derive_internals/src/attr.rs` or provide file-level information about the callers. To answer your question accurately, I would need output that breaks down the callers by file location.",
+        "score": {
+          "scores": {
+            "caller_count_in_attr_rs": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer despite having sufficient information to determine the count"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to provide the answer (12) claiming insufficient file-level breakdown, but the ground truth indicates 12 is the correct answer."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-006",
+      "type": "complexity_rank",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native analysis tool is available, and manual analysis of all files would be required to determine which function has the highest complexity score in the serde codebase.\n\nTo answer this question accurately, you would need to:\n1. Use a code complexity analysis tool (such as `cargo-complexity`, `rust-analyzer`, or `radon` for Python-based analysis)\n2. Run it against the serde repository\n3. Review the results to identify the function with the highest complexity score",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide function name despite ground truth being available"
+            },
+            "file_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide file name despite ground truth being available"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer the question, claiming it could not determine the answer, rather than providing the correct function name and file."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output provided, the function with the highest complexity score is:\n\n**Function name:** `from_ast`\n**File:** `serde_derive_internals/src/attr.rs`\n**Complexity score:** 2320",
+        "score": {
+          "scores": {
+            "function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'from_ast' as the function"
+            },
+            "file_path": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Agent correctly identified 'serde_derive_internals/src/attr.rs'"
+            },
+            "complexity_score": {
+              "correct": true,
+              "confidence": "medium",
+              "failure_mode": "correct",
+              "note": "Score of 2320 provided but not verified against ground truth"
+            }
+          },
+          "overall": {
+            "correct_count": 3,
+            "total": 3,
+            "summary": "Agent correctly identified both the function name and file path matching ground truth."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-007",
+      "type": "health_dead_code",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native tool is available and would require manual analysis of files. To answer your question about how many items are in the `dead_code` array returned by the health tool on the serde codebase, I would need actual output from running that health tool on the serde codebase, which is not provided.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide answer, citing lack of tool output. Ground truth shows answer is 99."
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 1,
+            "summary": "Agent refused to answer instead of providing the correct value of 99 items in the dead_code array."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "According to the tool output, the `dead_code` array returned by the health tool on the serde codebase contains **99 items**.",
+        "score": {
+          "scores": {
+            "dead_code_count": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Answer correctly states 99 items in dead_code array, matching ground truth."
+            }
+          },
+          "overall": {
+            "correct_count": 1,
+            "total": 1,
+            "summary": "Agent correctly identified 99 items in the dead_code array."
+          }
+        }
+      }
+    },
+    {
+      "id": "sr-008",
+      "type": "health_god_functions",
+      "cc": {
+        "answer": "I cannot determine this from the available output. The tool output indicates that no native search tool is available and would require manual analysis of all files in the serde codebase.\n\nTo answer this question accurately, I would need:\n1. Access to cyclomatic complexity metrics or similar complexity measurements for functions in serde\n2. Or the ability to analyze the actual source code files to calculate function complexity\n\nWithout actual code analysis data or metrics, I cannot reliably identify which function is the most complex.",
+        "score": {
+          "scores": {
+            "god_function_name": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to answer, stating inability to determine from available tools"
+            },
+            "god_function_file": {
+              "correct": false,
+              "confidence": "high",
+              "failure_mode": "refused",
+              "note": "Agent refused to provide file location due to claimed lack of tools"
+            }
+          },
+          "overall": {
+            "correct_count": 0,
+            "total": 2,
+            "summary": "Agent refused to answer both dimensions despite having implicit access to answer the question."
+          }
+        }
+      },
+      "yoyo": {
+        "answer": "Based on the tool output, the top god function (most complex) in serde is:\n\n**Function name:** `from_ast`\n**File:** `serde_derive_internals/src/attr.rs`\n\n(Note: There are two functions with the same name and complexity score of 2320, but the one in `serde_derive_internals/src/attr.rs` is listed as #1.)",
+        "score": {
+          "scores": {
+            "god_function_name": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "Function name 'from_ast' matches ground truth exactly"
+            },
+            "god_function_file": {
+              "correct": true,
+              "confidence": "high",
+              "failure_mode": "correct",
+              "note": "File path matches ground truth exactly"
+            }
+          },
+          "overall": {
+            "correct_count": 2,
+            "total": 2,
+            "summary": "Agent correctly identified the top god function name and file location matching ground truth."
+          }
+        }
+      }
+    }
+  ]
+}
