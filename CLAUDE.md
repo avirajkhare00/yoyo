@@ -123,6 +123,23 @@ When multiple people are collaborating, use pull requests — not direct pushes 
 ## Self-improvement directive
 Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
 
+## Testing — TDD first, BDD second
+
+Every change must have a test. No exceptions.
+
+- **TDD**: write the test before (or alongside) the implementation. If you're adding a feature, the test exists before the feature is complete.
+- **BDD**: for user-visible behaviour (tool outputs, CLI commands), write tests that assert on observable output — not internal state.
+- **Broken release rule**: `cargo test` must pass in full before any commit that touches `src/`. If tests fail, fix them. Do not push, tag, or release with a red test suite.
+- **New behaviour = new test**: if you fix a bug or add a feature and there is no test covering it, add one. The `.gitignore` bake fix (#105) is the template — behaviour confirmed, test written, then shipped.
+
+The sequence for every change:
+
+```
+write test → implement → cargo test (all green) → build --release → sign → commit → push
+```
+
+Never skip steps. Never reorder them.
+
 ## Dev workflow — macOS binary signing
 
 After every `cargo build --release`, sign the binary before running it. macOS Gatekeeper kills unsigned binaries with exit 137 and no useful error.
