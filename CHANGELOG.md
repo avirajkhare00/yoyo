@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1] - 2026-03-09
+
+### Fixed
+
+- `find_docs`: `doc_type` is now optional — defaults to `"all"`. Was failing with "Missing required argument" when omitted.
+- `package_summary`: `package` is now optional — defaults to `""` (matches all packages). Was failing with "Missing required argument" when omitted.
+
 ## [1.3.0] - 2026-03-09
 
 ### Added

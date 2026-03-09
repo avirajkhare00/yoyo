@@ -151,8 +151,9 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
 }
 
 /// Public entrypoint for the `find_docs` tool.
-pub fn find_docs(path: Option<String>, doc_type: String, limit: Option<usize>) -> Result<String> {
+pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<usize>) -> Result<String> {
     let root = resolve_project_root(path)?;
+    let doc_type = doc_type.unwrap_or_else(|| "all".to_string());
     let limit = limit.unwrap_or(50);
 
     let mut matches = Vec::new();

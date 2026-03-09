@@ -338,7 +338,7 @@ fn build_registry() -> Vec<ToolEntry> {
                 "path": p(),
                 "package": s("Package/module name or directory substring")
             })),
-            handler: Box::new(|a, path| crate::engine::package_summary(path, a.str_req("package", "package_summary")?)),
+            handler: Box::new(|a, path| crate::engine::package_summary(path, a.str_opt("package"))),
         },
         ToolEntry {
             schema: schema("architecture_map", d("architecture_map"), json!({
@@ -387,7 +387,7 @@ fn build_registry() -> Vec<ToolEntry> {
             })),
             handler: Box::new(|a, path| crate::engine::find_docs(
                 path,
-                a.str_req("doc_type", "find_docs")?,
+                a.str_opt("doc_type"),
                 a.uint_opt("limit"),
             )),
         },

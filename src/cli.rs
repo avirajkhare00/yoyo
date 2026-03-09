@@ -232,9 +232,9 @@ pub struct PackageSummaryArgs {
     #[arg(long)]
     pub path: Option<String>,
 
-    /// Package/module name or directory substring.
+    /// Package/module name or directory substring. Omit to return all packages.
     #[arg(long)]
-    pub package: String,
+    pub package: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -299,9 +299,9 @@ pub struct FindDocsArgs {
     #[arg(long)]
     pub path: Option<String>,
 
-    /// Documentation type: readme | env | config | docker | all.
+    /// Documentation type: readme | env | config | docker | all. Defaults to all.
     #[arg(long)]
-    pub doc_type: String,
+    pub doc_type: Option<String>,
 
     /// Maximum number of results to return (default 50).
     #[arg(long, default_value_t = 50)]

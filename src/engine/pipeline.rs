@@ -625,7 +625,7 @@ fn dispatch(tool: &str, args: &Value, path: Option<String>) -> Result<String> {
             s("file"),
             u("limit"),
         ),
-        "package_summary" => crate::engine::package_summary(path, s_req("package")?),
+        "package_summary" => crate::engine::package_summary(path, s("package")),
         "suggest_placement" => crate::engine::suggest_placement(
             path,
             s_req("function_name")?,
@@ -633,7 +633,7 @@ fn dispatch(tool: &str, args: &Value, path: Option<String>) -> Result<String> {
             s("related_to"),
         ),
         "api_trace" => crate::engine::api_trace(path, s_req("endpoint")?, s("method")),
-        "find_docs" => crate::engine::find_docs(path, s_req("doc_type")?, u("limit")),
+        "find_docs" => crate::engine::find_docs(path, s("doc_type"), u("limit")),
         "patch" => {
             if let Some(old_string) = s("old_string") {
                 crate::engine::patch_string(path, s_req("file")?, old_string, s_req("new_string")?)
