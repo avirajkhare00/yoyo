@@ -521,6 +521,56 @@ pub fn fetch_user(id: u32) -> String {
         }
     }
 
+    // ── patch pre-write AST validation ───────────────────────────────────────
+
+    #[test]
+    fn e2e_patch_rejects_invalid_rust_syntax() {
+        let dir = setup();
+        // Attempt to patch add() with syntactically broken Rust — missing closing brace
+        let result = crate::engine::patch_string(
+            root(&dir),
+            "src/math.rs".into(),
+            "a + b".into(),
+            "{ { { not valid rust".into(),
+        );
+        assert!(result.is_err(), "patch_string should reject syntactically invalid Rust");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("syntax") || msg.contains("parse") || msg.contains("error"),
+            "error message should mention syntax/parse: {}", msg
+        );
+    }
+
+    #[test]
+    fn e2e_patch_file_unchanged_on_invalid_syntax() {
+        let dir = setup();
+        let original = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
+
+        let _ = crate::engine::patch_string(
+            root(&dir),
+            "src/math.rs".into(),
+            "a + b".into(),
+            "{ { { not valid rust".into(),
+        );
+
+        let after = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
+        assert_eq!(original, after, "file must not be modified when patch is rejected");
+    }
+
+    #[test]
+    fn e2e_patch_accepts_valid_syntax() {
+        let dir = setup();
+        let result = crate::engine::patch_string(
+            root(&dir),
+            "src/math.rs".into(),
+            "a + b".into(),
+            "a.saturating_add(b)".into(),
+        );
+        assert!(result.is_ok(), "patch_string should accept valid Rust: {:?}", result.err());
+        let after = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
+        assert!(after.contains("saturating_add"), "file should contain the new content");
+    }
+
     // ── bake .gitignore ───────────────────────────────────────────────────────
 
     #[test]

@@ -8,6 +8,27 @@ use std::collections::HashMap;
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
 use super::util::{load_bake_index, reindex_files, resolve_project_root};
 
+// ── Pre-write in-memory AST validation ────────────────────────────────────────
+
+/// Parse `source` with tree-sitter (no file I/O) and return any ERROR/MISSING nodes.
+/// Returns an empty vec if the extension is unsupported.
+fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
+    use ast_grep_language::{LanguageExt, SupportLang};
+    let mut parser = tree_sitter::Parser::new();
+    let ok = match ext {
+        "rs"                        => parser.set_language(&SupportLang::Rust.get_ts_language()),
+        "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
+        "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
+        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
+        _                           => return vec![],
+    };
+    if ok.is_err() { return vec![]; }
+    let Some(tree) = parser.parse(source, None) else { return vec![] };
+    let mut errors = vec![];
+    collect_errors(tree.root_node(), source, &mut errors);
+    errors
+}
+
 // ── Post-patch syntax validation ──────────────────────────────────────────────
 
 /// Parse `file` with tree-sitter and return any ERROR/MISSING nodes.
@@ -324,6 +345,19 @@ pub fn patch_string(
     let end_line = start_line + old_string.lines().count().saturating_sub(1) as u32;
     let total_lines = new_content.lines().count() as u32;
 
+    // Pre-write AST check.
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let pre_errors = ast_check_str(&new_content, ext);
+    if !pre_errors.is_empty() {
+        let summary: Vec<String> = pre_errors.iter()
+            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+            .collect();
+        return Err(anyhow!(
+            "patch rejected: syntax errors in new content (file not modified):\n{}",
+            summary.join("\n")
+        ));
+    }
+
     fs::write(&full_path, &new_content)
         .with_context(|| format!("Failed to write {}", file))?;
 
@@ -440,6 +474,22 @@ pub fn patch_bytes(
     let new_bytes = new_content.as_bytes();
     let new_byte_count = new_bytes.len();
     bytes.splice(byte_start..byte_end, new_bytes.iter().copied());
+
+    // Pre-write AST check.
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if let Ok(patched_str) = std::str::from_utf8(&bytes) {
+        let pre_errors = ast_check_str(patched_str, ext);
+        if !pre_errors.is_empty() {
+            let summary: Vec<String> = pre_errors.iter()
+                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                .collect();
+            return Err(anyhow!(
+                "patch rejected: syntax errors in new content (file not modified):\n{}",
+                summary.join("\n")
+            ));
+        }
+    }
+
     fs::write(&full_path, &bytes).with_context(|| {
         format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
     })?;
@@ -593,6 +643,20 @@ fn apply_patch_to_range(
     if had_trailing_newline {
         new_text.push('\n');
     }
+
+    // Pre-write AST check — reject before touching disk.
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let pre_errors = ast_check_str(&new_text, ext);
+    if !pre_errors.is_empty() {
+        let summary: Vec<String> = pre_errors.iter()
+            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+            .collect();
+        return Err(anyhow!(
+            "patch rejected: syntax errors in new content (file not modified):\n{}",
+            summary.join("\n")
+        ));
+    }
+
     fs::write(&full_path, new_text).with_context(|| {
         format!(
             "Failed to write patched file {} (resolved to {})",
