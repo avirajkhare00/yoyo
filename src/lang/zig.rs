@@ -5,8 +5,8 @@ use anyhow::Result;
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
-    AstMatch, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
+    byte_range, line_range, module_path_from_file, qualified_name, relative,
+    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
     NodeKinds, Visibility,
 };
 
@@ -78,35 +78,11 @@ impl LanguageAnalyzer for ZigAnalyzer {
         Ok((functions, vec![], types, vec![]))
     }
 
-    fn supports_ast_search(&self) -> bool {
-        true
+    fn ts_language(&self) -> Option<tree_sitter::Language> {
+        Some(tree_sitter_zig::LANGUAGE.into())
     }
-
-    fn ast_search(&self, source: &str, query_lc: &str, context: &str, pattern: &str) -> Vec<AstMatch> {
-        let mut parser = Parser::new();
-        if parser.set_language(&tree_sitter_zig::LANGUAGE.into()).is_err() {
-            return vec![];
-        }
-        let tree = match parser.parse(source, None) {
-            Some(t) => t,
-            None => return vec![],
-        };
-        let lines: Vec<&str> = source.lines().collect();
-        let mut matches = Vec::new();
-        walk_supersearch(
-            tree.root_node(),
-            source,
-            &lines,
-            query_lc,
-            context,
-            pattern,
-            false,
-            false,
-            false,
-            &KINDS,
-            &mut matches,
-        );
-        matches
+    fn node_kinds(&self) -> Option<&'static crate::lang::NodeKinds> {
+        Some(&KINDS)
     }
 }
 
@@ -232,25 +208,12 @@ fn extract_type_decl(node: Node, source: &str) -> Option<(String, String)> {
     }
 }
 
-fn estimate_complexity(node: Node, source: &str) -> u32 {
-    let mut count = 1u32;
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "if_expression"
-            | "if_statement"
-            | "for_expression"
-            | "for_statement"
-            | "while_expression"
-            | "while_statement"
-            | "switch_expression"
-            | "catch_expression"
-            | "try_expression" => count += 1,
-            _ => {}
-        }
-        count += estimate_complexity(child, source).saturating_sub(1);
-    }
-    count
+fn estimate_complexity(node: Node, _source: &str) -> u32 {
+    super::estimate_complexity_for(node, &[
+        "if_expression", "if_statement", "for_expression", "for_statement",
+        "while_expression", "while_statement", "switch_expression",
+        "catch_expression", "try_expression",
+    ])
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
