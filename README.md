@@ -222,4 +222,4 @@ LSP tells you what exists at your cursor. yoyo tells an AI what the codebase loo
 
 ---
 
-Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · MIT
+Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · Apache 2.0
