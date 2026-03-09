@@ -104,6 +104,23 @@ Watch the binary size. A growing binary is a symptom, not a badge. Every depende
 
 Before adding new functionality, search the codebase first. The feature may already exist, partially or fully. If it does, refactor and extend — don't duplicate. New code is a liability until proven otherwise.
 
+## Pipeline replaces rules
+
+Prose rules get ignored. Pipeline encodes the same workflow as executable data that actually runs.
+
+When you find yourself writing "always run A before B", the fix is a pipeline spec where B's `if` condition blocks unless A ran clean — not another instruction. The rule disappears into the design.
+
+```json
+[
+  {"id": "s1", "tool": "blast_radius", "args": {"symbol": "{{name}}"}},
+  {"id": "s2", "tool": "graph_delete", "args": {"name": "{{name}}"}, "if": "{{s1.total_callers == 0}}"}
+]
+```
+
+`llm_workflows` should return executable pipeline specs, not prose descriptions. A spec is self-documenting, runnable, and testable. A description is none of those things.
+
+**Every time you add a prose rule here, ask: can this be a pipeline spec instead?** If yes, make it a spec and delete the rule.
+
 ## Philosophy — the combinations are the point
 
 yoyo is named after competitive yoyo. A yoyo is a spinning disk on a string — simple alone. The magic is in the combinations: string wraps, body movements, timing layered together. One trick is fine. Fifty moves chained is transcendent.
