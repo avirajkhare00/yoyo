@@ -17,7 +17,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tree_sitter::Node;
+use tree_sitter::{Node, Parser};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallSite {
@@ -134,17 +134,36 @@ pub trait LanguageAnalyzer: Send + Sync {
     fn extract_imports(&self, _source: &str) -> Vec<String> {
         vec![]
     }
+    /// Return the tree-sitter Language for this analyzer, if AST search is supported.
+    fn ts_language(&self) -> Option<tree_sitter::Language> {
+        None
+    }
+    /// Return the NodeKinds descriptor for supersearch. Returning Some enables ast_search.
+    fn node_kinds(&self) -> Option<&'static NodeKinds> {
+        None
+    }
     fn supports_ast_search(&self) -> bool {
-        false
+        self.node_kinds().is_some()
     }
     fn ast_search(
         &self,
-        _source: &str,
-        _query_lc: &str,
-        _context: &str,
-        _pattern: &str,
+        source: &str,
+        query_lc: &str,
+        context: &str,
+        pattern: &str,
     ) -> Vec<AstMatch> {
-        vec![]
+        let lang = match self.ts_language() { Some(l) => l, None => return vec![] };
+        let kinds = match self.node_kinds() { Some(k) => k, None => return vec![] };
+        let mut parser = Parser::new();
+        if parser.set_language(&lang).is_err() { return vec![]; }
+        let tree = match parser.parse(source, None) { Some(t) => t, None => return vec![] };
+        let lines: Vec<&str> = source.lines().collect();
+        let mut matches = Vec::new();
+        walk_supersearch(
+            tree.root_node(), source, &lines, query_lc, context, pattern,
+            false, false, false, kinds, &mut matches,
+        );
+        matches
     }
 }
 
@@ -326,4 +345,17 @@ pub fn walk_supersearch(
             in_call, in_assign, in_return, kinds, matches,
         );
     }
+}
+
+/// Shared recursive complexity estimator. Each language passes its branch kind strings.
+pub fn estimate_complexity_for(node: Node, branch_kinds: &[&str]) -> u32 {
+    let mut count = 1u32;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if branch_kinds.contains(&child.kind()) {
+            count += 1;
+        }
+        count += estimate_complexity_for(child, branch_kinds).saturating_sub(1);
+    }
+    count
 }

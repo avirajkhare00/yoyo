@@ -6,8 +6,8 @@ use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative, walk_supersearch,
-    AstMatch, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
+    byte_range, line_range, module_path_from_file, qualified_name, relative,
+    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
     NodeKinds, Visibility,
 };
 
@@ -47,15 +47,11 @@ impl LanguageAnalyzer for CSharpAnalyzer {
         Ok((functions, vec![], types, vec![]))
     }
 
-    fn supports_ast_search(&self) -> bool { true }
-    fn ast_search(&self, source: &str, query_lc: &str, context: &str, pattern: &str) -> Vec<AstMatch> {
-        let mut parser = Parser::new();
-        if parser.set_language(&SupportLang::CSharp.get_ts_language()).is_err() { return vec![]; }
-        let tree = match parser.parse(source, None) { Some(t) => t, None => return vec![] };
-        let lines: Vec<&str> = source.lines().collect();
-        let mut matches = Vec::new();
-        walk_supersearch(tree.root_node(), source, &lines, query_lc, context, pattern, false, false, false, &KINDS, &mut matches);
-        matches
+    fn ts_language(&self) -> Option<tree_sitter::Language> {
+        Some(SupportLang::CSharp.get_ts_language())
+    }
+    fn node_kinds(&self) -> Option<&'static crate::lang::NodeKinds> {
+        Some(&KINDS)
     }
 }
 
@@ -123,18 +119,11 @@ fn cs_visibility(node: Node, source: &[u8]) -> Visibility {
     Visibility::Private
 }
 
-fn estimate_complexity(node: Node, source: &str) -> u32 {
-    let mut count = 1u32;
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "if_statement" | "for_statement" | "foreach_statement" | "while_statement"
-            | "do_statement" | "switch_statement" | "catch_clause" | "conditional_expression" => count += 1,
-            _ => {}
-        }
-        count += estimate_complexity(child, source).saturating_sub(1);
-    }
-    count
+fn estimate_complexity(node: Node, _source: &str) -> u32 {
+    super::estimate_complexity_for(node, &[
+        "if_statement", "for_statement", "foreach_statement", "while_statement",
+        "do_statement", "switch_statement", "catch_clause", "conditional_expression",
+    ])
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<super::CallSite> {
