@@ -63,19 +63,22 @@ pub(crate) struct LlmInstructionsPayload {
     pub(crate) tools: Vec<ToolDescription>,
     pub(crate) prime_directives: Vec<&'static str>,
     pub(crate) concurrency_rules: Vec<&'static str>,
-    pub(crate) workflows: Vec<Workflow>,
-    /// Maps natural-language questions to the correct yoyo tool.
-    /// The wrong_tool column shows what naive agents reach for and why it fails.
-    pub(crate) decision_map: Vec<DecisionEntry>,
-    /// Explicit anti-patterns. Each item describes something that looks reasonable
-    /// but produces wrong answers. Internalise these before calling any tool.
-    pub(crate) antipatterns: Vec<&'static str>,
-    /// High-level shapes that all workflows are instances of.
-    /// Learn these first — every specific workflow is a variation of one of these five.
-    pub(crate) metapatterns: Vec<Metapattern>,
     /// Present when a newer yoyo release is available. Surface this to the user.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) update_available: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct LlmWorkflowsPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) workflows: Vec<Workflow>,
+    /// Maps natural-language questions to the correct yoyo tool.
+    pub(crate) decision_map: Vec<DecisionEntry>,
+    /// Explicit anti-patterns — things that look reasonable but produce wrong answers.
+    pub(crate) antipatterns: Vec<&'static str>,
+    /// High-level shapes that all workflows are instances of.
+    pub(crate) metapatterns: Vec<Metapattern>,
 }
 
 #[derive(Serialize)]

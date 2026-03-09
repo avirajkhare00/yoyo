@@ -4,7 +4,8 @@ use anyhow::Result;
 
 use super::types::{
     BakeSummary, DecisionEntry, EndpointSummary, FunctionSummary, LlmInstructionsPayload,
-    Metapattern, MetapatternStep, ShakePayload, ToolDescription, Workflow, WorkflowStep,
+    LlmWorkflowsPayload, Metapattern, MetapatternStep, ShakePayload, ToolDescription, Workflow,
+    WorkflowStep,
 };
 use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
 
@@ -36,8 +37,22 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
             "write tools are always sequential — wait for each to complete before the next.",
             "After any write, do not call read-indexed tools on the same file until the write response is received.",
         ],
+        update_available: super::update::check_update(),
+    };
+
+    let json = serde_json::to_string_pretty(&payload)?;
+    Ok(json)
+}
+
+/// Public entrypoint for the `llm_workflows` CLI/MCP tool.
+/// Returns the full reference catalog: workflows, decision map, antipatterns, metapatterns.
+/// Call on demand — not required for basic tool use.
+pub fn llm_workflows(path: Option<String>) -> Result<String> {
+    let _ = path; // unused; kept for API symmetry with llm_instructions
+    let payload = LlmWorkflowsPayload {
+        tool: "llm_workflows",
+        version: env!("CARGO_PKG_VERSION"),
         workflows: workflow_catalog(),
-        metapatterns: metapattern_catalog(),
         decision_map: decision_map(),
         antipatterns: vec![
             "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use blast_radius.",
@@ -51,7 +66,7 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
             "reading struct source to get field types: works but is unstructured. Use symbol with include_source=true — fields array is parsed and typed.",
             "using Edit or Write to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use patch — name mode resolves location from the index, returns patched_source for inline verification, and auto-reindexes.",
         ],
-        update_available: super::update::check_update(),
+        metapatterns: metapattern_catalog(),
     };
 
     let json = serde_json::to_string_pretty(&payload)?;
@@ -170,7 +185,8 @@ fn decision_map() -> Vec<DecisionEntry> {
 
 pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
-        ToolDescription { name: "llm_instructions", description: "Bootstrap: full tool catalog, 21 combination workflows, prime directives, and antipatterns. Call in parallel with bake on first contact — do not skip.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "llm_instructions", description: "Bootstrap: lean tool catalog, prime directives, and concurrency rules. Call in parallel with bake on first contact — do not skip.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: 21 combination workflows, decision map, antipatterns, metapatterns. Call on demand when you need to look up a combo or decide between tools — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "bake",             description: "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes (git pull, generated files).", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "shake",            description: "30-second codebase overview: language breakdown, file count, top-complexity functions. Use first when orienting to an unfamiliar project. Pair with architecture_map for full orientation.", requires_bake: false, category: "read", parallelisable: true,
             output_shape: Some(r#"{"files_indexed":0,"languages":[],"top_functions":[{"name":"","file":"","start_line":0,"complexity":0}],"express_endpoints":[]}"#) },

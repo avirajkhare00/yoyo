@@ -147,9 +147,10 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server — 29 tools to read and edit any codebase from the AST, not model memory. \
+                "instructions": "You have access to yoyo, a code intelligence MCP server — 30 tools to read and edit any codebase from the AST, not model memory. \
                     ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
-                    `llm_instructions` returns the full tool catalog, 21 combination workflows, prime directives, and antipatterns. Read it before doing anything else. \
+                    `llm_instructions` returns the lean tool catalog, prime directives, and concurrency rules. Read it before doing anything else. \
+                    `llm_workflows` returns the full reference catalog (21 combination workflows, decision map, antipatterns, metapatterns) — call on demand when you need to look up a combo or decide between tools. \
                     `bake` builds the index all read-indexed tools depend on. \
                     THE COMBINATIONS ARE THE POINT: no single tool is impressive — the chains are. \
                     Key combos: health→blast_radius→graph_delete (safe dead code removal), flow→symbol→multi_patch (fix endpoint end-to-end), blast_radius→graph_rename→symbol (safe rename). \
@@ -229,6 +230,10 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema("llm_instructions", d("llm_instructions"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::llm_instructions(path)),
+        },
+        ToolEntry {
+            schema: schema("llm_workflows", d("llm_workflows"), json!({"path": p()})),
+            handler: Box::new(|_a, path| crate::engine::llm_workflows(path)),
         },
         ToolEntry {
             schema: schema("shake", d("shake"), json!({"path": p()})),

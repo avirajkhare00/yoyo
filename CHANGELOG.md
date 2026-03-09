@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0] - 2026-03-09
+
+### Added
+
+- **`llm_workflows` tool** — on-demand reference catalog: 21 combination workflows, decision map, antipatterns, metapatterns. Closes #101.
+- **`llm_instructions` slimmed down** — drops workflows/decision_map/antipatterns/metapatterns (~8k tokens saved per session bootstrap). Now returns only the lean tool catalog, prime directives, and concurrency rules (~2k tokens).
+- Bootstrap instructions updated: 30 tools, mentions `llm_workflows` as the on-demand reference companion.
+
 ## [1.2.1] - 2026-03-09
 
 ### Added
