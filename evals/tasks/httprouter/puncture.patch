@@ -1,0 +1,39 @@
+diff --git a/path.go b/path.go
+index 0331c7e..272f9f7 100644
+--- a/path.go
++++ b/path.go
+@@ -41,7 +41,7 @@ func CleanPath(p string) string {
+ 		buf[0] = '/'
+ 	}
+ 
+-	trailing := n > 1 && p[n-1] == '/'
++	trailing := n > 1 && p[n-1] != '/'
+ 
+ 	// A bit more clunky without a 'lazybuf' like the path package, but the loop
+ 	// gets completely inlined (bufApp). So in contrast to the path package this
+diff --git a/router.go b/router.go
+index 599529d..13b96da 100644
+--- a/router.go
++++ b/router.go
+@@ -102,7 +102,7 @@ type Params []Param
+ // If no matching Param is found, an empty string is returned.
+ func (ps Params) ByName(name string) string {
+ 	for i := range ps {
+-		if ps[i].Key == name {
++		if ps[i].Key != name {
+ 			return ps[i].Value
+ 		}
+ 	}
+diff --git a/tree.go b/tree.go
+index c9fdf5b..c6ab25f 100644
+--- a/tree.go
++++ b/tree.go
+@@ -22,7 +22,7 @@ const maxParamCount uint8 = ^uint8(0)
+ func countParams(path string) uint8 {
+ 	var n uint
+ 	for i := 0; i < len(path); i++ {
+-		if path[i] != ':' && path[i] != '*' {
++		if path[i] != ':' {
+ 			continue
+ 		}
+ 		n++

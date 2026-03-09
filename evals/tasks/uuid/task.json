@@ -1,0 +1,16 @@
+{
+  "id": "uuid-go-001",
+  "name": "uuid",
+  "language": "go",
+  "repo": "https://github.com/google/uuid",
+  "commit": "v1.6.0",
+  "test_cmd": ["go", "test", "./..."],
+  "punctures": 3,
+  "patch": "puncture.patch",
+  "hints": [
+    "3 bugs in uuid.go",
+    "encodeHex: separator character changed from '-' to '_' (all formatted UUIDs malformed)",
+    "Variant: mask changed from 0xc0 to 0xff (RFC4122 variant detection broken)",
+    "Version: right-shift changed from 4 to 3 (version number always doubled)"
+  ]
+}

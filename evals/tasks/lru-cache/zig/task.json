@@ -1,0 +1,21 @@
+{
+  "id": "lru-zig-001",
+  "name": "lru-cache",
+  "language": "zig",
+  "description": "Implement an LRU Cache using std.AutoHashMap + doubly linked list. Fill in get and put.",
+  "source_file": "main.zig",
+  "build": ["zig", "build-exe", "main.zig"],
+  "run": ["./main"],
+  "functions": [
+    {
+      "name": "get",
+      "params": [{"name": "self", "type": "*LRUCache"}, {"name": "key", "type": "i32"}],
+      "returns": "i32"
+    },
+    {
+      "name": "put",
+      "params": [{"name": "self", "type": "*LRUCache"}, {"name": "key", "type": "i32"}, {"name": "value", "type": "i32"}],
+      "returns": "!void"
+    }
+  ]
+}

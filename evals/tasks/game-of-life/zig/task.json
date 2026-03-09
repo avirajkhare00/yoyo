@@ -1,0 +1,41 @@
+{
+  "id": "gol-zig-001",
+  "name": "game-of-life",
+  "language": "zig",
+  "description": "Implement Conway's Game of Life. Flat slice grid ([]u8), allocator passed explicitly. Zig 0.15.x — ArrayList is unmanaged. Fill in the three function bodies only.",
+  "source_file": "main.zig",
+  "build": ["zig", "build-exe", "main.zig"],
+  "run": ["./main"],
+  "functions": [
+    {
+      "name": "countNeighbors",
+      "params": [
+        {"name": "grid", "type": "[]const u8"},
+        {"name": "row",  "type": "usize"},
+        {"name": "col",  "type": "usize"},
+        {"name": "rows", "type": "usize"},
+        {"name": "cols", "type": "usize"}
+      ],
+      "returns": "u8"
+    },
+    {
+      "name": "nextGeneration",
+      "params": [
+        {"name": "alloc", "type": "std.mem.Allocator"},
+        {"name": "grid",  "type": "[]const u8"},
+        {"name": "rows",  "type": "usize"},
+        {"name": "cols",  "type": "usize"}
+      ],
+      "returns": "![]u8"
+    },
+    {
+      "name": "printGrid",
+      "params": [
+        {"name": "grid", "type": "[]const u8"},
+        {"name": "rows", "type": "usize"},
+        {"name": "cols", "type": "usize"}
+      ],
+      "returns": "void"
+    }
+  ]
+}

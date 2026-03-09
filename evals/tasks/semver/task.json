@@ -1,0 +1,16 @@
+{
+  "id": "semver-rust-001",
+  "name": "semver",
+  "language": "rust",
+  "repo": "https://github.com/dtolnay/semver",
+  "commit": "master",
+  "test_cmd": ["cargo", "test", "--test", "*"],
+  "punctures": 3,
+  "patch": "puncture.patch",
+  "hints": [
+    "3 comparison operators broken in src/eval.rs",
+    "matches_greater: major version comparison inverted",
+    "matches_less: major version comparison inverted",
+    "matches_tilde and matches_caret: pre-release comparison made strict"
+  ]
+}
