@@ -323,15 +323,35 @@ fn build_registry() -> Vec<ToolEntry> {
                 "file": s("Optional file path substring to restrict scope (e.g. 'src/routes' or 'tcp')"),
                 "limit": i("Max matches to return (default 200). Reduce for large codebases with common terms.")
             })),
-            handler: Box::new(|a, path| crate::engine::supersearch(
-                path,
-                a.str_req("query", "supersearch")?,
-                a.str_opt("context").unwrap_or_else(|| "all".to_string()),
-                a.str_opt("pattern").unwrap_or_else(|| "all".to_string()),
-                a.bool_opt("exclude_tests"),
-                a.str_opt("file"),
-                a.uint_opt("limit"),
-            )),
+            handler: Box::new(|a, path| {
+                // Accept `pattern` as an alias for `query` when it doesn't look like
+                // a mode value (all|call|assign|return) — grep muscle-memory safety net.
+                const MODES: &[&str] = &["all", "call", "assign", "return"];
+                let raw_pattern = a.str_opt("pattern");
+                let query = if let Some(q) = a.str_opt("query") {
+                    q
+                } else if let Some(ref p) = raw_pattern {
+                    if !MODES.contains(&p.as_str()) {
+                        p.clone()
+                    } else {
+                        return Err(anyhow::anyhow!("Missing required 'query' argument for supersearch"));
+                    }
+                } else {
+                    return Err(anyhow::anyhow!("Missing required 'query' argument for supersearch"));
+                };
+                let pattern = raw_pattern
+                    .filter(|p| MODES.contains(&p.as_str()))
+                    .unwrap_or_else(|| "all".to_string());
+                crate::engine::supersearch(
+                    path,
+                    query,
+                    a.str_opt("context").unwrap_or_else(|| "all".to_string()),
+                    pattern,
+                    a.bool_opt("exclude_tests"),
+                    a.str_opt("file"),
+                    a.uint_opt("limit"),
+                )
+            }),
         },
         ToolEntry {
             schema: schema("package_summary", d("package_summary"), json!({
@@ -680,6 +700,76 @@ async fn call_tool(params: Value) -> Result<Value> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    fn fixture_src() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/sample_project")
+    }
+
+    fn copy_dir(src: &Path, dst: &Path) {
+        std::fs::create_dir_all(dst).unwrap();
+        for entry in std::fs::read_dir(src).unwrap() {
+            let entry = entry.unwrap();
+            let s = entry.path();
+            let d = dst.join(entry.file_name());
+            if s.is_dir() { copy_dir(&s, &d); } else { std::fs::copy(&s, &d).unwrap(); }
+        }
+    }
+
+    fn baked_fixture() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        copy_dir(&fixture_src(), dir.path());
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        dir
+    }
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Runtime::new().unwrap()
+    }
+
+    #[test]
+    fn supersearch_pattern_alias_promotes_non_mode_value_to_query() {
+        let dir = baked_fixture();
+        let root = dir.path().to_string_lossy().into_owned();
+        // Pass `pattern="add"` with no `query` — "add" is not a mode, should be promoted
+        let result = rt().block_on(call_tool(json!({
+            "name": "supersearch",
+            "arguments": {"path": root, "pattern": "add", "context": "identifiers"}
+        })));
+        assert!(result.is_ok(), "should succeed when pattern is not a mode value: {:?}", result.err());
+        let text = result.unwrap()["content"][0]["text"].as_str().unwrap().to_string();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(
+            v["matches"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
+            "should find matches for 'add'"
+        );
+    }
+
+    #[test]
+    fn supersearch_pattern_alias_preserves_mode_when_query_also_set() {
+        let dir = baked_fixture();
+        let root = dir.path().to_string_lossy().into_owned();
+        // Both query and pattern set — query is the search term, pattern is the mode
+        let result = rt().block_on(call_tool(json!({
+            "name": "supersearch",
+            "arguments": {"path": root, "query": "add", "pattern": "all", "context": "identifiers"}
+        })));
+        assert!(result.is_ok(), "should succeed with explicit query and pattern mode: {:?}", result.err());
+    }
+
+    #[test]
+    fn supersearch_pattern_valid_mode_without_query_errors() {
+        let dir = baked_fixture();
+        let root = dir.path().to_string_lossy().into_owned();
+        // pattern="call" is a valid mode, but no query → should still error
+        let result = rt().block_on(call_tool(json!({
+            "name": "supersearch",
+            "arguments": {"path": root, "pattern": "call"}
+        })));
+        assert!(result.is_err(), "should error when pattern is a mode value and query is absent");
+    }
 
     #[test]
     fn registry_and_catalog_names_are_in_sync() {
