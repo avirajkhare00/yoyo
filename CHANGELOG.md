@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.4] - 2026-03-09
+
+### Fixed
+
+- `supersearch`: accepts `pattern` as an alias for `query` when the value is not a valid mode (`all|call|assign|return`). Eliminates grep muscle-memory errors where models pass `pattern="search_term"` instead of `query="search_term"`. Closes #114.
+
 ## [1.3.3] - 2026-03-09
 
 ### Fixed
