@@ -191,7 +191,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 ### Write
 | Tool | What it does |
 |---|---|
-| `patch` | Write by symbol name, line range, or string match. Auto-reindexes. |
+| `patch` | Write by symbol name, line range, or string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
 | `patch_bytes` | Write at exact byte offsets. |
 | `multi_patch` | N edits across M files in one call. |
 | `graph_rename` | Rename a symbol at definition + every call site, atomically. |
