@@ -14,6 +14,8 @@ yoyo is a code intelligence MCP server. It gives your AI agent 30 tools to read 
 
 ## Philosophy
 
+The name comes from the [yo-yo problem](https://en.wikipedia.org/wiki/Yo-yo_problem) — a software antipattern where understanding a program forces you to bounce endlessly between files, classes, and definitions. The programmer's attention moves up and down like a yo-yo. yoyo exists to make that bounce unnecessary.
+
 In yoyo tournaments, a yoyo is just a spinning disk on a string. The magic is in the combinations — string wraps, body movements, timing layered together. A single trick is fine. Fifty moves chained in sequence is something else entirely.
 
 yoyo works the same way. Each tool does one thing. The combinations are what's deadly:
