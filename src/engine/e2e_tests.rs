@@ -520,4 +520,51 @@ pub fn fetch_user(id: u32) -> String {
             assert!(v["steps"].is_array(), "output must always have 'steps' array");
         }
     }
+
+    // ── bake .gitignore ───────────────────────────────────────────────────────
+
+    #[test]
+    fn e2e_bake_respects_gitignore() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+
+        // Write a real source file that should be indexed.
+        fs::write(root_path.join("main.rs"), "fn hello() {}\n").unwrap();
+
+        // Write a file inside an ignored directory that must NOT be indexed.
+        let dist = root_path.join("dist");
+        fs::create_dir_all(&dist).unwrap();
+        fs::write(dist.join("bundle.rs"), "fn ignored_fn() {}\n").unwrap();
+
+        // Write .gitignore that excludes dist/.
+        fs::write(root_path.join(".gitignore"), "dist/\n").unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        // symbol should find hello (source file indexed).
+        let out = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "hello".to_string(),
+            false,
+            None,
+            Some(20),
+        )
+        .unwrap();
+        assert!(out.contains("hello"), "main.rs should be indexed");
+
+        // ignored_fn must not appear anywhere in the index.
+        let out2 = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "ignored_fn".to_string(),
+            false,
+            None,
+            Some(20),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out2).unwrap();
+        assert!(
+            v["matches"].as_array().map(|a| a.is_empty()).unwrap_or(true),
+            "dist/bundle.rs should be excluded via .gitignore"
+        );
+    }
 }
