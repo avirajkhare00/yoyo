@@ -16,6 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Zig 0.14.1
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.1
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
