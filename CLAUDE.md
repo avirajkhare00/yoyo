@@ -17,6 +17,8 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
 Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
+
+If unsure about behavior, structure, or intent — read the code. Don't guess. Don't infer from docs or memory. The source is always the ground truth.
 ## How Claude works in this project
 
 Each session follows this sequence:
