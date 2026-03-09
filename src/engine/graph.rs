@@ -67,6 +67,61 @@ fn collect_source_files(root: &PathBuf) -> Vec<PathBuf> {
     files
 }
 
+/// A typed parameter for scaffold generation.
+pub struct Param {
+    pub name: String,
+    pub type_str: String,
+}
+
+/// Generate a function scaffold with typed signature (params / return type / method receiver).
+/// Type strings are passed verbatim — callers supply language-appropriate types.
+fn generate_typed_scaffold(
+    name: &str,
+    lang: &str,
+    params: &[Param],
+    returns: Option<&str>,
+    on: Option<&str>,
+) -> String {
+    let param_str: String = match lang {
+        "go" => params.iter().map(|p| format!("{} {}", p.name, p.type_str)).collect::<Vec<_>>().join(", "),
+        _ => params.iter().map(|p| format!("{}: {}", p.name, p.type_str)).collect::<Vec<_>>().join(", "),
+    };
+
+    match lang {
+        "rust" => {
+            let ret = returns.map(|r| format!(" -> {}", r)).unwrap_or_default();
+            if let Some(struct_name) = on {
+                format!("\nimpl {} {{\n    fn {}({}){} {{\n        todo!()\n    }}\n}}\n", struct_name, name, param_str, ret)
+            } else {
+                format!("\nfn {}({}){} {{\n    todo!()\n}}\n", name, param_str, ret)
+            }
+        }
+        "go" => {
+            let ret = returns.map(|r| format!(" {}", r)).unwrap_or_default();
+            if let Some(struct_name) = on {
+                let recv = struct_name.chars().next().map(|c| c.to_lowercase().to_string()).unwrap_or_else(|| "r".to_string());
+                format!("\nfunc ({} *{}) {}({}){} {{\n    // TODO\n}}\n", recv, struct_name, name, param_str, ret)
+            } else {
+                format!("\nfunc {}({}){} {{\n    // TODO\n}}\n", name, param_str, ret)
+            }
+        }
+        "typescript" | "javascript" => {
+            let ret = returns.map(|r| format!(": {}", r)).unwrap_or_default();
+            format!("\nfunction {}({}){} {{\n    // TODO\n}}\n", name, param_str, ret)
+        }
+        "zig" => {
+            let ret = returns.unwrap_or("void");
+            format!("\nfn {}({}) {} {{\n    // TODO\n}}\n", name, param_str, ret)
+        }
+        "python" => {
+            let ret = returns.map(|r| format!(" -> {}", r)).unwrap_or_default();
+            let self_prefix = if on.is_some() { "self, " } else { "" };
+            format!("\ndef {}({}{}){} :\n    pass\n", name, self_prefix, param_str, ret)
+        }
+        _ => format!("\nfn {}({}) {{\n    // TODO\n}}\n", name, param_str),
+    }
+}
+
 fn generate_scaffold(entity_type: &str, name: &str, lang: &str) -> String {
     match entity_type {
         "fn" => format!("\nfn {}() {{\n    todo!()\n}}\n", name),
@@ -230,6 +285,9 @@ pub fn graph_add(
     file: String,
     after_symbol: Option<String>,
     language: Option<String>,
+    params: Option<Vec<Param>>,
+    returns: Option<String>,
+    on: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let full_path = root.join(&file);
@@ -266,7 +324,11 @@ pub fn graph_add(
         }
     };
 
-    let scaffold = generate_scaffold(&entity_type, &name, lang);
+    let scaffold = if let Some(ref p) = params {
+        generate_typed_scaffold(&name, lang, p, returns.as_deref(), on.as_deref())
+    } else {
+        generate_scaffold(&entity_type, &name, lang)
+    };
     let scaffold_bytes = scaffold.as_bytes();
 
     let mut bytes = if full_path.exists() {
@@ -302,6 +364,8 @@ pub fn graph_create(
     file: String,
     function_name: String,
     language: Option<String>,
+    params: Option<Vec<Param>>,
+    returns: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let full_path = root.join(&file);
@@ -337,7 +401,11 @@ pub fn graph_create(
         _ => "function",
     };
 
-    let scaffold = generate_scaffold(entity_type, &function_name, lang);
+    let scaffold = if let Some(ref p) = params {
+        generate_typed_scaffold(&function_name, lang, p, returns.as_deref(), None)
+    } else {
+        generate_scaffold(entity_type, &function_name, lang)
+    };
     fs::write(&full_path, scaffold.trim_start())
         .with_context(|| format!("Failed to create file {}", file))?;
 
@@ -916,6 +984,7 @@ mod tests {
             "src/lib.rs".into(),
             None,
             Some("rust".into()),
+            None, None, None,
         )
         .unwrap();
 
@@ -938,6 +1007,7 @@ mod tests {
             "src/new_module.rs".into(),
             "process_event".into(),
             Some("rust".into()),
+            None, None,
         )
         .unwrap();
 
@@ -960,7 +1030,7 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "src/existing.rs".into(),
             "new_fn".into(),
-            None,
+            None, None, None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("already exists"));
@@ -974,7 +1044,7 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "nonexistent/dir/foo.rs".into(),
             "my_fn".into(),
-            None,
+            None, None, None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("does not exist"));
@@ -990,6 +1060,7 @@ mod tests {
             "src/handler.py".into(),
             "handle_request".into(),
             Some("python".into()),
+            None, None,
         )
         .unwrap();
 
@@ -1011,6 +1082,7 @@ mod tests {
             "src/service.ts".into(),
             "fetchUser".into(),
             Some("typescript".into()),
+            None, None,
         )
         .unwrap();
 
@@ -1030,12 +1102,117 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "src/utils.go".into(),
             "parseArgs".into(),
-            None, // no explicit language
+            None, None, None,
         )
         .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/utils.go")).unwrap();
         assert!(content.contains("func parseArgs"));
+    }
+
+    // ── typed scaffold ────────────────────────────────────────────────────────
+
+    fn params(list: &[(&str, &str)]) -> Vec<Param> {
+        list.iter().map(|(n, t)| Param { name: n.to_string(), type_str: t.to_string() }).collect()
+    }
+
+    #[test]
+    fn typed_scaffold_rust_function_with_params_and_return() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn existing() {}\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "fn".into(), "parse_config".into(), "src/lib.rs".into(),
+            None, Some("rust".into()),
+            Some(params(&[("input", "&str"), ("timeout", "u32")])),
+            Some("Result<Config, Error>".into()),
+            None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn parse_config(input: &str, timeout: u32)"), "params missing: {}", content);
+        assert!(content.contains("-> Result<Config, Error>"), "return type missing: {}", content);
+        assert!(content.contains("todo!()"), "body missing: {}", content);
+    }
+
+    #[test]
+    fn typed_scaffold_rust_method_wraps_in_impl_block() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "struct Config;\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "fn".into(), "load".into(), "src/lib.rs".into(),
+            None, Some("rust".into()),
+            Some(params(&[("path", "&str")])),
+            Some("Result<Self, Error>".into()),
+            Some("Config".into()),
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("impl Config"), "impl block missing: {}", content);
+        assert!(content.contains("fn load(path: &str)"), "method sig missing: {}", content);
+        assert!(content.contains("-> Result<Self, Error>"), "return type missing: {}", content);
+    }
+
+    #[test]
+    fn typed_scaffold_go_function_with_params_and_return() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.go", "package lib\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "func".into(), "ParseConfig".into(), "src/lib.go".into(),
+            None, Some("go".into()),
+            Some(params(&[("input", "string"), ("timeout", "int")])),
+            Some("(Config, error)".into()),
+            None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.go")).unwrap();
+        assert!(content.contains("func ParseConfig(input string, timeout int)"), "sig missing: {}", content);
+        assert!(content.contains("(Config, error)"), "return type missing: {}", content);
+    }
+
+    #[test]
+    fn typed_scaffold_typescript_function_with_params_and_return() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/service.ts", "export {};\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "function".into(), "fetchUser".into(), "src/service.ts".into(),
+            None, Some("typescript".into()),
+            Some(params(&[("id", "number"), ("opts", "RequestOptions")])),
+            Some("Promise<User>".into()),
+            None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/service.ts")).unwrap();
+        assert!(content.contains("function fetchUser(id: number, opts: RequestOptions)"), "sig missing: {}", content);
+        assert!(content.contains(": Promise<User>"), "return type missing: {}", content);
+    }
+
+    #[test]
+    fn typed_scaffold_no_spec_behaves_as_before() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn existing() {}\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "fn".into(), "simple".into(), "src/lib.rs".into(),
+            None, Some("rust".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn simple()"), "bare scaffold missing: {}", content);
     }
 
     // ── graph_move ────────────────────────────────────────────────────────────

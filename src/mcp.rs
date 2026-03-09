@@ -524,14 +524,21 @@ fn build_registry() -> Vec<ToolEntry> {
                 "path": p(),
                 "file": s("File path relative to project root (e.g. 'src/engine/foo.rs')"),
                 "function_name": s("Name for the initial scaffolded function"),
-                "language": s("Optional: override language detection (rust | typescript | python | go | java | c | cpp)")
+                "language": s("Optional: override language detection (rust | typescript | python | go | java | c | cpp)"),
+                "params": s("Optional: typed parameters as [{\"name\":\"x\",\"type\":\"i32\"},...] — generates typed signature"),
+                "returns": s("Optional: return type string (e.g. 'Result<T, Error>') — used with params")
             })),
-            handler: Box::new(|a, path| crate::engine::graph_create(
-                path,
-                a.str_req("file", "graph_create")?,
-                a.str_req("function_name", "graph_create")?,
-                a.str_opt("language"),
-            )),
+            handler: Box::new(|a, path| {
+                let params = parse_params(a.0.get("params"));
+                crate::engine::graph_create(
+                    path,
+                    a.str_req("file", "graph_create")?,
+                    a.str_req("function_name", "graph_create")?,
+                    a.str_opt("language"),
+                    params,
+                    a.str_opt("returns"),
+                )
+            }),
         },
         ToolEntry {
             schema: schema_req("graph_add", d("graph_add"), &["entity_type", "name", "file"], json!({
@@ -540,16 +547,25 @@ fn build_registry() -> Vec<ToolEntry> {
                 "name": s("Name for the new function/entity"),
                 "file": s("File path relative to project root"),
                 "after_symbol": s("Optional: insert after this existing symbol (name or substring)"),
-                "language": s("Optional: override language detection (rust | typescript | python | go)")
+                "language": s("Optional: override language detection (rust | typescript | python | go)"),
+                "params": s("Optional: typed parameters as [{\"name\":\"x\",\"type\":\"i32\"},...] — generates typed signature"),
+                "returns": s("Optional: return type string (e.g. 'Result<T, Error>') — used with params"),
+                "on": s("Optional: struct/class name — wraps function in impl/class block (Rust: impl Foo, Go: method receiver)")
             })),
-            handler: Box::new(|a, path| crate::engine::graph_add(
-                path,
-                a.str_req("entity_type", "graph_add")?,
-                a.str_req("name", "graph_add")?,
-                a.str_req("file", "graph_add")?,
-                a.str_opt("after_symbol"),
-                a.str_opt("language"),
-            )),
+            handler: Box::new(|a, path| {
+                let params = parse_params(a.0.get("params"));
+                crate::engine::graph_add(
+                    path,
+                    a.str_req("entity_type", "graph_add")?,
+                    a.str_req("name", "graph_add")?,
+                    a.str_req("file", "graph_add")?,
+                    a.str_opt("after_symbol"),
+                    a.str_opt("language"),
+                    params,
+                    a.str_opt("returns"),
+                    a.str_opt("on"),
+                )
+            }),
         },
         ToolEntry {
             schema: schema_req("graph_move", d("graph_move"), &["name", "to_file"], json!({
@@ -677,6 +693,17 @@ impl Args {
         self.0.get(key).and_then(|v| v.as_u64())
             .ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
     }
+}
+
+/// Parse `[{"name":"x","type":"i32"},...]` into `Vec<Param>`. Returns None if absent or malformed.
+fn parse_params(val: Option<&Value>) -> Option<Vec<crate::engine::Param>> {
+    let arr = val?.as_array()?;
+    let params: Vec<_> = arr.iter().filter_map(|item| {
+        let name = item.get("name")?.as_str()?.to_string();
+        let type_str = item.get("type")?.as_str()?.to_string();
+        Some(crate::engine::Param { name, type_str })
+    }).collect();
+    if params.is_empty() { None } else { Some(params) }
 }
 
 fn ok_text(text: String) -> Result<Value> {
