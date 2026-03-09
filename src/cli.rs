@@ -56,6 +56,8 @@ pub enum Command {
     GraphDelete(GraphDeleteArgs),
     /// Search for functions by natural-language intent (local TF-IDF, no external deps).
     SemanticSearch(SemanticSearchArgs),
+    /// Execute a sequential multi-tool workflow from a JSON spec.
+    Pipeline(PipelineArgs),
     /// Update yoyo to the latest release.
     Update(UpdateArgs),
 }
@@ -466,6 +468,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Health(args)) => run_health(args).await?,
         Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
         Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
+        Some(Command::Pipeline(args)) => run_pipeline(args).await?,
         Some(Command::Update(args)) => run_update(args).await?,
         None => {
             let exe = std::env::current_exe()
@@ -512,7 +515,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             println!("  yoyo update          self-update binary");
             println!("  brew upgrade yoyo    if installed via Homebrew");
             println!();
-            println!("All 28 tools: yoyo --help");
+            println!("All 29 tools: yoyo --help");
             println!("Full docs:    https://github.com/avirajkhare00/yoyo");
         }
     }
@@ -749,6 +752,38 @@ async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
 
 async fn run_semantic_search(args: SemanticSearchArgs) -> anyhow::Result<()> {
     let json = crate::engine::semantic_search(args.path, args.query, args.limit, args.file)?;
+    println!("{json}");
+    Ok(())
+}
+
+#[derive(Args, Debug)]
+pub struct PipelineArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Pipeline spec as an inline JSON array of steps.
+    /// Each step: {"id":"s1","tool":"symbol","args":{"name":"foo"},"if":"{{s0.ok}}"}
+    #[arg(long)]
+    pub spec: Option<String>,
+
+    /// Path to a JSON file containing the pipeline spec array.
+    #[arg(long)]
+    pub spec_file: Option<String>,
+}
+
+async fn run_pipeline(args: PipelineArgs) -> anyhow::Result<()> {
+    let spec_str = if let Some(s) = args.spec {
+        s
+    } else if let Some(f) = args.spec_file {
+        std::fs::read_to_string(&f)
+            .map_err(|e| anyhow::anyhow!("Failed to read spec file '{}': {}", f, e))?
+    } else {
+        anyhow::bail!("pipeline requires --spec <json> or --spec-file <path>");
+    };
+    let spec: serde_json::Value = serde_json::from_str(&spec_str)
+        .map_err(|e| anyhow::anyhow!("Invalid pipeline spec JSON: {}", e))?;
+    let json = crate::engine::pipeline(args.path, spec)?;
     println!("{json}");
     Ok(())
 }

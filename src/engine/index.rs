@@ -198,6 +198,7 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "graph_move",       description: "Move a function between files atomically — removes from source, appends to destination, reindexes both. Run bake first to ensure byte offsets are fresh. Check blast_radius to understand import impact before moving.", requires_bake: true, category: "write", parallelisable: false },
         ToolDescription { name: "graph_delete",     description: "Remove a function by name. Blocks if callers exist — this is a safety net, not an error. Always run health→blast_radius first to confirm the function is truly dead. Use force=true only when you have verified callers are intentional (e.g. test-only).", requires_bake: true, category: "write", parallelisable: false },
         ToolDescription { name: "health",           description: "Dead code, large functions, and duplicate name hints. Gotcha: router-registered handlers may appear as dead code — cross-check with blast_radius before deleting. Use as first step of the safe-delete combo: health→blast_radius→graph_delete.", requires_bake: true, category: "read-indexed", parallelisable: true },
+        ToolDescription { name: "pipeline",         description: "Execute a sequential multi-tool workflow from a JSON spec. Steps run in order; each step's output is available to subsequent steps via {{step_id.field[N].subfield}} refs. Conditions (if) skip steps when false. Use when you need to chain multiple tools atomically — a single spec replaces a multi-turn conversation.", requires_bake: false, category: "orchestration", parallelisable: false },
     ]
 }
 
@@ -388,6 +389,13 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "bake",       hint: "Ensure index is fresh so call edges are populated" },
                 WorkflowStep { tool: "trace_down", hint: "Pass symbol name; optionally set depth (default 5) and file to disambiguate" },
                 WorkflowStep { tool: "symbol",     hint: "Inspect any resolved callee with include_source=true" },
+            ],
+        },
+        Workflow {
+            name: "Run a multi-tool pipeline",
+            description: "Chain multiple tools in a single atomic call. Each step can reference previous step output via {{step_id.field[N].subfield}}. Steps with a false 'if' condition are skipped.",
+            steps: vec![
+                WorkflowStep { tool: "pipeline", hint: "Pass spec: a JSON array of steps. Each step has id, tool, args (with optional {{refs}}), and optional if condition. Output: {steps: [{id, tool, ok, result}]}." },
             ],
         },
     ]
