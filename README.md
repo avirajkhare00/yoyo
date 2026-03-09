@@ -4,7 +4,7 @@
 
 # yoyo
 
-yoyo is a code intelligence MCP server. It gives your AI agent 28 tools to read and edit any codebase — grounded in the AST, not model memory.
+yoyo is a code intelligence MCP server. It gives your AI agent 30 tools to read and edit any codebase — grounded in the AST, not model memory.
 
 **Built for agents.** Drop it into Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, or any MCP-compatible agent. The agent calls the tools. You get better answers.
 
@@ -34,7 +34,7 @@ No single tool is the point. The orchestration is.
 
 ```
 you run:   yoyo bake --path /your/project
-agent gets: 27 tools — search, read, write, rename, trace, analyze
+agent gets: 30 tools — search, read, write, rename, trace, analyze
 agent uses: supersearch / symbol / flow / patch — not grep, not cat
 result:     answers from facts, not memory. no hallucinated file paths.
 ```
@@ -147,7 +147,7 @@ This injects a reminder on every prompt so Claude actively uses yoyo tools inste
 
 ---
 
-You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 28 tools.
+You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 30 tools.
 
 ---
 
@@ -158,7 +158,8 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 |---|---|
 | `bake` | Parse the project, write the AST index. Run first. |
 | `shake` | Language breakdown, file count, top-complexity functions. |
-| `llm_instructions` | Agent bootstrap: tool list, workflows, prime directives. |
+| `llm_instructions` | Lean bootstrap: tool catalog, prime directives, concurrency rules. |
+| `llm_workflows` | On-demand reference: 21 workflows, decision map, antipatterns, metapatterns. |
 
 ### Read
 | Tool | What it does |
