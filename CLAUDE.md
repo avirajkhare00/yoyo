@@ -63,6 +63,16 @@ When you update a fact, update it in one place. If you find the same number in t
 
 Violations to fix on sight: language lists copied into README, version numbers in multiple files, eval scores duplicated across REPORT.md and README, tool counts hardcoded in multiple places.
 
+## Language ground truth — read before generating
+
+Before generating code in any systems language, read the version-specific playbook:
+
+| Language | Playbook | Key breaks vs training data |
+|---|---|---|
+| Zig 0.15.x | [`playbook/zig-0.15.md`](./playbook/zig-0.15.md) | ArrayList unmanaged (allocator per method), `build-exe` has no `-o` flag |
+
+Do not rely on memory for Zig. The API changed. Read the playbook first.
+
 ## Code over documentation — read the source
 
 When adding a new language or integrating a new library, **read the source first**. Don't trust docs, blog posts, or AI memory of what node types exist. Docs go stale. The source doesn't lie.
