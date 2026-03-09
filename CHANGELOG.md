@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.7] - 2026-03-09
+
+### Fixed
+
+- `bake`: excluded `.git/` directory from indexing. `hidden(false)` walk caused all git object blobs to be indexed as `"other"` — inflating file counts from ~130 to 1635. Fixed with `filter_entry` on `.git`. 1 new test.
+
 ## [1.3.6] - 2026-03-09
 
 ### Added

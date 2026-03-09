@@ -121,6 +121,7 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         .hidden(false)       // don't skip hidden files — .gitignore handles exclusions
         .git_ignore(true)    // respect .gitignore (nested, global, .git/info/exclude)
         .require_git(false)  // apply .gitignore rules even outside a git repo
+        .filter_entry(|e| e.file_name() != ".git")  // never descend into .git/
         .build()
     {
         let entry = match result {
