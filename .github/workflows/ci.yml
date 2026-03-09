@@ -20,13 +20,9 @@ jobs:
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            ARCH="x86_64"
-            EXT="tar.xz"
-            URL="https://ziglang.org/download/0.14.1/zig-linux-${ARCH}-0.14.1.${EXT}"
+            URL="https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz"
           else
-            ARCH="aarch64"
-            EXT="tar.xz"
-            URL="https://ziglang.org/download/0.14.1/zig-macos-${ARCH}-0.14.1.${EXT}"
+            URL="https://ziglang.org/download/0.14.1/zig-aarch64-macos-0.14.1.tar.xz"
           fi
           curl -fsSL "$URL" | tar -xJ
           echo "$PWD/zig-"*"/" >> "$GITHUB_PATH"
