@@ -19,8 +19,6 @@ pub enum Command {
     Flow(FlowArgs),
     /// Read a specific line range of a file.
     Slice(SliceArgs),
-    /// Exported API summary grouped by module (TypeScript-only for now).
-    ApiSurface(ApiSurfaceArgs),
     /// Per-file function overview from the bake index.
     FileFunctions(FileFunctionsArgs),
     /// Text-based search over TS/JS source files.
@@ -31,10 +29,6 @@ pub enum Command {
     ArchitectureMap(ArchitectureMapArgs),
     /// Suggest where to place a new function.
     SuggestPlacement(SuggestPlacementArgs),
-    /// Entity-level CRUD matrix inferred from endpoints.
-    CrudOperations(CrudOperationsArgs),
-    /// Trace an API endpoint through backend handlers.
-    ApiTrace(ApiTraceArgs),
     /// Find documentation/config files.
     FindDocs(FindDocsArgs),
     /// Apply a patch by symbol name or by file/line range.
@@ -58,8 +52,8 @@ pub enum Command {
     GraphDelete(GraphDeleteArgs),
     /// Search for functions by natural-language intent (local TF-IDF, no external deps).
     SemanticSearch(SemanticSearchArgs),
-    /// Execute a sequential multi-tool workflow from a JSON spec.
-    Pipeline(PipelineArgs),
+    /// Execute a Rhai script with yoyo tools available as functions.
+    Script(ScriptArgs),
     /// Update yoyo to the latest release.
     Update(UpdateArgs),
 }
@@ -166,21 +160,6 @@ pub struct SliceArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct ApiSurfaceArgs {
-    /// Optional path to the project directory to analyze.
-    #[arg(long)]
-    pub path: Option<String>,
-
-    /// Optional package/module filter (substring match on module or file paths).
-    #[arg(long)]
-    pub package: Option<String>,
-
-    /// Maximum number of functions per module (default 20).
-    #[arg(long, default_value_t = 20)]
-    pub limit: usize,
-}
-
-#[derive(Args, Debug)]
 pub struct FileFunctionsArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
@@ -265,32 +244,6 @@ pub struct SuggestPlacementArgs {
     /// Existing related symbol or substring (optional).
     #[arg(long)]
     pub related_to: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct CrudOperationsArgs {
-    /// Optional path to the project directory to analyze.
-    #[arg(long)]
-    pub path: Option<String>,
-
-    /// Optional entity filter (e.g. "user").
-    #[arg(long)]
-    pub entity: Option<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct ApiTraceArgs {
-    /// Optional path to the project directory to analyze.
-    #[arg(long)]
-    pub path: Option<String>,
-
-    /// Endpoint path (or substring), e.g. "/users".
-    #[arg(long)]
-    pub endpoint: String,
-
-    /// Optional HTTP method (GET, POST, etc.).
-    #[arg(long)]
-    pub method: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -459,14 +412,11 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::AllEndpoints(args)) => run_all_endpoints(args).await?,
         Some(Command::Flow(args)) => run_flow(args).await?,
         Some(Command::Slice(args)) => run_slice(args).await?,
-        Some(Command::ApiSurface(args)) => run_api_surface(args).await?,
         Some(Command::FileFunctions(args)) => run_file_functions(args).await?,
         Some(Command::Supersearch(args)) => run_supersearch(args).await?,
         Some(Command::PackageSummary(args)) => run_package_summary(args).await?,
         Some(Command::ArchitectureMap(args)) => run_architecture_map(args).await?,
         Some(Command::SuggestPlacement(args)) => run_suggest_placement(args).await?,
-        Some(Command::CrudOperations(args)) => run_crud_operations(args).await?,
-        Some(Command::ApiTrace(args)) => run_api_trace(args).await?,
         Some(Command::FindDocs(args)) => run_find_docs(args).await?,
         Some(Command::Patch(args)) => run_patch(args).await?,
         Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
@@ -478,7 +428,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Health(args)) => run_health(args).await?,
         Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
         Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
-        Some(Command::Pipeline(args)) => run_pipeline(args).await?,
+        Some(Command::Script(args)) => run_script(args).await?,
         Some(Command::Update(args)) => run_update(args).await?,
         None => {
             let exe = std::env::current_exe()
@@ -580,12 +530,6 @@ async fn run_slice(args: SliceArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_api_surface(args: ApiSurfaceArgs) -> anyhow::Result<()> {
-    let json = crate::engine::api_surface(args.path, args.package, Some(args.limit))?;
-    println!("{json}");
-    Ok(())
-}
-
 async fn run_file_functions(args: FileFunctionsArgs) -> anyhow::Result<()> {
     let json =
         crate::engine::file_functions(args.path, args.file, Some(args.include_summaries))?;
@@ -626,18 +570,6 @@ async fn run_suggest_placement(args: SuggestPlacementArgs) -> anyhow::Result<()>
         args.function_type,
         args.related_to,
     )?;
-    println!("{json}");
-    Ok(())
-}
-
-async fn run_crud_operations(args: CrudOperationsArgs) -> anyhow::Result<()> {
-    let json = crate::engine::crud_operations(args.path, args.entity)?;
-    println!("{json}");
-    Ok(())
-}
-
-async fn run_api_trace(args: ApiTraceArgs) -> anyhow::Result<()> {
-    let json = crate::engine::api_trace(args.path, args.endpoint, args.method)?;
     println!("{json}");
     Ok(())
 }
@@ -774,33 +706,30 @@ async fn run_semantic_search(args: SemanticSearchArgs) -> anyhow::Result<()> {
 }
 
 #[derive(Args, Debug)]
-pub struct PipelineArgs {
+pub struct ScriptArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
 
-    /// Pipeline spec as an inline JSON array of steps.
-    /// Each step: {"id":"s1","tool":"symbol","args":{"name":"foo"},"if":"{{s0.ok}}"}
+    /// Rhai script to execute. Inline code string.
     #[arg(long)]
-    pub spec: Option<String>,
+    pub code: Option<String>,
 
-    /// Path to a JSON file containing the pipeline spec array.
+    /// Path to a .rhai file to execute.
     #[arg(long)]
-    pub spec_file: Option<String>,
+    pub code_file: Option<String>,
 }
 
-async fn run_pipeline(args: PipelineArgs) -> anyhow::Result<()> {
-    let spec_str = if let Some(s) = args.spec {
-        s
-    } else if let Some(f) = args.spec_file {
+async fn run_script(args: ScriptArgs) -> anyhow::Result<()> {
+    let code = if let Some(c) = args.code {
+        c
+    } else if let Some(f) = args.code_file {
         std::fs::read_to_string(&f)
-            .map_err(|e| anyhow::anyhow!("Failed to read spec file '{}': {}", f, e))?
+            .map_err(|e| anyhow::anyhow!("Failed to read script file '{}': {}", f, e))?
     } else {
-        anyhow::bail!("pipeline requires --spec <json> or --spec-file <path>");
+        anyhow::bail!("script requires --code <rhai> or --code-file <path>");
     };
-    let spec: serde_json::Value = serde_json::from_str(&spec_str)
-        .map_err(|e| anyhow::anyhow!("Invalid pipeline spec JSON: {}", e))?;
-    let json = crate::engine::pipeline(args.path, spec)?;
+    let json = crate::engine::run_script(args.path, code)?;
     println!("{json}");
     Ok(())
 }

@@ -297,228 +297,96 @@ pub fn fetch_user(id: u32) -> String {
         assert!(content.contains("fn format_result"), "format_result was incorrectly removed");
     }
 
-    // ── pipeline ──────────────────────────────────────────────────────────────
+    // ── script ────────────────────────────────────────────────────────────────
 
     #[test]
-    fn e2e_pipeline_single_step_shake() {
+    fn e2e_script_symbol_call() {
         let dir = setup();
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "shake"}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
+        let out = crate::engine::run_script(
+            root(&dir),
+            r#"symbol("add")"#.to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0]["id"], "s1");
-        assert_eq!(steps[0]["ok"], true);
-        assert!(steps[0]["result"]["files_indexed"].as_u64().unwrap() > 0);
+        assert_eq!(v["tool"], "script");
+        let matches = v["result"]["matches"].as_array().unwrap();
+        assert!(!matches.is_empty(), "symbol('add') should find a match");
+        assert_eq!(matches[0]["name"], "add");
     }
 
     #[test]
-    fn e2e_pipeline_two_step_shake_then_symbol() {
+    fn e2e_script_chain_symbol_then_blast_radius() {
         let dir = setup();
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "shake"},
-            {"id": "s2", "tool": "symbol", "args": {"name": "add", "include_source": false}}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
+        // Rhai equivalent of the old two-step pipeline: symbol → blast_radius using result
+        let out = crate::engine::run_script(
+            root(&dir),
+            r#"
+                let s = symbol("add");
+                let name = s["matches"][0]["name"];
+                blast_radius(name)
+            "#
+            .to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0]["ok"], true);
-        assert_eq!(steps[1]["ok"], true);
-        let matches = steps[1]["result"]["matches"].as_array().unwrap();
-        assert!(!matches.is_empty(), "symbol step should find 'add'");
+        assert_eq!(v["tool"], "script");
+        assert!(v["result"]["callers"].is_array());
     }
 
     #[test]
-    fn e2e_pipeline_output_ref_in_args() {
-        // s1 runs symbol to find 'add', s2 uses the result's first match file in a supersearch
+    fn e2e_script_conditional_on_caller_count() {
         let dir = setup();
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "symbol", "args": {"name": "add"}},
-            {
-                "id": "s2",
-                "tool": "supersearch",
-                "args": {
-                    "query": "{{s1.matches[0].name}}",
-                    "context": "identifiers",
-                    "limit": 10
+        // clamp has no callers — condition should branch to symbol("add")
+        let out = crate::engine::run_script(
+            root(&dir),
+            r#"
+                let br = blast_radius("clamp");
+                if br["callers"].len() == 0 {
+                    symbol("add")
+                } else {
+                    br
                 }
-            }
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
+            "#
+            .to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps[0]["ok"], true);
-        assert_eq!(steps[1]["ok"], true);
-        // The supersearch ran with query="add" (resolved from s1.matches[0].name)
-        let matches = steps[1]["result"]["matches"].as_array().unwrap();
-        assert!(!matches.is_empty(), "supersearch with resolved query should find results");
+        assert_eq!(v["tool"], "script");
+        // clamp has no callers → took the true branch → returned symbol("add") result
+        assert!(v["result"]["matches"].is_array(), "expected symbol result for 'add'");
     }
 
     #[test]
-    fn e2e_pipeline_condition_true_step_runs() {
+    fn e2e_script_map_over_array() {
         let dir = setup();
-        // s1 returns shake result; s2 runs only if files_indexed is truthy (it is)
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "shake"},
-            {"id": "s2", "tool": "symbol", "args": {"name": "multiply"}, "if": "{{s1.files_indexed}}"}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
+        // collect all function names from file_functions, filter for those containing 'add'
+        let out = crate::engine::run_script(
+            root(&dir),
+            r#"
+                let ff = file_functions("src/math.rs");
+                ff["functions"].filter(|f| f["name"].contains("add"))
+            "#
+            .to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[1]["ok"], true, "s2 should run when condition is truthy");
-        assert!(steps[1].get("skipped").is_none() || steps[1]["skipped"] != true);
+        assert_eq!(v["tool"], "script");
+        let filtered = v["result"].as_array().unwrap();
+        assert!(!filtered.is_empty(), "filter for 'add' should return at least one result");
     }
 
     #[test]
-    fn e2e_pipeline_condition_false_step_skipped() {
+    fn e2e_script_supersearch_result() {
         let dir = setup();
-        // s1 runs blast_radius on 'add', returns callers array
-        // s2 has condition: only run if callers list is empty — it won't be (square calls add)
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "blast_radius", "args": {"symbol": "add", "depth": 1}},
-            {
-                "id": "s2",
-                "tool": "symbol",
-                "args": {"name": "clamp"},
-                "if": "{{s1.callers | length == 0}}"
-            }
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
+        let out = crate::engine::run_script(
+            root(&dir),
+            r#"supersearch("add")"#.to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0]["ok"], true);
-        // 'add' has callers (sum_three calls add), so length != 0, condition is false
-        assert_eq!(steps[1]["skipped"], true, "s2 should be skipped when add has callers");
-    }
-
-    #[test]
-    fn e2e_pipeline_condition_empty_callers_runs_step() {
-        let dir = setup();
-        // clamp has no callers in the fixture — so length == 0 should be true
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "blast_radius", "args": {"symbol": "clamp", "depth": 1}},
-            {
-                "id": "s2",
-                "tool": "symbol",
-                "args": {"name": "add"},
-                "if": "{{s1.callers | length == 0}}"
-            }
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps[0]["ok"], true);
-        // clamp has no callers so condition is true, s2 should run
-        assert_eq!(
-            steps[1]["ok"], true,
-            "s2 should run when callers is empty; steps: {:?}", steps
-        );
-    }
-
-    #[test]
-    fn e2e_pipeline_error_step_stops_pipeline() {
-        let dir = setup();
-        // symbol with a missing required arg 'name' should error
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "symbol", "args": {}},  // missing 'name'
-            {"id": "s2", "tool": "shake"}                // should never run
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        // Only s1 appears — pipeline stopped after error
-        assert_eq!(steps.len(), 1, "pipeline should stop after error step");
-        assert_eq!(steps[0]["ok"], false);
-        assert!(steps[0]["error"].as_str().is_some());
-    }
-
-    #[test]
-    fn e2e_pipeline_three_steps_read_only() {
-        let dir = setup();
-        // shake → symbol → blast_radius chain — all read-only, all should succeed
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "shake"},
-            {"id": "s2", "tool": "symbol", "args": {"name": "multiply"}},
-            {"id": "s3", "tool": "blast_radius", "args": {"symbol": "multiply", "depth": 1}}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 3);
-        for step in steps {
-            assert_eq!(step["ok"], true, "step {} failed: {:?}", step["id"], step.get("error"));
-        }
-    }
-
-    #[test]
-    fn e2e_pipeline_skipped_step_does_not_populate_ctx() {
-        let dir = setup();
-        // s1 skipped (false condition) → s2 tries to ref s1.matches[0].name → resolves to empty
-        // s2 uses the unresolved ref as-is in its query — supersearch will get the literal template string
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "symbol", "args": {"name": "add"}, "if": "{{nothing}}"},
-            {"id": "s2", "tool": "supersearch", "args": {"query": "multiply", "limit": 5}}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0]["skipped"], true);
-        // s2 still runs with the fallback query "multiply"
-        assert_eq!(steps[1]["ok"], true);
-    }
-
-    #[test]
-    fn e2e_pipeline_supersearch_with_literal_args() {
-        let dir = setup();
-        let spec = serde_json::json!([
-            {
-                "id": "s1",
-                "tool": "supersearch",
-                "args": {"query": "add", "context": "identifiers", "limit": 20}
-            }
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps[0]["ok"], true);
-        let matches = steps[0]["result"]["matches"].as_array().unwrap();
+        assert_eq!(v["tool"], "script");
+        let matches = v["result"]["matches"].as_array().unwrap();
         assert!(!matches.is_empty(), "supersearch for 'add' should find results");
-    }
-
-    #[test]
-    fn e2e_pipeline_file_functions_step() {
-        let dir = setup();
-        let spec = serde_json::json!([
-            {"id": "s1", "tool": "file_functions", "args": {"file": "src/math.rs"}}
-        ]);
-        let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let steps = v["steps"].as_array().unwrap();
-        assert_eq!(steps[0]["ok"], true);
-        let fns = steps[0]["result"]["functions"].as_array().unwrap();
-        let names: Vec<&str> = fns.iter().map(|f| f["name"].as_str().unwrap()).collect();
-        assert!(names.contains(&"add"), "expected 'add' in file_functions for math.rs");
-        assert!(names.contains(&"multiply"), "expected 'multiply' in file_functions for math.rs");
-    }
-
-    #[test]
-    fn e2e_pipeline_result_shape() {
-        // Verify the output envelope always has a "steps" array at top level
-        let dir = setup();
-        for spec in [
-            serde_json::json!([]),
-            serde_json::json!([{"id":"s1","tool":"shake"}]),
-        ] {
-            let out = crate::engine::pipeline(root(&dir), spec).unwrap();
-            let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-            assert!(v["steps"].is_array(), "output must always have 'steps' array");
-        }
     }
 
     // ── patch pre-write AST validation ───────────────────────────────────────
