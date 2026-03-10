@@ -1,7 +1,13 @@
-# Zig 0.15.x API Ground Truth
+# Zig API Ground Truth
 
-Calibrated against Zig 0.15.1 stdlib source. Read this before generating any Zig code.
-Training data baseline is 0.11-0.12 — the breaks below will cause compile errors if ignored.
+**Pinned version: 0.14.1** — this is what the eval harness uses and what Claude is calibrated on.
+Training data baseline is 0.13–0.14. Zig 0.15 introduced breaks listed at the bottom — avoid.
+
+## Version pin rationale
+- 0.11–0.12: Claude has strong training data but API is older (ArrayList managed)
+- 0.13: ArrayList became unmanaged — this is the last major API break before 0.15
+- **0.14.1**: stable, well-covered in training data, `std.io.getStdOut()` still works
+- 0.15+: `std.io.getStdOut()` removed — outside training data, do not target
 
 ## Build commands
 

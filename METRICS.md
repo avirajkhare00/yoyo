@@ -22,23 +22,25 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 ## Language support matrix
 
-| Language | bake | symbol | supersearch | file_functions | endpoints | trace_down |
-|---|---|---|---|---|---|---|
-| Rust | yes | yes | yes | yes | yes (actix/rocket) | yes |
-| Go | yes | yes | yes | yes | yes (gin/echo/net-http) | yes |
-| TypeScript | yes | yes | yes | yes | yes (express) | no |
-| JavaScript | yes | yes | yes | yes | yes (express) | no |
-| Python | yes | yes | yes | yes | no | no |
-| C | yes | yes | yes | yes | no | no |
-| C++ | yes | yes | yes | yes | no | no |
-| C# | yes | yes | yes | yes | no | no |
-| Java | yes | yes | yes | yes | no | no |
-| Kotlin | yes | yes | yes | yes | no | no |
-| PHP | yes | yes | yes | yes | no | no |
-| Ruby | yes | yes | yes | yes | no | no |
-| Swift | yes | yes | yes | yes | no | no |
-| Bash | yes | yes | yes | yes | no | no |
-| Zig | yes | yes | yes | yes | no | no |
+`Calibrated version` = the version Claude is trained on and the eval harness pins to.
+
+| Language | Calibrated version | bake | symbol | supersearch | file_functions | endpoints | trace_down |
+|---|---|---|---|---|---|---|---|
+| Rust | 1.75–1.80 (edition 2021) | yes | yes | yes | yes | yes (actix/rocket) | yes |
+| Go | 1.21–1.23 | yes | yes | yes | yes | yes (gin/echo/net-http) | yes |
+| TypeScript | 5.0–5.4 | yes | yes | yes | yes | yes (express) | no |
+| JavaScript | ES2022 | yes | yes | yes | yes | yes (express) | no |
+| Python | 3.11–3.12 | yes | yes | yes | yes | no | no |
+| C | C17 | yes | yes | yes | yes | no | no |
+| C++ | C++17/20 | yes | yes | yes | yes | no | no |
+| C# | .NET 8 | yes | yes | yes | yes | no | no |
+| Java | 21 (LTS) | yes | yes | yes | yes | no | no |
+| Kotlin | 1.9 | yes | yes | yes | yes | no | no |
+| PHP | 8.2 | yes | yes | yes | yes | no | no |
+| Ruby | 3.2 | yes | yes | yes | yes | no | no |
+| Swift | 5.9 | yes | yes | yes | yes | no | no |
+| Bash | — | yes | yes | yes | yes | no | no |
+| Zig | **0.14.1** | yes | yes | yes | yes | no | no |
 
 `trace_down` / `flow` call-chain tracing: Rust + Go only (emit structured call-graph data at bake time).
 
