@@ -109,6 +109,47 @@ fn parse_semver(v: &str) -> (u32, u32, u32) {
     )
 }
 
+/// Detect stdlib root paths for installed toolchains.
+/// Returns (language, path) for each stdlib found. Best-effort — missing toolchains are skipped.
+pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
+    let mut paths = Vec::new();
+
+    // Zig: zig env --json → lib_dir/std
+    if let Ok(out) = std::process::Command::new("zig").args(["env", "--json"]).output() {
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+            if let Some(lib_dir) = json.get("lib_dir").and_then(|v| v.as_str()) {
+                let p = PathBuf::from(lib_dir).join("std");
+                if p.is_dir() {
+                    paths.push(("zig".to_string(), p));
+                }
+            }
+        }
+    }
+
+    // Go: go env GOROOT → GOROOT/src
+    if let Ok(out) = std::process::Command::new("go").args(["env", "GOROOT"]).output() {
+        if let Ok(s) = std::str::from_utf8(&out.stdout) {
+            let p = PathBuf::from(s.trim()).join("src");
+            if p.is_dir() {
+                paths.push(("go".to_string(), p));
+            }
+        }
+    }
+
+    // Rust: rustc --print sysroot → .../lib/rustlib/src/rust/library
+    if let Ok(out) = std::process::Command::new("rustc").args(["--print", "sysroot"]).output() {
+        if let Ok(s) = std::str::from_utf8(&out.stdout) {
+            let p = PathBuf::from(s.trim())
+                .join("lib").join("rustlib").join("src").join("rust").join("library");
+            if p.is_dir() {
+                paths.push(("rust".to_string(), p));
+            }
+        }
+    }
+
+    paths
+}
+
 pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     use ignore::WalkBuilder;
     use rayon::prelude::*;
@@ -143,10 +184,13 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
             language: lang.to_string(),
             bytes,
             imports: vec![],
+            origin: "user".to_string(),
         });
     }
 
     // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
+    // Stdlib is NOT pre-indexed here — it is too large (Go stdlib = 3000+ files).
+    // The router pulls specific stdlib signatures on demand via detect_stdlib_paths() + symbol().
     let results: Vec<_> = files
         .par_iter()
         .enumerate()

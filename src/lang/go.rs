@@ -148,6 +148,7 @@ fn walk_go(
                                 module_path: mod_path.to_string(),
                                 visibility: vis,
                                 fields: vec![],
+                                is_stdlib: false,
                             });
                         }
                     }
@@ -175,6 +176,7 @@ fn walk_go(
                     qualified_name: qname,
                     visibility: vis,
                     parent_type: None,
+                    is_stdlib: false,
                 });
             }
         }
@@ -198,7 +200,8 @@ fn walk_go(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
-                    parent_type: None, // TODO: extract receiver type — see GitHub issue
+                    parent_type: None, // TODO: extract receiver type
+                    is_stdlib: false,
                 });
             }
         }
