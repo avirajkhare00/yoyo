@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.1] - 2026-03-10
+
+### Fixed
+
+- Release workflow now extracts the matching CHANGELOG section and uses it as the GitHub release body automatically — no more manual `gh release edit` after every tag.
+
+### Tests
+
+- 6 new query-mode tests: stop-words-only → empty, nonsense → empty, case insensitivity, decision map hit, metapattern hit, result cap at 10.
+- Total: 111 tests.
+
 ## [1.5.0] - 2026-03-10
 
 ### Added

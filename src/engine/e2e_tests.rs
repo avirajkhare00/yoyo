@@ -971,6 +971,103 @@ fn unused_two() {}
     }
 
     #[test]
+    fn llm_workflows_query_stop_words_only_returns_empty() {
+        // A query made entirely of stop words should match nothing.
+        let json = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("how do I use the a an to".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            v["matches"].as_array().unwrap().len(),
+            0,
+            "stop-word-only query must return no matches"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_no_match_returns_empty() {
+        let json = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("xyzzy frobnicator quux".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            v["matches"].as_array().unwrap().len(),
+            0,
+            "nonsense query must return no matches"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_case_insensitive() {
+        let lower = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("rename".to_string()),
+        )
+        .unwrap();
+        let upper = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("RENAME".to_string()),
+        )
+        .unwrap();
+        let lv: serde_json::Value = serde_json::from_str(&lower).unwrap();
+        let uv: serde_json::Value = serde_json::from_str(&upper).unwrap();
+        assert_eq!(
+            lv["matches"].as_array().unwrap().len(),
+            uv["matches"].as_array().unwrap().len(),
+            "query matching must be case-insensitive"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_hits_decision_map() {
+        let json = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("struct fields types".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().unwrap();
+        assert!(
+            matches.iter().any(|m| m["kind"] == "decision"),
+            "query 'struct fields types' must return at least one decision entry"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_hits_metapattern() {
+        let json = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("orient unfamiliar codebase".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().unwrap();
+        assert!(
+            matches.iter().any(|m| m["kind"] == "metapattern"),
+            "query 'orient unfamiliar codebase' must surface a metapattern"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_capped_at_ten() {
+        // "function" appears in almost everything — result set must be capped at 10.
+        let json = crate::engine::llm_workflows(
+            None, None, None, None,
+            Some("function".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(
+            v["matches"].as_array().unwrap().len() <= 10,
+            "query results must be capped at 10"
+        );
+    }
+
+    #[test]
     fn e2e_function_item_argument_counts_as_usage() {
         let dir = setup();
         let cache_file = dir.path().join("src/cache.rs");

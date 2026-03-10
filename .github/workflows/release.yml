@@ -12,9 +12,21 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the block between ## [VERSION] and the next ## [
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          # Write to a file to avoid quoting issues in the env var
+          echo "$NOTES" > /tmp/release_notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: false
+          body_path: /tmp/release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
