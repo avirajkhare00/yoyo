@@ -48,7 +48,7 @@ mod tests {
     #[test]
     fn e2e_symbol_finds_function_in_correct_file() {
         let dir = setup();
-        let out = crate::engine::symbol(root(&dir), "add".into(), false, None, None).unwrap();
+        let out = crate::engine::symbol(root(&dir), "add".into(), false, None, None, false).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let matches = v["matches"].as_array().unwrap();
         assert!(!matches.is_empty(), "expected at least one match for 'add'");
@@ -66,7 +66,7 @@ mod tests {
         // math.rs: add, subtract, multiply, square
         // utils.rs: sum_three, clamp, format_result
         for name in &["add", "subtract", "multiply", "square", "sum_three", "clamp", "format_result"] {
-            let out = crate::engine::symbol(root(&dir), name.to_string(), false, None, None).unwrap();
+            let out = crate::engine::symbol(root(&dir), name.to_string(), false, None, None, false).unwrap();
             let v: serde_json::Value = serde_json::from_str(&out).unwrap();
             let matches = v["matches"].as_array().unwrap();
             assert!(
@@ -458,7 +458,7 @@ pub fn fetch_user(id: u32) -> String {
 
         let out = crate::engine::symbol(
             Some(root_path.to_string_lossy().into_owned()),
-            "hello".to_string(), false, None, None,
+            "hello".to_string(), false, None, None, false,
         ).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
@@ -504,6 +504,7 @@ pub fn fetch_user(id: u32) -> String {
             false,
             None,
             Some(20),
+            false,
         )
         .unwrap();
         assert!(out.contains("hello"), "main.rs should be indexed");
@@ -515,6 +516,7 @@ pub fn fetch_user(id: u32) -> String {
             false,
             None,
             Some(20),
+            false,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out2).unwrap();
@@ -599,5 +601,33 @@ pub fn fetch_user(id: u32) -> String {
         // File must be restored.
         let after = fs::read_to_string(root_path.join("src/main.rs")).unwrap();
         assert_eq!(original, after, "file must be restored after cargo check rejection");
+    }
+
+    #[test]
+    fn symbol_stdlib_flag_finds_rust_stdlib() {
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+
+        // Gracefully skip if Rust stdlib sysroot is not installed.
+        let stdlib_paths = crate::engine::util::detect_stdlib_paths();
+        if !stdlib_paths.iter().any(|(lang, _)| lang == "rust") {
+            eprintln!("skip: Rust stdlib not found via rustc --print sysroot");
+            return;
+        }
+
+        // "HashMap" is defined in the Rust stdlib — should produce at least one stdlib match.
+        let json = crate::engine::symbol(
+            Some(root),
+            "HashMap".to_string(),
+            false,
+            None,
+            Some(10),
+            true,
+        ).unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().expect("matches array");
+        let has_stdlib = matches.iter().any(|m| m["is_stdlib"].as_bool().unwrap_or(false));
+        assert!(has_stdlib, "expected at least one is_stdlib: true match for HashMap in Rust stdlib");
     }
 }

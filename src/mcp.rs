@@ -249,7 +249,8 @@ fn build_registry() -> Vec<ToolEntry> {
                 "name": s("Symbol (function) name to look up"),
                 "include_source": b("If true, include the function body (source code) in each match"),
                 "file": s("Optional file path substring to narrow results (e.g. 'routes/user' or 'tcp_core')"),
-                "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits.")
+                "limit": i("Max matches to return (default 20). Lower when include_source=true to stay within context limits."),
+                "stdlib": b("If true, also search installed toolchain stdlibs (Zig/Go/Rust) and return matches tagged is_stdlib: true")
             })),
             handler: Box::new(|a, path| crate::engine::symbol(
                 path,
@@ -257,6 +258,7 @@ fn build_registry() -> Vec<ToolEntry> {
                 a.bool_opt("include_source").unwrap_or(false),
                 a.str_opt("file"),
                 a.uint_opt("limit"),
+                a.bool_opt("stdlib").unwrap_or(false),
             )),
         },
         ToolEntry {

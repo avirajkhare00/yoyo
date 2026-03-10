@@ -108,6 +108,10 @@ pub struct SymbolArgs {
     /// Maximum number of matches to return (default 20).
     #[arg(long)]
     pub limit: Option<usize>,
+
+    /// Also search installed toolchain stdlibs (Zig/Go/Rust). Matches are tagged is_stdlib: true.
+    #[arg(long, default_value_t = false)]
+    pub stdlib: bool,
 }
 
 #[derive(Args, Debug)]
@@ -507,7 +511,7 @@ async fn run_bake(args: BakeArgs) -> anyhow::Result<()> {
 }
 
 async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
-    let json = crate::engine::symbol(args.path, args.name, args.include_source, args.file, args.limit)?;
+    let json = crate::engine::symbol(args.path, args.name, args.include_source, args.file, args.limit, args.stdlib)?;
     println!("{json}");
     Ok(())
 }
