@@ -147,14 +147,21 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
         }
     }
 
-    // TypeScript: npm root -g → <global_node_modules>/typescript/lib
-    if let Ok(out) = std::process::Command::new("npm").args(["root", "-g"]).output() {
-        if let Ok(s) = std::str::from_utf8(&out.stdout) {
-            let p = PathBuf::from(s.trim()).join("typescript").join("lib");
-            if p.is_dir() {
-                paths.push(("typescript".to_string(), p));
-            }
-        }
+    // TypeScript: try npm, pnpm, yarn in order — first valid dir wins
+    let ts_root = [
+        ("npm",  vec!["root", "-g"]),
+        ("pnpm", vec!["root", "-g"]),
+        ("yarn", vec!["global", "dir"]),
+    ]
+    .iter()
+    .find_map(|(cmd, args)| {
+        std::process::Command::new(cmd).args(args.as_slice()).output().ok()
+            .and_then(|out| std::str::from_utf8(&out.stdout).ok().map(|s| s.trim().to_string()))
+            .map(|s| PathBuf::from(s).join("typescript").join("lib"))
+            .filter(|p| p.is_dir())
+    });
+    if let Some(p) = ts_root {
+        paths.push(("typescript".to_string(), p));
     }
 
     paths
