@@ -73,6 +73,29 @@ pub struct IndexedFunction {
     pub is_stdlib: bool,
 }
 
+/// Default enables `..Default::default()` in struct initializers so future
+/// field additions only require updating this impl, not every lang analyzer.
+impl Default for IndexedFunction {
+    fn default() -> Self {
+        IndexedFunction {
+            name: String::new(),
+            file: String::new(),
+            language: String::new(),
+            start_line: 0,
+            end_line: 0,
+            complexity: 0,
+            calls: vec![],
+            byte_start: 0,
+            byte_end: 0,
+            module_path: String::new(),
+            qualified_name: String::new(),
+            visibility: Visibility::default(),
+            parent_type: None,
+            is_stdlib: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexedEndpoint {
     pub method: String,
@@ -101,6 +124,23 @@ pub struct IndexedType {
     /// True when this type was indexed from a toolchain stdlib (not user code).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_stdlib: bool,
+}
+
+impl Default for IndexedType {
+    fn default() -> Self {
+        IndexedType {
+            name: String::new(),
+            file: String::new(),
+            language: String::new(),
+            start_line: 0,
+            end_line: 0,
+            kind: String::new(),
+            module_path: String::new(),
+            visibility: Visibility::default(),
+            fields: vec![],
+            is_stdlib: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

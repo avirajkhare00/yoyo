@@ -75,7 +75,7 @@ fn walk_c(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, fu
                     qualified_name: qualified_name(mod_path, &name, "c"),
                     visibility: Visibility::Public,
                     parent_type: None,
-                    is_stdlib: false,
+                    ..Default::default()
                 });
             }
         }
@@ -88,7 +88,8 @@ fn walk_c(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, fu
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "c".to_string(),
                         start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        ..Default::default()
                     });
                 }
             }

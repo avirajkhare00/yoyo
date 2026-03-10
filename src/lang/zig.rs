@@ -145,7 +145,7 @@ fn walk_zig(
                         qualified_name: qname,
                         visibility: vis,
                         parent_type: None,
-                    is_stdlib: false,
+                        ..Default::default()
                     });
                 }
             }
@@ -165,7 +165,7 @@ fn walk_zig(
                     module_path: mod_path.to_string(),
                     visibility: vis,
                     fields: vec![],
-                    is_stdlib: false,
+                    ..Default::default()
                 });
             }
         }
