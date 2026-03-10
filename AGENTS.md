@@ -28,8 +28,8 @@ Every session working on yoyo is also a yoyo session. Dogfooding is not optional
 
 ## Architecture
 yoyo has two layers:
-- Engine: [`src/engine/`](./src/engine), [`src/lang/`](./src/lang). AST parsing, indexing, analysis, graph operations. Fix root causes here first.
-- Presentation: [`src/mcp.rs`](./src/mcp.rs), [`src/cli.rs`](./src/cli.rs). Tool schemas, CLI commands, output formatting. These are cheaper to change once the engine is correct.
+- Engine: [`src/engine/`](./src/engine), [`src/lang/`](./src/lang). The stable core: AST parsing, indexing, analysis, graph operations. Changes here are high-cost because they affect every presentation layer and every tool built on top.
+- Presentation: [`src/mcp.rs`](./src/mcp.rs), [`src/cli.rs`](./src/cli.rs). Adapters over the engine: MCP tool schemas, CLI commands, output formatting. These can evolve more freely once the engine is correct.
 
 Work bottom-up. Do not paper over engine bugs with presentation-layer workarounds.
 
