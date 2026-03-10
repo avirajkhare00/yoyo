@@ -36,6 +36,10 @@ jobs:
             target: aarch64-apple-darwin
             binary: yoyo
             archive: yoyo-aarch64-apple-darwin.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary: yoyo
+            archive: yoyo-x86_64-apple-darwin.tar.gz
 
     steps:
       - name: Checkout repository
@@ -76,10 +80,16 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Compute SHA256 for macOS tarball
-        id: sha_macos
+      - name: Compute SHA256 for macOS ARM tarball
+        id: sha_macos_arm
         run: |
           sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-aarch64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Compute SHA256 for macOS Intel tarball
+        id: sha_macos_intel
+        run: |
+          sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-x86_64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
           echo "sha=$sha" >> $GITHUB_OUTPUT
 
       - name: Compute SHA256 for Linux tarball
@@ -98,11 +108,13 @@ jobs:
       - name: Update formula
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          SHA_MACOS="${{ steps.sha_macos.outputs.sha }}"
+          SHA_MACOS_ARM="${{ steps.sha_macos_arm.outputs.sha }}"
+          SHA_MACOS_INTEL="${{ steps.sha_macos_intel.outputs.sha }}"
           SHA_LINUX="${{ steps.sha_linux.outputs.sha }}"
 
           sed -i "s/version \".*\"/version \"${VERSION}\"/" homebrew-yoyo/Formula/yoyo.rb
-          sed -i "/aarch64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${SHA_MACOS}\"/}" homebrew-yoyo/Formula/yoyo.rb
+          sed -i "/aarch64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${SHA_MACOS_ARM}\"/}" homebrew-yoyo/Formula/yoyo.rb
+          sed -i "/x86_64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${SHA_MACOS_INTEL}\"/}" homebrew-yoyo/Formula/yoyo.rb
           sed -i "/x86_64-unknown-linux-gnu/{n;s/sha256 \".*\"/sha256 \"${SHA_LINUX}\"/}" homebrew-yoyo/Formula/yoyo.rb
 
       - name: Commit and push formula update

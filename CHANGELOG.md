@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Homebrew formula: added Intel Mac (x86_64-apple-darwin) support. Previously `brew install yoyo` failed with "formula requires at least a URL" on Intel Macs because only ARM macOS and Linux Intel had URLs defined.
+
 ## [1.4.12] - 2026-03-10
 
 ### Fixed
