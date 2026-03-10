@@ -95,6 +95,7 @@ yoyo is systems infrastructure. Every line of code in this project — the engin
 - **Zig** — future. As the language and ecosystem mature, Zig is a natural fit for low-level tooling and performance-critical components.
 
 Python is explicitly excluded. It is a fine language for many things — this project is not one of them. When in doubt: if it's core logic, it's Rust. If it's a script, it's Go or shell. If a tool requires Python to run, reconsider the tool.
+Write idiomatic code in the host language when possible. Prefer the obvious Rust, Go, or Zig solution over patterns borrowed from other ecosystems.
 
 ## Poka-yoke — design over rules
 
