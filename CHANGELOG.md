@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.3] - 2026-03-10
+
+### Added
+
+- `script`: 3 new workflows in `llm_workflows` — cross-reference health smells, batch blast-radius scan, dead code visibility triage. LLMs now know when to reach for script vs individual tool calls.
+- `script`: 4 integration tests against the fixture (symbol, health, dead code triage, file_functions aggregation). Closes #133.
+- `llm_workflows` antipattern: "calling multiple tools sequentially and combining their outputs manually — use script."
+- `script` tool description rewritten to lead with when to use it, not what it is.
+
 ## [1.4.2] - 2026-03-10
 
 ### Added

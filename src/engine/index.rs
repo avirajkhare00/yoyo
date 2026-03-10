@@ -65,6 +65,7 @@ pub fn llm_workflows(path: Option<String>) -> Result<String> {
             "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use symbol — implementors field on trait matches.",
             "reading struct source to get field types: works but is unstructured. Use symbol with include_source=true — fields array is parsed and typed.",
             "using Edit or Write to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use patch — name mode resolves location from the index, returns patched_source for inline verification, and auto-reindexes.",
+            "calling multiple tools sequentially and combining their outputs manually: use script when you need to loop over tool output, filter arrays, cross-reference categories, or reduce across N items. One script call replaces N round-trips and returns a single structured result.",
         ],
         metapatterns: metapattern_catalog(),
     };
@@ -216,7 +217,7 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "graph_delete",     description: "Remove a function by name. Blocks if callers exist. Always run health→blast_radius first to confirm the function is dead.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
         ToolDescription { name: "health",           description: "Dead code, large functions, and duplicate name hints. Router-registered handlers may appear dead — cross-check with blast_radius before deleting.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"large_functions":[{"name":"","file":"","start_line":0,"score":0,"complexity":0,"fan_out":0}],"dead_code":[{"name":"","file":"","start_line":0,"lines":0}],"duplicate_code":[{"stem":"","functions":[{"name":"","file":""}]}],"long_methods":[{"name":"","file":"","start_line":0,"lines":0}],"feature_envy":[{"name":"","file":"","envies":"","cross_file_calls":0}],"shotgun_surgery":[{"name":"","file":"","caller_files":0}]}"#) },
-        ToolDescription { name: "script", description: "Execute a Rhai script with read tools and graph_delete available as functions. Supports loops, map/filter, arbitrary conditionals. Read: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write: graph_delete(name). Returns {result: <last_expr>}. Tip: fn is a reserved keyword in Rhai — use f or item as closure parameter names.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
+        ToolDescription { name: "script", description: "Use when you need to loop, filter, or cross-reference multiple tool outputs — things no single tool can do. Runs a Rhai script with all read tools available as functions. When to reach for it: (1) cross-reference health categories (large AND dead), (2) batch blast_radius across N functions, (3) filter/classify arrays from health/file_functions, (4) aggregate across multiple files in one call. Read: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write: graph_delete(name). Tip: fn is a reserved keyword in Rhai — use f or item as loop variable names.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
     ]
 }
 
@@ -397,6 +398,30 @@ fn workflow_catalog() -> Vec<Workflow> {
                 WorkflowStep { tool: "bake",       hint: "Ensure index is fresh so call edges are populated" },
                 WorkflowStep { tool: "trace_down", hint: "Pass symbol name; optionally set depth (default 5) and file to disambiguate" },
                 WorkflowStep { tool: "symbol",     hint: "Inspect any resolved callee with include_source=true" },
+            ],
+        },
+        Workflow {
+            name: "Cross-reference health smells (script)",
+            description: "Find functions flagged across multiple health categories — e.g. large AND dead — in one script call. Use script when you need to loop, filter, or cross-reference tool outputs. Individual tool calls cannot do this without manual inspection.",
+            steps: vec![
+                WorkflowStep { tool: "health",  hint: "Returns dead_code, large_functions, shotgun_surgery, feature_envy, duplicate_code — each an array" },
+                WorkflowStep { tool: "script",  hint: r#"let h = health(); let large = h["large_functions"]; let dead = h["dead_code"]; let large_names = large.map(|f| f["name"]); dead.filter(|d| large_names.contains(d["name"]))"# },
+            ],
+        },
+        Workflow {
+            name: "Batch blast-radius scan (script)",
+            description: "Run blast_radius on every large function and collect which ones are safe to refactor (zero callers). Replaces N sequential blast_radius calls.",
+            steps: vec![
+                WorkflowStep { tool: "health",  hint: "Get large_functions list" },
+                WorkflowStep { tool: "script",  hint: r#"let h = health(); let results = []; for f in h["large_functions"] { let br = blast_radius(f["name"]); results += [#{ name: f["name"], callers: br["total_callers"], safe: br["total_callers"] == 0 }]; } results"# },
+            ],
+        },
+        Workflow {
+            name: "Triage dead code by visibility (script)",
+            description: "Classify dead code into public (API surface risk) vs private (safe to delete). Filters health output with a loop — not possible with a single tool call.",
+            steps: vec![
+                WorkflowStep { tool: "script",  hint: r#"let h = health(); let pub_dead = []; let priv_dead = []; for d in h["dead_code"] { if d["visibility"] == "public" { pub_dead += [d["name"]]; } else { priv_dead += [d["name"]]; } } #{ public_dead: pub_dead, private_dead_count: priv_dead.len() }"# },
+                WorkflowStep { tool: "blast_radius", hint: "Cross-check any public_dead candidates before deleting — routers register handlers invisibly to the AST" },
             ],
         },
         Workflow {

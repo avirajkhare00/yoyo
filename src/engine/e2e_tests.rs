@@ -603,6 +603,87 @@ pub fn fetch_user(id: u32) -> String {
         assert_eq!(original, after, "file must be restored after cargo check rejection");
     }
 
+    // ── script integration ────────────────────────────────────────────────────
+
+    #[test]
+    fn script_symbol_returns_function_matches() {
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+        let result = crate::engine::run_script(
+            Some(root),
+            r#"let s = symbol("add"); s"#.to_string(),
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "script");
+        let matches = v["result"]["matches"].as_array().expect("matches array");
+        assert!(!matches.is_empty(), "symbol('add') should return at least one match");
+        assert_eq!(matches[0]["name"], "add");
+    }
+
+    #[test]
+    fn script_health_returns_all_smell_keys() {
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+        let result = crate::engine::run_script(
+            Some(root),
+            r#"let h = health(); h.keys()"#.to_string(),
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let keys: Vec<&str> = v["result"].as_array().unwrap()
+            .iter().filter_map(|k| k.as_str()).collect();
+        assert!(keys.contains(&"dead_code"), "health() must have dead_code key");
+        assert!(keys.contains(&"large_functions"), "health() must have large_functions key");
+    }
+
+    #[test]
+    fn script_dead_code_visibility_triage() {
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+        // The triage script from the new workflow — must return a map with both keys.
+        let result = crate::engine::run_script(
+            Some(root),
+            r#"
+let h = health();
+let pub_dead = [];
+let priv_dead = [];
+for d in h["dead_code"] {
+    if d["visibility"] == "public" { pub_dead += [d["name"]]; }
+    else { priv_dead += [d["name"]]; }
+}
+#{ public_dead: pub_dead, private_dead_count: priv_dead.len() }
+"#.to_string(),
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "script");
+        assert!(v["result"]["public_dead"].is_array());
+        assert!(v["result"]["private_dead_count"].is_number());
+    }
+
+    #[test]
+    fn script_file_functions_aggregation() {
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+        // Aggregate fn count from two fixture files in one script call.
+        let result = crate::engine::run_script(
+            Some(root),
+            r#"
+let files = ["src/main.rs", "src/utils.rs"];
+let report = [];
+for f in files {
+    let ff = file_functions(f);
+    let fns = ff["functions"];
+    report += [#{ file: f, fn_count: fns.len() }];
+}
+report
+"#.to_string(),
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "script");
+        let rows = v["result"].as_array().expect("array of rows");
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r["fn_count"].as_i64().unwrap_or(-1) >= 0));
+    }
+
     #[test]
     fn symbol_stdlib_flag_finds_rust_stdlib() {
         let dir = setup();
