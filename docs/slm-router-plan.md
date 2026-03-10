@@ -10,6 +10,7 @@ Target: **80% of requests handled by SLM without escalation.**
 
 1. Write a generation prompt that covers the full space of Zig tasks: function completions, bug fixes, refactors.
 2. Generate 1000 examples via a mix of SOTA LLMs (GPT-4o, Claude, Gemini).
+   - Include relevant stdlib signatures in each generation prompt (Phase 2.5 mechanism) — the SLM trains on correct API usage from day one.
 3. Auto-verify each example by passing it through `zig build-lib` / `zig test`.
 4. Keep examples that compile clean. Target ~800; hard floor is enough to fill the 640/160 split.
 5. Split: **640 train / 160 validation**.
@@ -60,7 +61,52 @@ adapter     (zig-slm fine-tune)  ~20-50MB  versioned → Hugging Face Hub
 1. Add `src/lang/zig.rs` using the `tree-sitter-zig` grammar.
 2. Mirror the `src/lang/rust.rs` pattern exactly.
 3. Cover full language support: symbol indexing, function/type extraction, flow tracing, endpoint detection where applicable.
-4. Release a new yoyo version.
+4. **Index the Zig stdlib** — see Phase 2.5.
+5. Release a new yoyo version.
+
+---
+
+## Phase 2.5 — Stdlib-aware indexing
+
+LLM training data is months behind the pinned Zig version. Injecting a manual constraints file is an anti-pattern — it goes stale and pollutes the prompt. The fix is to pull live signatures off disk, filtered to only what the task actually touches.
+
+### How it works
+
+```
+flow(target_fn) → identifies stdlib callees on the call path
+                        ↓
+symbol(callee, file=stdlib_path) → pulls exact current signature
+                        ↓
+inject: 3-5 relevant signatures into prompt (not the whole stdlib)
+```
+
+The call graph is the relevance filter. If a stdlib function is not on the call path, it never appears in the prompt. No noise.
+
+### Stdlib path detection (automatic, no user config)
+
+| Language | Command | Path |
+|---|---|---|
+| Zig | `zig env --json` → `lib_dir` | `<lib_dir>/std/` |
+| Go | `go env GOROOT` | `$GOROOT/src/` |
+| Rust | `rustc --print sysroot` | `<sysroot>/lib/rustlib/src/rust/library/` |
+
+yoyo calls the toolchain at startup, resolves the path, indexes stdlib alongside user code.
+
+### Drift defense stack
+
+```
+stdlib signatures pulled live via call graph    ← covers API drift
+           +
+pinned compiler version                         ← covers syntax drift
+           +
+compiler loop                                   ← catches everything else
+```
+
+Training cutoff becomes irrelevant for stdlib calls. Works identically for SLM and LLM. No manual maintenance.
+
+### Applies to
+
+Zig (Phase 2), Go, Rust — same mechanism, same precision.
 
 ---
 
@@ -126,4 +172,6 @@ Replace with a learned classifier once enough routing decisions are logged.
 | Classifier v1 | Rule-based (blast_radius, LOC, file count) | No training data needed; logs routing decisions for a future learned classifier |
 | Retry payload | Full error + original prompt | More context = better repair |
 | Escalation target | 80% SLM, 20% LLM | Forces dataset quality discipline; a low SLM rate means data, not model |
+| LLM drift | Stdlib signatures pulled live via call graph | Training cutoff irrelevant; model reads correct API off disk same as a developer would |
+| Stdlib context | Call-graph filtered (3-5 signatures max) | Full stdlib is noise; only symbols on the call path are injected |
 | Binary shape | Single yoyo binary | Consistent with existing architecture; no new deployment surface |
