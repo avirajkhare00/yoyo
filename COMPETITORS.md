@@ -109,7 +109,7 @@ Last updated: 2026-03-11
 | CLI + MCP unified | Rarely | Same engine, two adapters |
 | Self-contained binary | No (runtime + deps) | Single Rust binary |
 | Language scope | Python-only or needs LSP | Multi-language via tree-sitter |
-| Language coverage | Serena: 30+, others: 1-25 | ~8 (growing) |
+| Language coverage | Serena: 30+, others: 1-25 | 4 deep (Rust, Go, Zig, TS) |
 | Published benchmark | None | yes — evals/token_benchmark/ |
 | Security analysis | Joern specializes here | Not the goal |
 | Org-scale cross-repo | Sourcegraph specializes here | Not the goal |
@@ -123,7 +123,7 @@ Last updated: 2026-03-11
 - **Nobody else has write tools with safety gates.** `graph_delete` blocking on callers, `graph_rename` atomic across call sites — unchallenged at the MCP layer.
 - **The persistent local index** (bake/shake) is yoyo's deepest moat. Competitors parse on-demand or require external DBs (Neo4j, RocksDB).
 - **The published benchmark is currently unique.** No competitor has quantified accuracy vs linux tools across multiple repos. That's a credibility gap in their favour to close.
-- **Language coverage (8 vs 30+) is the sharpest gap to close.** Serena's 30+ languages via LSP is a real advantage for polyglot repos.
+- **Language focus is intentional: Rust, Go, Zig, TypeScript — 4 deep, not 30 shallow.** Serena's 30+ via LSP is broad but LSP-quality varies. yoyo goes deep on the 4 languages where systems-level agents spend most of their time.
 - **LSP bridges remain a credible threat** for navigation-heavy use cases — but they can't scaffold, can't patch, can't do health/blast_radius analysis.
 - **Aider is the most mature agent workflow tool** but operates at a different layer — peer, not replacement.
 - **Cursor is the dominant end-product** but it's closed. yoyo is infrastructure that works inside any agent, including Cursor alternatives.

@@ -12,6 +12,23 @@ yoyo is a code intelligence MCP server. It gives your AI agent 30 tools to read 
 
 ---
 
+## Language focus
+
+> **Rust · Go · Zig · TypeScript — four languages, done deep.**
+
+yoyo is not trying to cover every language. It targets the four languages where systems-level code intelligence matters most: the languages AI agents struggle with most on large codebases.
+
+| Language | bake | symbol | trace_down | endpoints | write tools |
+|---|---|---|---|---|---|
+| Rust | ✅ | ✅ | ✅ | ✅ actix/rocket | ✅ |
+| Go | ✅ | ✅ | ✅ | ✅ gin/echo/net-http | ✅ |
+| Zig | ✅ | ✅ | — | — | ✅ |
+| TypeScript | ✅ | ✅ | — | ✅ express | ✅ |
+
+Other languages may parse but are not a priority. If you need Python or Java coverage, [Serena](https://github.com/oraios/serena) is worth a look.
+
+---
+
 ## Philosophy
 
 The name comes from the [yo-yo problem](https://en.wikipedia.org/wiki/Yo-yo_problem) — a software antipattern where understanding a program forces you to bounce endlessly between files, classes, and definitions. The programmer's attention moves up and down like a yo-yo. yoyo exists to make that bounce unnecessary.
@@ -223,7 +240,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `graph_move` | Move a function between files. |
 | `graph_delete` | Remove a function by name. Checks blast radius first. |
 
-**Languages:** TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash, Zig
+**Languages:** Rust · Go · Zig · TypeScript — deep support, not wide. Four systems languages done right.
 
 ---
 
