@@ -1088,4 +1088,200 @@ fn get_registry() -> &'static Vec<ToolEntry> {
             );
         }
     }
+
+    #[test]
+    fn e2e_health_excludes_go_init_from_dead_code() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+        fs::write(
+            root_path.join("main.go"),
+            r#"package main
+
+func init() {
+    setup()
+}
+
+func setup() {}
+
+func unusedHelper() {}
+
+func main() {}
+"#,
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let health = crate::engine::health(Some(root_path.to_string_lossy().into_owned()), Some(100)).unwrap();
+        let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
+        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+
+        assert!(
+            !dead_code.iter().any(|f| f["name"] == "init" && f["file"] == "main.go"),
+            "Go init functions are runtime entrypoints and should not be classified as dead code"
+        );
+        assert!(
+            dead_code.iter().any(|f| f["name"] == "unusedHelper" && f["file"] == "main.go"),
+            "ordinary unused Go helpers should still be classified as dead code"
+        );
+    }
+
+    #[test]
+    fn e2e_symbol_prefers_exact_case_sensitive_exported_match() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+        fs::write(
+            root_path.join("client.go"),
+            r#"package client
+
+func newClient() {}
+
+func NewClient() {}
+
+func NewClientWithEnvProxy() {
+    NewClient()
+}
+"#,
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let symbol = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "NewClient".into(),
+            false,
+            None,
+            Some(10),
+            false,
+        )
+        .unwrap();
+        let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
+        let matches = symbol_json["matches"].as_array().expect("matches array");
+
+        assert_eq!(matches[0]["name"], "NewClient");
+        assert_eq!(matches[0]["file"], "client.go");
+        assert_eq!(matches[0]["primary"], true);
+    }
+
+    #[test]
+    fn e2e_symbol_prefers_exact_name_over_suffix_variants() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+        fs::write(
+            root_path.join("index.ts"),
+            r#"export function createInstanceWithDefaults() {}
+
+export function createInstance() {}
+"#,
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let symbol = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "createInstance".into(),
+            false,
+            None,
+            Some(10),
+            false,
+        )
+        .unwrap();
+        let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
+        let matches = symbol_json["matches"].as_array().expect("matches array");
+
+        assert_eq!(matches[0]["name"], "createInstance");
+        assert_eq!(matches[0]["primary"], true);
+    }
+
+    #[test]
+    fn e2e_rust_symbol_dedupes_recovered_helper_calls_per_line() {
+        let dir = setup();
+        let file = dir.path().join("src/mcp_like.rs");
+        fs::write(
+            &file,
+            r#"use std::sync::OnceLock;
+
+struct Args;
+
+impl Args {
+    fn str_req(&self) -> String {
+        "ok".to_string()
+    }
+
+    fn bool_opt(&self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+struct ToolEntry {
+    handler: Box<dyn Fn(&Args) -> String>,
+}
+
+static REGISTRY: OnceLock<Vec<ToolEntry>> = OnceLock::new();
+
+fn build_registry() -> Vec<ToolEntry> {
+    vec![
+        ToolEntry {
+            handler: Box::new(|a| a.str_req()),
+        },
+        ToolEntry {
+            handler: Box::new(|a| {
+                if a.bool_opt().unwrap_or(false) {
+                    a.str_req()
+                } else {
+                    String::new()
+                }
+            }),
+        },
+    ]
+}
+
+fn get_registry() -> &'static Vec<ToolEntry> {
+    REGISTRY.get_or_init(build_registry)
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let symbol = crate::engine::symbol(root(&dir), "build_registry".into(), false, None, Some(5), false).unwrap();
+        let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
+        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+
+        let qualified_str_req = calls.iter().filter(|c| {
+            c["callee"] == "str_req" && c["qualifier"].as_str() == Some("a")
+        }).count();
+        let unqualified_str_req = calls.iter().filter(|c| {
+            c["callee"] == "str_req" && c.get("qualifier").is_none()
+        }).count();
+        let qualified_bool_opt = calls.iter().filter(|c| {
+            c["callee"] == "bool_opt" && c["qualifier"].as_str() == Some("a")
+        }).count();
+        let unqualified_bool_opt = calls.iter().filter(|c| {
+            c["callee"] == "bool_opt" && c.get("qualifier").is_none()
+        }).count();
+
+        assert_eq!(
+            qualified_str_req, 2,
+            "expected one qualified str_req edge per source line after merge dedupe: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+        assert_eq!(
+            unqualified_str_req, 0,
+            "unqualified duplicate str_req edges should be removed when qualified edges exist: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+        assert_eq!(
+            qualified_bool_opt, 1,
+            "expected exactly one qualified bool_opt edge after merge dedupe: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+        assert_eq!(
+            unqualified_bool_opt, 0,
+            "unqualified duplicate bool_opt edges should be removed when qualified edges exist: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+    }
 }

@@ -281,6 +281,7 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
             let file_lc = f.file.to_lowercase();
             !all_callees.contains(&lc)
                 && lc != "main"
+                && !(f.language == "go" && lc == "init")
                 && !lc.starts_with("test")
                 && !lc.ends_with("_test")
                 && !f.file.contains("test")
