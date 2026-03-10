@@ -296,39 +296,6 @@ pub(crate) struct PlacementSuggestion {
 }
 
 #[derive(Serialize)]
-pub(crate) struct CrudOperationsPayload {
-    pub(crate) tool: &'static str,
-    pub(crate) version: &'static str,
-    pub(crate) project_root: PathBuf,
-    pub(crate) entity: Option<String>,
-    pub(crate) entities: Vec<CrudEntitySummary>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct CrudEntitySummary {
-    pub(crate) entity: String,
-    pub(crate) operations: Vec<CrudOperation>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct CrudOperation {
-    pub(crate) operation: String,
-    pub(crate) method: String,
-    pub(crate) path: String,
-    pub(crate) file: String,
-}
-
-#[derive(Serialize)]
-pub(crate) struct ApiTracePayload {
-    pub(crate) tool: &'static str,
-    pub(crate) version: &'static str,
-    pub(crate) project_root: PathBuf,
-    pub(crate) endpoint: String,
-    pub(crate) method: Option<String>,
-    pub(crate) traces: Vec<EndpointSummary>,
-}
-
-#[derive(Serialize)]
 pub(crate) struct FindDocsPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
@@ -447,24 +414,6 @@ pub(crate) struct SlicePayload {
     pub(crate) end: u32,
     pub(crate) total_lines: u32,
     pub(crate) lines: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct ApiSurfacePayload {
-    pub(crate) tool: &'static str,
-    pub(crate) version: &'static str,
-    pub(crate) project_root: PathBuf,
-    pub(crate) package: Option<String>,
-    pub(crate) limit: usize,
-    pub(crate) total_modules: usize,
-    pub(crate) truncated: bool,
-    pub(crate) modules: Vec<ApiSurfaceModule>,
-}
-
-#[derive(Serialize)]
-pub(crate) struct ApiSurfaceModule {
-    pub(crate) module: String,
-    pub(crate) functions: Vec<FunctionSummary>,
 }
 
 #[derive(Serialize)]

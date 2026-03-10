@@ -258,25 +258,3 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
     Ok(())
 }
 
-pub(crate) fn module_from_path(path: &str) -> String {
-    // Heuristic: use directory portion of the path as the "module".
-    if let Some((dir, _file)) = path.rsplit_once('/') {
-        dir.to_string()
-    } else {
-        ".".to_string()
-    }
-}
-
-pub(crate) fn infer_entity_from_path(path: &str) -> String {
-    // Heuristic: first non-empty segment that is not ":"-parameter.
-    for seg in path.split('/') {
-        if seg.is_empty() {
-            continue;
-        }
-        if seg.starts_with(':') {
-            continue;
-        }
-        return seg.to_string();
-    }
-    String::new()
-}

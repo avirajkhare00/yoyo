@@ -147,7 +147,7 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "protocolVersion": protocol_version,
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server — 30 tools to read and edit any codebase from the AST, not model memory. \
+                "instructions": "You have access to yoyo, a code intelligence MCP server — 27 tools to read and edit any codebase from the AST, not model memory. \
                     ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
                     `llm_instructions` returns the lean tool catalog, prime directives, and concurrency rules. Read it before doing anything else. \
                     `llm_workflows` returns the full reference catalog (21 combination workflows, decision map, antipatterns, metapatterns) — call on demand when you need to look up a combo or decide between tools. \
@@ -294,14 +294,6 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema("api_surface", d("api_surface"), json!({
-                "path": p(),
-                "package": s("Optional package/module filter (substring match on module or file paths)"),
-                "limit": i("Maximum number of functions per module (default 20)")
-            })),
-            handler: Box::new(|a, path| crate::engine::api_surface(path, a.str_opt("package"), a.uint_opt("limit"))),
-        },
-        ToolEntry {
             schema: schema("file_functions", d("file_functions"), json!({
                 "path": p(),
                 "file": s("File path relative to the project root"),
@@ -379,25 +371,6 @@ fn build_registry() -> Vec<ToolEntry> {
                 a.str_req("function_name", "suggest_placement")?,
                 a.str_req("function_type", "suggest_placement")?,
                 a.str_opt("related_to"),
-            )),
-        },
-        ToolEntry {
-            schema: schema("crud_operations", d("crud_operations"), json!({
-                "path": p(),
-                "entity": s("Optional entity filter (e.g. \"user\")")
-            })),
-            handler: Box::new(|a, path| crate::engine::crud_operations(path, a.str_opt("entity"))),
-        },
-        ToolEntry {
-            schema: schema("api_trace", d("api_trace"), json!({
-                "path": p(),
-                "endpoint": s("Endpoint path (or substring), e.g. \"/users\""),
-                "method": s("Optional HTTP method (GET, POST, etc.)")
-            })),
-            handler: Box::new(|a, path| crate::engine::api_trace(
-                path,
-                a.str_req("endpoint", "api_trace")?,
-                a.str_opt("method"),
             )),
         },
         ToolEntry {
@@ -629,27 +602,12 @@ fn build_registry() -> Vec<ToolEntry> {
             )),
         },
         ToolEntry {
-            schema: schema_req("pipeline", d("pipeline"), &["spec"], json!({
+            schema: schema_req("script", d("script"), &["code"], json!({
                 "path": p(),
-                "spec": json!({
-                    "type": "array",
-                    "description": "Ordered list of pipeline steps. Each step: {id, tool, args?, if?}. Args values may use {{step_id.field[N].subfield}} refs. if accepts {{expr | predicate}} e.g. {{s1.results | length > 0}}.",
-                    "items": {
-                        "type": "object",
-                        "required": ["id", "tool"],
-                        "properties": {
-                            "id":   {"type": "string", "description": "Step identifier — used for output refs in subsequent steps"},
-                            "tool": {"type": "string", "description": "Tool name (any tool in the catalog)"},
-                            "args": {"type": "object", "description": "Tool arguments; string values may embed {{step_id.path}} refs"},
-                            "if":   {"type": "string", "description": "Skip this step when false. E.g. {{s1.results | length == 0}}"}
-                        }
-                    }
-                })
+                "code": s("Rhai script to execute. Available read functions: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Each returns the tool result as a map. Last expression is returned as result.")
             })),
             handler: Box::new(|a, path| {
-                let spec = a.0.get("spec").cloned()
-                    .ok_or_else(|| anyhow::anyhow!("Missing required 'spec' argument for pipeline"))?;
-                crate::engine::pipeline(path, spec)
+                crate::engine::run_script(path, a.str_req("code", "script")?)
             }),
         },
     ]
@@ -687,11 +645,14 @@ impl Args {
         self.0.get(key).and_then(|v| v.as_bool())
     }
     fn uint_opt(&self, key: &str) -> Option<usize> {
-        self.0.get(key).and_then(|v| v.as_u64()).map(|n| n as usize)
+        self.0.get(key).and_then(|v| {
+            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+        }).map(|n| n as usize)
     }
     fn uint_req(&self, key: &str, tool: &str) -> Result<u64> {
-        self.0.get(key).and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
+        self.0.get(key).and_then(|v| {
+            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+        }).ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
     }
 }
 
