@@ -535,6 +535,31 @@ fn score_fn<F: Fn(&str) -> f32>(
     score
 }
 
+#[cfg(test)]
+mod tests {
+    use super::fallback_supersearch_queries;
+
+    #[test]
+    fn fallback_supersearch_queries_extracts_code_like_identifier() {
+        let queries = fallback_supersearch_queries("call sites of resolve_project_root");
+        assert!(
+            queries.iter().any(|q| q == "resolve_project_root"),
+            "expected extracted identifier candidate, got {:?}",
+            queries
+        );
+    }
+
+    #[test]
+    fn fallback_supersearch_queries_drops_stopwords() {
+        let queries = fallback_supersearch_queries("find all call sites of the helper");
+        assert!(
+            !queries.iter().any(|q| q == "call" || q == "sites" || q == "helper"),
+            "expected stopwords to be removed, got {:?}",
+            queries
+        );
+    }
+}
+
 /// Public entrypoint for the `semantic_search` tool.
 /// Uses embedding-backed cosine similarity when `bakes/latest/embeddings.db` exists
 /// (built by `bake` via fastembed + SQLite). Falls back to TF-IDF otherwise.
