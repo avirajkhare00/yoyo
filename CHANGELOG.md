@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.12] - 2026-03-10
+
+### Fixed
+
+- Rust recovered call-edge dedupe: removed redundant whole-function macro rescans in Rust call indexing and normalized dedupe to prefer qualified edges per source line. This removes the noisy duplicate helper calls in `symbol` output after the macro/expansion merge and closes #141.
+- Go dead-code false positives: `health` now excludes Go runtime `init` functions from dead-code reporting while still flagging ordinary unused helpers. This closes #143.
+- `symbol` ranking: exact case-sensitive and exact-name matches now outrank suffix variants and private helpers. Real-repo dogfood on `google/go-github` now ranks `github/NewClient` ahead of `newClient`. This improves #142 but does not close it.
+- Added regression coverage for Rust recovered-call dedupe, Go `init` dead-code exclusion, exact exported match preference, and exact-name-over-suffix ranking.
+
+### Verified
+
+- Real-repo dogfood after a clean binary reinstall:
+  - `google/go-github`: `health` no longer flags Go `init` functions as dead code
+  - `google/go-github`: `symbol --name NewClient` now ranks `github/NewClient` first
+  - local repo: `symbol --name build_registry` no longer emits duplicate unqualified Rust helper edges
+  - `ratatui`: Rust symbol indexing still returns sane call graphs after the ranking changes
+
 ## [1.4.11] - 2026-03-10
 
 ### Fixed

@@ -282,15 +282,7 @@ fn collect_calls(
 ) -> Vec<crate::lang::CallSite> {
     let mut calls = Vec::new();
     collect_calls_inner(node, source, known_functions, &mut calls);
-    if let Ok(text) = node.utf8_text(source.as_bytes()) {
-        if text.contains('!') {
-            let base_line = node.start_position().row as u32 + 1;
-            calls.extend(scan_macro_invocations(text, base_line));
-            calls.extend(scan_macro_body_calls(text, base_line, known_functions));
-        }
-    }
-    calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
-    calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
+    normalize_call_sites(&mut calls);
     calls
 }
 
@@ -776,8 +768,35 @@ fn merge_compiler_expanded_calls(
         for call in &matches[0].calls {
             func.calls.push(call.clone());
         }
-        func.calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
-        func.calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
+        normalize_call_sites(&mut func.calls);
+    }
+}
+
+fn normalize_call_sites(calls: &mut Vec<crate::lang::CallSite>) {
+    calls.sort_by(|a, b| {
+        a.callee
+            .cmp(&b.callee)
+            .then(a.line.cmp(&b.line))
+            .then_with(|| qualifier_sort_key(&a.qualifier).cmp(&qualifier_sort_key(&b.qualifier)))
+    });
+    calls.dedup_by(|a, b| a.callee == b.callee && a.line == b.line && a.qualifier == b.qualifier);
+
+    let qualified_on_line: HashSet<(String, u32)> = calls
+        .iter()
+        .filter(|call| call.qualifier.is_some())
+        .map(|call| (call.callee.clone(), call.line))
+        .collect();
+
+    calls.retain(|call| {
+        call.qualifier.is_some()
+            || !qualified_on_line.contains(&(call.callee.clone(), call.line))
+    });
+}
+
+fn qualifier_sort_key(qualifier: &Option<String>) -> (&str, &str) {
+    match qualifier.as_deref() {
+        Some(q) => ("", q),
+        None => ("~", ""),
     }
 }
 

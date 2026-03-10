@@ -1,6 +1,6 @@
 [package]
 name = "yoyo"
-version = "1.4.11"
+version = "1.4.12"
 edition = "2021"
 
 [dependencies]

@@ -149,21 +149,27 @@ pub fn symbol(
     }
 
     matches.sort_by(|a, b| {
+        let a_exact_case = (a.name == name) as i32;
+        let b_exact_case = (b.name == name) as i32;
         let a_exact = (a.name.to_lowercase() == needle) as i32;
         let b_exact = (b.name.to_lowercase() == needle) as i32;
+        let a_public = matches!(a.visibility, Some(crate::lang::Visibility::Public)) as i32;
+        let b_public = matches!(b.visibility, Some(crate::lang::Visibility::Public)) as i32;
         let a_in = incoming.get(&a.name.to_lowercase()).copied().unwrap_or(0);
         let b_in = incoming.get(&b.name.to_lowercase()).copied().unwrap_or(0);
         let a_stdlib = a.is_stdlib as i32;
         let b_stdlib = b.is_stdlib as i32;
         a_stdlib
             .cmp(&b_stdlib)
+            .then(b_exact_case.cmp(&a_exact_case))
             .then(b_exact.cmp(&a_exact))
+            .then(b_public.cmp(&a_public))
             .then(b_in.cmp(&a_in))
             .then(b.complexity.cmp(&a.complexity))
             .then(a.file.cmp(&b.file))
     });
 
-    if let Some(m) = matches.iter_mut().find(|m| m.name.to_lowercase() == needle) {
+    if let Some(m) = matches.first_mut() {
         m.primary = true;
     }
 
