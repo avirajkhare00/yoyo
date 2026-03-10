@@ -43,6 +43,10 @@ mod tests {
         Some(dir.path().to_string_lossy().into_owned())
     }
 
+    fn subdir_root(dir: &TempDir) -> Option<String> {
+        Some(dir.path().join("src").to_string_lossy().into_owned())
+    }
+
     // ── symbol ────────────────────────────────────────────────────────────────
 
     #[test]
@@ -75,6 +79,42 @@ mod tests {
                 name
             );
         }
+    }
+
+    #[test]
+    fn e2e_symbol_accepts_subdirectory_path_when_bake_exists_at_project_root() {
+        let dir = setup();
+        let out = crate::engine::symbol(subdir_root(&dir), "add".into(), false, None, None, false).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let matches = v["matches"].as_array().unwrap();
+        assert!(!matches.is_empty(), "expected at least one match for 'add'");
+        assert_eq!(v["project_root"].as_str().unwrap(), dir.path().to_string_lossy());
+    }
+
+    #[test]
+    fn e2e_symbol_suggests_project_root_when_subdirectory_has_no_bake() {
+        let dir = TempDir::new().unwrap();
+        copy_dir_recursive(&fixture_src(), dir.path());
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"sample-project\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let subdir = dir.path().join("src");
+
+        let err = crate::engine::symbol(
+            Some(subdir.to_string_lossy().into_owned()),
+            "add".into(),
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains(&format!("No bake index found under {}", subdir.display())));
+        assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
     }
 
     // ── blast_radius ──────────────────────────────────────────────────────────

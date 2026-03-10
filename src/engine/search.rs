@@ -6,7 +6,7 @@ use super::types::{
     FileFunctionSummary, FileFunctionsPayload, SemanticMatch, SemanticSearchPayload,
     SupersearchMatch, SupersearchPayload, SymbolMatch, SymbolPayload,
 };
-use super::util::{load_bake_index, resolve_project_root};
+use super::util::{require_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `symbol` tool: detailed lookup by function name.
 /// When `include_source` is true, each match includes the function body (lines start_line..end_line).
@@ -19,8 +19,7 @@ pub fn symbol(
     stdlib: bool,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let needle = name.to_lowercase();
     let file_filter = file.as_deref().map(str::to_lowercase);
@@ -325,8 +324,7 @@ pub fn supersearch(
     use rayon::prelude::*;
 
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let exclude_tests = exclude_tests.unwrap_or(false);
     let q = query.to_lowercase();
@@ -512,8 +510,7 @@ pub fn semantic_search(
     }
 
     // Fallback: TF-IDF
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+    let bake = require_bake_index(&root)?;
 
     let query_tokens = tokenize(&query);
     if query_tokens.is_empty() {
@@ -582,8 +579,7 @@ pub fn file_functions(
     include_summaries: Option<bool>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let rel_file = file.clone();
 

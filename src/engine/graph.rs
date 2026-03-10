@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Result};
 
 use super::types::{GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
 use super::edit::ast_check_str;
-use super::util::{detect_language, load_bake_index, reindex_files, resolve_project_root};
+use super::util::{detect_language, load_bake_index, reindex_files, require_bake_index, resolve_project_root};
 use crate::lang::Visibility;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -363,8 +363,7 @@ pub fn graph_add(
 
     // Find insertion byte offset.
     let insert_at = if let Some(sym) = after_symbol {
-        let bake = load_bake_index(&root)?
-            .ok_or_else(|| anyhow!("No bake index. Run `bake` first."))?;
+        let bake = require_bake_index(&root)?;
         let file_lc = file.to_lowercase();
         let sym_lc = sym.to_lowercase();
         bake.functions
@@ -643,8 +642,7 @@ pub fn graph_move(
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
 
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index. Run `bake` first."))?;
+    let bake = require_bake_index(&root)?;
 
     let sym_lc = name.to_lowercase();
     let func = bake
@@ -984,8 +982,7 @@ pub fn trace_down(
     file: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+    let bake = require_bake_index(&root)?;
 
     let max_depth = depth.unwrap_or(5);
     let file_filter = file.as_deref().map(str::to_lowercase);

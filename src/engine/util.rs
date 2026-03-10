@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 
 use super::types::{BakeFile, BakeIndex};
 
@@ -11,7 +11,7 @@ pub(crate) struct Snapshot {
     pub(crate) files_indexed: usize,
 }
 
-pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {
+fn requested_root(path: Option<String>) -> Result<PathBuf> {
     if let Some(p) = path {
         let pb = PathBuf::from(p);
         let meta = fs::metadata(&pb).with_context(|| format!("Failed to stat path: {}", pb.display()))?;
@@ -23,6 +23,47 @@ pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {
 
     let cwd = std::env::current_dir().context("Failed to get current directory")?;
     Ok(cwd)
+}
+
+fn bake_index_path(root: &Path) -> PathBuf {
+    root.join("bakes").join("latest").join("bake.json")
+}
+
+fn find_bake_root(start: &Path) -> Option<PathBuf> {
+    start
+        .ancestors()
+        .find(|ancestor| bake_index_path(ancestor).exists())
+        .map(Path::to_path_buf)
+}
+
+fn find_project_root_hint(start: &Path) -> Option<PathBuf> {
+    const MARKERS: &[&str] = &[".git", "Cargo.toml", "go.mod", "package.json", "pyproject.toml", "Gemfile"];
+
+    start
+        .ancestors()
+        .skip(1)
+        .find(|ancestor| MARKERS.iter().any(|marker| ancestor.join(marker).exists()))
+        .map(Path::to_path_buf)
+}
+
+fn missing_bake_error(root: &Path) -> anyhow::Error {
+    if let Some(project_root) = find_project_root_hint(root) {
+        return anyhow!(
+            "No bake index found under {}. Did you mean to pass the project root {}? Run `bake` there first to build bakes/latest/bake.json.",
+            root.display(),
+            project_root.display()
+        );
+    }
+
+    anyhow!(
+        "No bake index found under {}. Run `bake` first to build bakes/latest/bake.json.",
+        root.display()
+    )
+}
+
+pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {
+    let root = requested_root(path)?;
+    Ok(find_bake_root(&root).unwrap_or(root))
 }
 
 pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
@@ -64,7 +105,7 @@ pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
 }
 
 pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
-    let bake_path = root.join("bakes").join("latest").join("bake.json");
+    let bake_path = bake_index_path(root);
     if !bake_path.exists() {
         return Ok(None);
     }
@@ -97,6 +138,10 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
     }
 
     Ok(Some(bake))
+}
+
+pub(crate) fn require_bake_index(root: &PathBuf) -> Result<BakeIndex> {
+    load_bake_index(root)?.ok_or_else(|| missing_bake_error(root))
 }
 
 /// Parse a "MAJOR.MINOR.PATCH" version string into a comparable tuple.
@@ -278,7 +323,7 @@ pub(crate) fn detect_language(path: &Path) -> &'static str {
 /// If no bake index exists this is a no-op. Errors are silently swallowed so
 /// callers can use `let _ = reindex_files(...)`.
 pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()> {
-    let bake_path = root.join("bakes").join("latest").join("bake.json");
+    let bake_path = bake_index_path(root);
     if !bake_path.exists() {
         return Ok(());
     }
@@ -319,3 +364,59 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::engine::types::BakeIndex;
+
+    fn write_bake(root: &TempDir) {
+        let bakes_dir = root.path().join("bakes/latest");
+        fs::create_dir_all(&bakes_dir).unwrap();
+        let bake = BakeIndex {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            project_root: root.path().to_path_buf(),
+            languages: BTreeSet::new(),
+            files: vec![],
+            functions: vec![],
+            endpoints: vec![],
+            types: vec![],
+            impls: vec![],
+        };
+        fs::write(
+            bakes_dir.join("bake.json"),
+            serde_json::to_string_pretty(&bake).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn resolve_project_root_walks_up_to_existing_bake() {
+        let dir = TempDir::new().unwrap();
+        let subdir = dir.path().join("src/engine");
+        fs::create_dir_all(&subdir).unwrap();
+        write_bake(&dir);
+
+        let resolved = resolve_project_root(Some(subdir.to_string_lossy().into_owned())).unwrap();
+        assert_eq!(resolved, dir.path());
+    }
+
+    #[test]
+    fn require_bake_index_suggests_project_root_for_subdir_paths() {
+        let dir = TempDir::new().unwrap();
+        let subdir = dir.path().join("src/engine");
+        fs::create_dir_all(&subdir).unwrap();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let err = require_bake_index(&subdir).err().unwrap().to_string();
+        assert!(err.contains(&format!("No bake index found under {}", subdir.display())));
+        assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
+    }
+}

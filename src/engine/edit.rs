@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
-use super::util::{load_bake_index, reindex_files, resolve_project_root};
+use super::util::{reindex_files, require_bake_index, resolve_project_root};
 
 // ── Pre-write in-memory AST validation ────────────────────────────────────────
 
@@ -451,8 +451,7 @@ pub fn patch_by_symbol(
     match_index: Option<usize>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let needle = name.to_lowercase();
 
