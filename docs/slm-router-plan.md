@@ -73,7 +73,7 @@ adapter     (zig-slm fine-tune)  ~20-50MB  versioned → Hugging Face Hub
 
 ---
 
-## Phase 2.5 — Stdlib-aware indexing
+## Phase 2.5 — Stdlib-aware indexing ✅ SHIPPED (v1.4.2–v1.4.5)
 
 LLM training data is months behind the pinned Zig version. Injecting a manual constraints file is an anti-pattern — it goes stale and pollutes the prompt. The fix is to pull live signatures off disk, filtered to only what the task actually touches.
 
@@ -82,22 +82,23 @@ LLM training data is months behind the pinned Zig version. Injecting a manual co
 ```
 flow(target_fn) → identifies stdlib callees on the call path
                         ↓
-symbol(callee, file=stdlib_path) → pulls exact current signature
+symbol(callee, stdlib=true) → pulls exact current signature off disk
                         ↓
 inject: 3-5 relevant signatures into prompt (not the whole stdlib)
 ```
 
 The call graph is the relevance filter. If a stdlib function is not on the call path, it never appears in the prompt. No noise.
 
-### Stdlib path detection (automatic, no user config)
+### Stdlib path detection (automatic, no user config) — shipped
 
-| Language | Command | Path |
-|---|---|---|
-| Zig | `zig env --json` → `lib_dir` | `<lib_dir>/std/` |
-| Go | `go env GOROOT` | `$GOROOT/src/` |
-| Rust | `rustc --print sysroot` | `<sysroot>/lib/rustlib/src/rust/library/` |
+| Language | Command | Path | Shipped |
+|---|---|---|---|
+| Zig | `zig env --json` → `lib_dir` | `<lib_dir>/std/` | v1.4.2 |
+| Go | `go env GOROOT` | `$GOROOT/src/` | v1.4.2 |
+| Rust | `rustc --print sysroot` | `<sysroot>/lib/rustlib/src/rust/library/` | v1.4.2 |
+| TypeScript | `npm`/`pnpm`/`yarn root -g` | `<global_modules>/typescript/lib/` | v1.4.4–v1.4.5 |
 
-yoyo calls the toolchain at startup, resolves the path, indexes stdlib alongside user code.
+`symbol(name, stdlib=true)` walks the installed toolchain, parses candidates, returns matches tagged `is_stdlib: true`. Project results always rank first.
 
 ### Drift defense stack
 
@@ -113,7 +114,7 @@ Training cutoff becomes irrelevant for stdlib calls. Works identically for SLM a
 
 ### Applies to
 
-Zig (Phase 2), Go, Rust — same mechanism, same precision.
+Zig, Go, Rust, TypeScript — same mechanism, same precision.
 
 ---
 
