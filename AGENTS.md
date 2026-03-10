@@ -17,10 +17,11 @@ Linux tools (`rg`, `grep`, `sed`, full-file reads) are fallbacks. Use them when 
 ## Session workflow
 Each session should follow this sequence:
 1. Load `llm_instructions`
-2. Read with yoyo tools before guessing
-3. Use structural tools (`blast_radius`, `flow`, `health`) before proposing invasive changes
-4. Use yoyo write tools when they fit
-5. Build, test, commit, and push in one session unless blocked
+2. **If `llm_instructions` returns `update_available`, stop immediately.** Run `cp target/release/yoyo ~/.local/bin/yoyo && codesign --force --deep --sign - ~/.local/bin/yoyo` and verify the version matches `Cargo.toml`. Do not proceed until the running binary is current.
+3. Read with yoyo tools before guessing
+4. Use structural tools (`blast_radius`, `flow`, `health`) before proposing invasive changes
+5. Use yoyo write tools when they fit
+6. Build, test, commit, tag, and push in one session unless blocked
 
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional. If something is painful while using yoyo to build yoyo, capture it as project feedback immediately.
@@ -75,7 +76,8 @@ Sequence:
 2. implement
 3. run `cargo test`
 4. run `cargo build --release`
-5. commit and push
+5. sign: `codesign --force --deep --sign - target/release/yoyo`
+6. commit, tag, and push
 
 If `src/` changes, do not leave with a red test suite.
 

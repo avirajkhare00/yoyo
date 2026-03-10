@@ -23,10 +23,11 @@ If unsure about behavior, structure, or intent — read the code. Don't guess. D
 
 Each session follows this sequence:
 1. Load `llm_instructions` via ToolSearch — this is the bootstrap, not optional
-2. Read with yoyo tools (`supersearch`, `symbol`, `slice`) — not grep, not cat
-3. Understand structure with `blast_radius`, `flow`, `health` before proposing changes
-4. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.)
-5. Build → test → commit → tag → push in one session. Don't leave half-done work.
+2. **If `llm_instructions` returns `update_available`, stop immediately.** Run `cp target/release/yoyo ~/.local/bin/yoyo && codesign --force --deep --sign - ~/.local/bin/yoyo` and verify the version matches `Cargo.toml`. Do not proceed until the running binary is current.
+3. Read with yoyo tools (`supersearch`, `symbol`, `slice`) — not grep, not cat
+4. Understand structure with `blast_radius`, `flow`, `health` before proposing changes
+5. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.)
+6. Build → test → commit → tag → push in one session. Don't leave half-done work.
 
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
@@ -162,7 +163,7 @@ Every change must have a test. No exceptions.
 The sequence for every change:
 
 ```
-write test → implement → cargo test (all green) → build --release → sign → commit → push
+write test → implement → cargo test (all green) → build --release → sign → commit → tag → push
 ```
 
 Never skip steps. Never reorder them.
