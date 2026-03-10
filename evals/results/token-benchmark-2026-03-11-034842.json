@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-03-10T22:18:42Z",
+  "repo_path": "/Users/avirajkhare/yoyo-stuff/yoyo",
+  "model": "gpt-4o-mini",
+  "tasks": [
+    {
+      "task_id": "caller-discovery",
+      "question": "Which functions call reindex_files, and in which files?",
+      "linux_tokens": 657,
+      "yoyo_tokens": 105,
+      "reduction_pct": 84,
+      "linux_score": 0,
+      "yoyo_score": 0,
+      "linux_answer": "The functions calling `reindex_files` are found in the following files:\n\n1. **edit.rs**\n   - Line 409\n   - Line 469\n   - Line 538\n   - Line 607\n   - Line 716\n\n2. **graph.rs**\n   - Line 323\n   - Line 422\n   - Line 505\n   - Line 766\n\n3. **analysis.rs**\n   - Line 1042",
+      "yoyo_answer": "The context does not provide enough information to determine which functions call `reindex_files` or in which files they are located.",
+      "linux_ctx_chars": 1888,
+      "yoyo_ctx_chars": 142
+    },
+    {
+      "task_id": "function-body",
+      "question": "What does the patch_by_symbol function do? Describe its logic in detail.",
+      "linux_tokens": 8310,
+      "yoyo_tokens": 110,
+      "reduction_pct": 98,
+      "linux_score": 1,
+      "yoyo_score": 0,
+      "linux_answer": "The `patch_by_symbol` function allows for modifying specific sections of code in a file based on a symbol (function or variable name) in a project. Here’s how it works step by step:\n\n1. **Resolve Project Root**: It first resolves the project root directory using the `resolve_project_root` function with the provided optional `path`.\n\n2. **Require Bake Index**: It then ensures that a \"bake index\" is available by calling `require_bake_index`, which is likely a pre-index of symbols and their positions in the code for easy lookup.\n\n3. **Symbol Matching**: \n   - The function converts the input `name` into lowercase for case-insensitive comparison.\n   - It filters the list of functions from the bake index, checking if the symbol name matches the `name` either exactly or contains the `name` as a substring.\n   - For each match, it saves its corresponding file, start and end line numbers, and complexity status.\n\n4. **Sorting Matches**: The matches are sorted primarily by whether they are exact matches (the exact symbol name) and then by complexity. This allows users to prioritize more relevant matches.\n\n5. **Error Handling for Matches**: \n   - If no matches are found, the function returns an error informing that no symbol matches were found and suggests running `bake` to ensure existence.\n\n6. **Select Match Index**: \n   - The function determines which match to use based on the provided `match_index`. If it's out of bounds (e.g., trying to access a non-existent match), it returns an error.\n\n7. **Apply Patch to Range**:\n   - It extracts the file name, start, and end lines of the chosen match and calls `apply_patch_to_range` to modify that section in the file with the provided new content.\n\n8. **Reindexing**: After patching the file, it calls `reindex_files` to refresh any necessary indexes related to that file.\n\n9. **Syntax Check**: It performs a syntax check on the modified file to collect any syntax errors via `syntax_check`.\n\n10. **Prepare Payload**: Finally, it constructs a `PatchPayload` structure that includes details of the patch operation, like tool name and version, project root, modified file, start and end lines, and any syntax errors encountered.\n\n11. **Return JSON Response**: It serializes the `PatchPayload` to a pretty JSON string and returns it as the result. \n\nBy following this logic, the `patch_by_symbol` function seamlessly integrates symbol resolution with patching capabilities, ensuring that modifications are contextually correct and validated.",
+      "yoyo_answer": "The context does not provide information about the functionality or logic of the `patch_by_symbol` function.",
+      "linux_ctx_chars": 33841,
+      "yoyo_ctx_chars": 155
+    },
+    {
+      "task_id": "dead-code",
+      "question": "Which functions are dead code (never called) in this project?",
+      "linux_tokens": 1692,
+      "yoyo_tokens": 100,
+      "reduction_pct": 94,
+      "linux_score": 1,
+      "yoyo_score": 1,
+      "linux_answer": "The context provided does not contain any information about which functions are dead code or never called.",
+      "yoyo_answer": "The context does not provide information about which functions are dead code in the project.",
+      "linux_ctx_chars": 5131,
+      "yoyo_ctx_chars": 115
+    },
+    {
+      "task_id": "call-chain",
+      "question": "What is the full call chain when graph_add is invoked? List each function called in order.",
+      "linux_tokens": 16264,
+      "yoyo_tokens": 111,
+      "reduction_pct": 99,
+      "linux_score": 1,
+      "yoyo_score": 0,
+      "linux_answer": "The full call chain when `graph_add` is invoked is as follows:\n\n1. `graph_add`\n2. `resolve_project_root`\n3. `require_bake_index`\n4. `detect_language`\n5. `generate_test_scaffold` or `generate_typed_scaffold` or `generate_scaffold` (depending on the inputs)\n6. `ast_check_str`\n7. `fs::read`\n8. `fs::write`\n9. `reindex_files`\n\nThis sequence may vary based on the specific parameters passed to `graph_add`, especially between the scaffold generation functions (`generate_test_scaffold`, `generate_typed_scaffold`, or `generate_scaffold`).",
+      "yoyo_answer": "The context does not provide enough information to determine the full call chain when `graph_add` is invoked.",
+      "linux_ctx_chars": 68299,
+      "yoyo_ctx_chars": 136
+    },
+    {
+      "task_id": "large-functions",
+      "question": "Which functions have the highest cyclomatic complexity in this project?",
+      "linux_tokens": 28914,
+      "yoyo_tokens": 99,
+      "reduction_pct": 99,
+      "linux_score": 0,
+      "yoyo_score": 0,
+      "linux_answer": "The provided context does not contain information about cyclomatic complexity calculations or any specific metrics regarding function complexity. Therefore, I cannot determine which functions have the highest cyclomatic complexity in this project.",
+      "yoyo_answer": "The context does not provide information about functions or their cyclomatic complexity in the project.",
+      "linux_ctx_chars": 124799,
+      "yoyo_ctx_chars": 114
+    },
+    {
+      "task_id": "suggest-placement",
+      "question": "Where in the codebase should I add a new caching function? Which file and why?",
+      "linux_tokens": 4391,
+      "yoyo_tokens": 109,
+      "reduction_pct": 97,
+      "linux_score": 0,
+      "yoyo_score": 0,
+      "linux_answer": "You should add a new caching function in `util.rs` because this file contains various utility functions that manage filesystem operations and project-related functionalities. It is suitable for adding a caching mechanism as it can enhance the performance of operations, like indexing or resolving project roots, that involve repeated access to the same resources.",
+      "yoyo_answer": "The context provided does not contain enough information to determine where in the codebase to add a new caching function.",
+      "linux_ctx_chars": 16546,
+      "yoyo_ctx_chars": 139
+    }
+  ],
+  "summary": {
+    "total_tasks": 6,
+    "avg_linux_tokens": 10038,
+    "avg_yoyo_tokens": 105,
+    "avg_reduction_pct": 95,
+    "linux_score_total": 3,
+    "yoyo_score_total": 1,
+    "linux_accuracy_pct": 50,
+    "yoyo_accuracy_pct": 16
+  }
+}
