@@ -16,7 +16,7 @@ yoyo MCP tools are deferred — load them before use. At the start of every sess
 
 ## Code intelligence
 Use yoyo tools as the primary means of reading, understanding, and mutating code.
-Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
+Give preference to yoyo tools entirely when they fit the task. Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
 
 If unsure about behavior, structure, or intent — read the code. Don't guess. Don't infer from docs or memory. The source is always the ground truth.
 ## How Claude works in this project
@@ -46,6 +46,7 @@ yoyo has two layers:
 - **Presentation** (`src/mcp.rs`, `src/cli.rs`) — adapters over the engine. MCP tool schemas, CLI commands, output formatting. These can and should evolve freely. Changing how a tool presents its output never requires touching the engine.
 
 Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
+When in doubt about system structure or where a change belongs, read [`docs/architecture.md`](./docs/architecture.md).
 
 ## DRY for markdown — single source of truth
 

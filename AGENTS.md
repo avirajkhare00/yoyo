@@ -12,7 +12,7 @@ Preferred tools:
 - `mcp__yoyo__slice` for exact line ranges
 - `mcp__yoyo__patch` for symbol-scoped edits
 
-Linux tools (`rg`, `grep`, `sed`, full-file reads) are fallbacks. Use them when yoyo errors or clearly does not fit. If yoyo loses to a fallback during dogfooding, file an issue.
+Use yoyo tools by default for both reads and writes when they fit. Linux tools (`rg`, `grep`, `sed`, full-file reads) are fallbacks. Use them when yoyo errors or clearly does not fit. If yoyo loses to a fallback during dogfooding, file an issue.
 
 ## Session workflow
 Each session should follow this sequence:
@@ -32,6 +32,7 @@ yoyo has two layers:
 - Presentation: [`src/mcp.rs`](./src/mcp.rs), [`src/cli.rs`](./src/cli.rs). Adapters over the engine: MCP tool schemas, CLI commands, output formatting. These can evolve more freely once the engine is correct.
 
 Work bottom-up. Do not paper over engine bugs with presentation-layer workarounds.
+When in doubt about system structure or where a change belongs, read [`docs/architecture.md`](./docs/architecture.md).
 
 ## Source of truth
 Cross-reference instead of duplicating facts.
