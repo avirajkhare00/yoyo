@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.4] - 2026-03-10
+
+### Added
+
+- `symbol`: TypeScript stdlib lookup via `npm root -g` → `<global_node_modules>/typescript/lib`. When `stdlib=true`, walks the bundled `.d.ts` declarations and returns matches tagged `is_stdlib: true`. Follows the same pattern as Zig/Go/Rust — zero new tools.
+
 ## [1.4.3] - 2026-03-10
 
 ### Added
