@@ -97,7 +97,11 @@ yoyo --version
 ```bash
 codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
 ```
-If you installed to `~/.local/bin/yoyo`, use that path in the command.
+Verify:
+```bash
+codex mcp list
+```
+If you installed to `~/.local/bin/yoyo`, use that path in the command. If you're dogfooding a local build, point Codex at the full path to your compiled binary, for example `.../target/release/yoyo`.
 
 **Gemini CLI** — add yoyo as an MCP server from your terminal:
 ```bash
@@ -111,7 +115,7 @@ opencode mcp add
 ```
 Then follow the prompts: `Local (stdio)` → name `yoyo` → command `/usr/local/bin/yoyo` → args `--mcp-server`.
 
-Then reconnect your agent client so it picks up the new server (for Claude Code, run `/mcp` or restart the app).
+Then reconnect your agent client so it picks up the new server (for Claude Code, run `/mcp`; for Codex, restart the session if the server list was already loaded).
 
 ---
 
@@ -124,9 +128,28 @@ yoyo bake --path /path/to/your/project
 
 ---
 
-### 4. Add the hook (Claude Code only — strongly recommended)
+### 4. Teach the agent to prefer yoyo (strongly recommended)
 
-Without this, Claude sees yoyo but won't prefer it over grep/cat. Add to your project's `.claude/settings.local.json`:
+**Codex** — add this to your project's `AGENTS.md`:
+
+```md
+## yoyo
+Load `mcp__yoyo__llm_instructions` first.
+
+Prefer:
+- `mcp__yoyo__supersearch` over grep/rg
+- `mcp__yoyo__symbol` with `include_source=true` over full-file reads
+- `mcp__yoyo__slice` for exact line ranges
+- `mcp__yoyo__patch` for function edits
+
+If a yoyo write tool fits the task, use it instead of manual file edits.
+```
+
+This is the Codex equivalent of the Claude hook: it nudges the agent to bootstrap with `llm_instructions` and use yoyo's read/write tools before falling back to shell reads or manual edits.
+
+**Claude Code** — add this hook to your project's `.claude/settings.local.json`:
+
+Without this, Claude sees yoyo but won't prefer it over grep/cat.
 
 ```json
 {
