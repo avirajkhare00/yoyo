@@ -604,7 +604,7 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema_req("script", d("script"), &["code"], json!({
                 "path": p(),
-                "code": s("Rhai script to execute. Available read functions: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Each returns the tool result as a map. Last expression is returned as result.")
+                "code": s("Rhai script to execute. Available read functions: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Each returns the tool result as a map. Last expression is returned as result. Tip: fn is a reserved keyword in Rhai — use f or item as closure parameter names.")
             })),
             handler: Box::new(|a, path| {
                 crate::engine::run_script(path, a.str_req("code", "script")?)
