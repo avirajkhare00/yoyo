@@ -80,7 +80,7 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
                     qualified_name: qualified_name(mod_path, &name, "swift"),
                     visibility: swift_visibility(node, source.as_bytes()),
                     parent_type: None,
-                    is_stdlib: false,
+                    ..Default::default()
                 });
             }
         }
@@ -98,7 +98,8 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "swift".to_string(),
                         start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        ..Default::default()
                     });
                 }
             }

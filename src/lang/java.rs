@@ -75,7 +75,7 @@ fn walk_java(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str,
                         qualified_name: qualified_name(mod_path, &name, "java"),
                         visibility: java_visibility(node, source.as_bytes()),
                         parent_type: None,
-                    is_stdlib: false,
+                        ..Default::default()
                     });
                 }
             }
@@ -97,7 +97,7 @@ fn walk_java(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str,
                         module_path: mod_path.to_string(),
                         visibility: Visibility::Public,
                         fields: vec![],
-                        is_stdlib: false,
+                        ..Default::default()
                     });
                 }
             }

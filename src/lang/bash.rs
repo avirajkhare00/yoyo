@@ -75,7 +75,7 @@ fn walk_bash(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str,
                     qualified_name: qualified_name(mod_path, &name, "bash"),
                     visibility: Visibility::Public,
                     parent_type: None,
-                    is_stdlib: false,
+                    ..Default::default()
                 });
             }
         }
