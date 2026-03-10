@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.9] - 2026-03-10
+
+### Fixed
+
+- **Guardrail hole — invalid UTF-8 silent pass**: all `if let Ok(...) = from_utf8` guard patterns changed to explicit `match` — UTF-8 decode failure is now a hard rejection, not a silent no-op. Affected: `multi_patch`, `patch_bytes`, `graph_rename`, `graph_move` (src + dst). Discovered by adversarial test: byte offsets that split a multi-byte UTF-8 character (e.g., `é` = 0xC3 0xA9) would produce corrupt bytes, bypass the guard, and land on disk.
+- **Guardrail hole — Zig extension not checked**: `.zig` files returned `vec![]` from `ast_check_str` (unknown extension no-op). Wired `tree-sitter-zig` (already a dep) into the checker — Zig syntax errors are now caught pre-write.
+- 3 new adversarial tests: `multi_patch_rejects_when_offsets_split_multibyte_utf8_char`, `ast_check_str_catches_invalid_zig_syntax`, `ast_check_str_passes_valid_zig`. 81 tests total.
+
 ## [1.4.8] - 2026-03-10
 
 ### Fixed

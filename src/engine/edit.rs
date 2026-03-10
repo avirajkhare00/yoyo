@@ -20,6 +20,7 @@ pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
         "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
         "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
         "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
+        "zig"                       => parser.set_language(&tree_sitter_zig::LANGUAGE.into()),
         _                           => return vec![],
     };
     if ok.is_err() { return vec![]; }
@@ -536,18 +537,25 @@ pub fn patch_bytes(
     let new_byte_count = new_bytes.len();
     bytes.splice(byte_start..byte_end, new_bytes.iter().copied());
 
-    // Pre-write AST check.
+    // Pre-write AST check — reject before touching disk.
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if let Ok(patched_str) = std::str::from_utf8(&bytes) {
-        let pre_errors = ast_check_str(patched_str, ext);
-        if !pre_errors.is_empty() {
-            let summary: Vec<String> = pre_errors.iter()
-                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                .collect();
-            return Err(anyhow!(
-                "patch rejected: syntax errors in new content (file not modified):\n{}",
-                summary.join("\n")
-            ));
+    match std::str::from_utf8(&bytes) {
+        Err(_) => return Err(anyhow!(
+            "patch_bytes rejected: result is invalid UTF-8 in {} (file not modified) — \
+             byte offsets likely split a multi-byte character",
+            file
+        )),
+        Ok(patched_str) => {
+            let pre_errors = ast_check_str(patched_str, ext);
+            if !pre_errors.is_empty() {
+                let summary: Vec<String> = pre_errors.iter()
+                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                    .collect();
+                return Err(anyhow!(
+                    "patch_bytes rejected: syntax errors in {} (file not modified):\n{}",
+                    file, summary.join("\n")
+                ));
+            }
         }
     }
 
@@ -637,16 +645,23 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
 
         // Pre-write AST check — reject before touching disk.
         let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if let Ok(patched_str) = std::str::from_utf8(&bytes) {
-            let pre_errors = ast_check_str(patched_str, ext);
-            if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors.iter()
-                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                    .collect();
-                return Err(anyhow!(
-                    "multi_patch rejected: syntax errors in {} (file not modified):\n{}",
-                    file, summary.join("\n")
-                ));
+        match std::str::from_utf8(&bytes) {
+            Err(_) => return Err(anyhow!(
+                "multi_patch rejected: result is invalid UTF-8 in {} (file not modified) — \
+                 byte offsets likely split a multi-byte character",
+                file
+            )),
+            Ok(patched_str) => {
+                let pre_errors = ast_check_str(patched_str, ext);
+                if !pre_errors.is_empty() {
+                    let summary: Vec<String> = pre_errors.iter()
+                        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                        .collect();
+                    return Err(anyhow!(
+                        "multi_patch rejected: syntax errors in {} (file not modified):\n{}",
+                        file, summary.join("\n")
+                    ));
+                }
             }
         }
 
@@ -749,8 +764,60 @@ mod tests {
         std::fs::write(p, content).unwrap();
     }
 
+    // ── adversarial / puncture tests ─────────────────────────────────────────
+
     #[test]
-    fn multi_patch_rejects_invalid_rust_syntax() {
+    fn multi_patch_rejects_when_offsets_split_multibyte_utf8_char() {
+        // Hole: byte offsets that split a multi-byte UTF-8 char produce invalid UTF-8.
+        // Old guard: `if let Ok(...) = from_utf8` silently skipped the check and wrote the file.
+        // Fix: treat UTF-8 decode failure as a hard rejection.
+        let dir = TempDir::new().unwrap();
+        // "é" (U+00E9) encodes as 2 bytes: 0xC3 0xA9.
+        // "fn é() {}\n" — é starts at byte 3.
+        let content = "fn é() {}\n";
+        write_file(&dir, "lib.rs", content);
+
+        // Patch bytes 3..4 — splits 0xC3 | 0xA9, leaving 0xA9 as a lone continuation byte.
+        let edits = vec![PatchEdit {
+            file: "lib.rs".to_string(),
+            byte_start: 3,
+            byte_end: 4,
+            new_content: "x".to_string(),
+        }];
+
+        // Verify the test precondition: result bytes are invalid UTF-8.
+        let mut check = content.as_bytes().to_vec();
+        check.splice(3..4, b"x".iter().copied());
+        assert!(std::str::from_utf8(&check).is_err(), "precondition: result must be invalid UTF-8");
+
+        let err = multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            edits,
+        ).unwrap_err();
+
+        assert!(err.to_string().contains("invalid UTF-8") || err.to_string().contains("multi_patch rejected"),
+            "expected UTF-8 rejection, got: {}", err);
+        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), content,
+            "file must be untouched on rejection");
+    }
+
+    #[test]
+    fn ast_check_str_catches_invalid_zig_syntax() {
+        // Zig is now checked — tree-sitter-zig is wired into ast_check_str.
+        let broken_zig = "fn broken syntax {{{{ totally invalid";
+        let errors = ast_check_str(broken_zig, "zig");
+        assert!(!errors.is_empty(), "zig syntax errors must be detected");
+    }
+
+    #[test]
+    fn ast_check_str_passes_valid_zig() {
+        let valid_zig = "pub fn add(a: i32, b: i32) i32 {\n    return a + b;\n}\n";
+        let errors = ast_check_str(valid_zig, "zig");
+        assert!(errors.is_empty(), "valid zig should have no errors, got {} error(s)", errors.len());
+    }
+
+    #[test]
+    fn multi_patch_rejects_invalid_syntax() {
         let dir = TempDir::new().unwrap();
         // "fn foo() {}\n" — "{}" is at bytes 9..11
         write_file(&dir, "lib.rs", "fn foo() {}\n");

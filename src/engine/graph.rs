@@ -295,16 +295,22 @@ pub fn graph_rename(
 
         // Pre-write AST check — reject before touching disk.
         let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if let Ok(patched_str) = std::str::from_utf8(&bytes) {
-            let pre_errors = ast_check_str(patched_str, ext);
-            if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors.iter()
-                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                    .collect();
-                return Err(anyhow!(
-                    "graph_rename rejected: syntax errors in {} (file not modified):\n{}",
-                    rel, summary.join("\n")
-                ));
+        match std::str::from_utf8(&bytes) {
+            Err(_) => return Err(anyhow!(
+                "graph_rename rejected: result is invalid UTF-8 in {} (file not modified)",
+                rel
+            )),
+            Ok(patched_str) => {
+                let pre_errors = ast_check_str(patched_str, ext);
+                if !pre_errors.is_empty() {
+                    let summary: Vec<String> = pre_errors.iter()
+                        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                        .collect();
+                    return Err(anyhow!(
+                        "graph_rename rejected: syntax errors in {} (file not modified):\n{}",
+                        rel, summary.join("\n")
+                    ));
+                }
             }
         }
 
@@ -714,30 +720,42 @@ pub fn graph_move(
 
     // Pre-write AST checks — both files checked before either is written to disk.
     let src_ext = src_full.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if let Ok(src_str) = std::str::from_utf8(&src_bytes) {
-        let pre_errors = ast_check_str(src_str, src_ext);
-        if !pre_errors.is_empty() {
-            let summary: Vec<String> = pre_errors.iter()
-                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                .collect();
-            return Err(anyhow!(
-                "graph_move rejected: syntax errors in source {} after removal (no files modified):\n{}",
-                from_file, summary.join("\n")
-            ));
+    match std::str::from_utf8(&src_bytes) {
+        Err(_) => return Err(anyhow!(
+            "graph_move rejected: invalid UTF-8 in source {} after removal (no files modified)",
+            from_file
+        )),
+        Ok(src_str) => {
+            let pre_errors = ast_check_str(src_str, src_ext);
+            if !pre_errors.is_empty() {
+                let summary: Vec<String> = pre_errors.iter()
+                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                    .collect();
+                return Err(anyhow!(
+                    "graph_move rejected: syntax errors in source {} after removal (no files modified):\n{}",
+                    from_file, summary.join("\n")
+                ));
+            }
         }
     }
 
     let dst_ext = dst_full.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if let Ok(dst_str) = std::str::from_utf8(&final_dst) {
-        let pre_errors = ast_check_str(dst_str, dst_ext);
-        if !pre_errors.is_empty() {
-            let summary: Vec<String> = pre_errors.iter()
-                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                .collect();
-            return Err(anyhow!(
-                "graph_move rejected: syntax errors in dest {} (no files modified):\n{}",
-                to_file, summary.join("\n")
-            ));
+    match std::str::from_utf8(&final_dst) {
+        Err(_) => return Err(anyhow!(
+            "graph_move rejected: invalid UTF-8 in dest {} (no files modified)",
+            to_file
+        )),
+        Ok(dst_str) => {
+            let pre_errors = ast_check_str(dst_str, dst_ext);
+            if !pre_errors.is_empty() {
+                let summary: Vec<String> = pre_errors.iter()
+                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                    .collect();
+                return Err(anyhow!(
+                    "graph_move rejected: syntax errors in dest {} (no files modified):\n{}",
+                    to_file, summary.join("\n")
+                ));
+            }
         }
     }
 
