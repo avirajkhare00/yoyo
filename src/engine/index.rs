@@ -23,11 +23,11 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         files_indexed: snapshot.files_indexed,
         tools: tool_catalog(),
         prime_directives: vec![
-            "grep, cat, and read-file are text tools. They find strings. They cannot answer structural questions about code.",
-            "For any question about visibility, module path, callers, callees, methods, fields, or trait implementations — use yoyo tools, not grep.",
+            "yoyo is a structural layer on top of linux tools — use both together. Linux tools (grep, cat, find) are fast for raw text. yoyo tools answer structural questions linux tools cannot.",
+            "Use yoyo for: callers, call chains, complexity, dead code, placement, visibility, module paths, safe rename/delete. Use linux tools for: pattern matching, line confirmation, file listing.",
+            "grep finds strings. symbol finds definitions. blast_radius finds callers. health finds dead code. Pick the right tool for the question.",
             "Before adding any new function or tool, search the codebase first — it may already exist. Duplication is the first form of rot.",
             "Before writing, read. Use symbol or supersearch to understand existing code before proposing changes.",
-            "Dead code is waste. Use health to identify unused functions and graph_delete to remove them.",
             "Write tools are destructive and irreversible. Always confirm safety with blast_radius or health before deleting.",
         ],
         concurrency_rules: vec![
