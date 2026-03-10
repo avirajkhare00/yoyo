@@ -61,6 +61,7 @@ pub fn symbol(
     let mut matches: Vec<SymbolMatch> = bake
         .functions
         .iter()
+        .filter(|f| !f.is_stdlib)
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
@@ -95,7 +96,7 @@ pub fn symbol(
                 None
             }
         })
-        .chain(bake.types.iter().filter_map(|t| {
+        .chain(bake.types.iter().filter(|t| !t.is_stdlib).filter_map(|t| {
             let tname = t.name.to_lowercase();
             if tname == needle || tname.contains(&needle) {
                 // For structs/enums: collect traits they implement.
@@ -227,6 +228,10 @@ pub fn supersearch(
         .files
         .par_iter()
         .filter(|file| {
+            // Never search stdlib files by default.
+            if file.origin == "stdlib" {
+                return false;
+            }
             let path_str = file.path.to_string_lossy();
             if exclude_tests && (path_str.contains("test") || path_str.contains("spec")) {
                 return false;

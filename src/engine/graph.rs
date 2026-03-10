@@ -1415,6 +1415,7 @@ mod tests {
             },
             visibility: crate::lang::Visibility::Public,
             parent_type: None,
+            is_stdlib: false,
         }
     }
 

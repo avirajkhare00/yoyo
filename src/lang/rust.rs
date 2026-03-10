@@ -156,6 +156,7 @@ fn scan_children(
                             qualified_name: qname,
                             visibility: vis,
                             parent_type: parent_type.map(str::to_string),
+                            is_stdlib: false,
                         });
                         if let Some((method, path)) = pending_http.take() {
                             endpoints.push(IndexedEndpoint {
@@ -197,6 +198,7 @@ fn scan_children(
                             module_path: mod_path.to_string(),
                             visibility: vis,
                             fields,
+                            is_stdlib: false,
                         });
                     }
                 }

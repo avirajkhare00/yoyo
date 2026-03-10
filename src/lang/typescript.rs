@@ -132,6 +132,7 @@ fn walk_ts(
                                 qualified_name: qname,
                                 visibility: Visibility::Public,
                                 parent_type: None,
+                    is_stdlib: false,
                             });
                         }
                     }
@@ -161,6 +162,7 @@ fn walk_ts(
                                 qualified_name: qname,
                                 visibility: Visibility::Public,
                                 parent_type: None,
+                    is_stdlib: false,
                             });
                         }
                     }
@@ -178,7 +180,7 @@ fn walk_ts(
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "typescript".to_string(),
                         start_line, end_line, kind: "class".to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }
@@ -191,7 +193,7 @@ fn walk_ts(
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "typescript".to_string(),
                         start_line, end_line, kind: "interface".to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }
@@ -204,7 +206,7 @@ fn walk_ts(
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "typescript".to_string(),
                         start_line, end_line, kind: "type".to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }
@@ -217,7 +219,7 @@ fn walk_ts(
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "typescript".to_string(),
                         start_line, end_line, kind: "enum".to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }
@@ -260,6 +262,7 @@ fn push_function(
         qualified_name: qname,
         visibility: Visibility::Public,
         parent_type: None,
+                    is_stdlib: false,
     });
 }
 

@@ -21,6 +21,8 @@ pub(crate) struct BakeIndex {
     pub(crate) impls: Vec<crate::lang::IndexedImpl>,
 }
 
+fn default_origin() -> String { "user".to_string() }
+
 #[derive(Serialize, Deserialize)]
 pub(crate) struct BakeFile {
     pub(crate) path: PathBuf,
@@ -28,6 +30,9 @@ pub(crate) struct BakeFile {
     pub(crate) bytes: u64,
     #[serde(default)]
     pub(crate) imports: Vec<String>,
+    /// "user" for project files, "stdlib" for toolchain stdlib files.
+    #[serde(default = "default_origin")]
+    pub(crate) origin: String,
 }
 
 // ── Consolidated shared structs ───────────────────────────────────────────────

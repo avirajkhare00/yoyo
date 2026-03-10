@@ -75,6 +75,7 @@ fn walk_cpp(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, 
                     qualified_name: qualified_name(mod_path, &name, "cpp"),
                     visibility: Visibility::Public,
                     parent_type: None,
+                    is_stdlib: false,
                 });
             }
         }
@@ -91,7 +92,7 @@ fn walk_cpp(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, 
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "cpp".to_string(),
                         start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }

@@ -85,6 +85,7 @@ fn walk_kotlin(source: &str, root: &Path, file: &Path, node: Node, mod_path: &st
                         qualified_name: qualified_name(mod_path, &name, "kotlin"),
                         visibility: kotlin_visibility(node, source.as_bytes()),
                         parent_type: None,
+                    is_stdlib: false,
                     });
                 }
             }
@@ -102,7 +103,7 @@ fn walk_kotlin(source: &str, root: &Path, file: &Path, node: Node, mod_path: &st
                     types.push(IndexedType {
                         name, file: relative(root, file), language: "kotlin".to_string(),
                         start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![], is_stdlib: false,
                     });
                 }
             }

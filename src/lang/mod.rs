@@ -68,6 +68,9 @@ pub struct IndexedFunction {
     /// None for free functions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_type: Option<String>,
+    /// True when this function was indexed from a toolchain stdlib (not user code).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +98,9 @@ pub struct IndexedType {
     /// Parsed fields for structs (Rust only for now).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<FieldInfo>,
+    /// True when this type was indexed from a toolchain stdlib (not user code).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_stdlib: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
