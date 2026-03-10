@@ -674,28 +674,10 @@ pub fn graph_move(
 
     let func_body: Vec<u8> = src_bytes[byte_start..byte_end].to_vec();
 
-    // Remove from source.
+    // Remove from source (in memory only — no disk write yet).
     src_bytes.drain(byte_start..byte_end);
 
-    // Pre-write AST check on source — reject before touching disk.
-    let src_ext = src_full.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if let Ok(src_str) = std::str::from_utf8(&src_bytes) {
-        let pre_errors = ast_check_str(src_str, src_ext);
-        if !pre_errors.is_empty() {
-            let summary: Vec<String> = pre_errors.iter()
-                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                .collect();
-            return Err(anyhow!(
-                "graph_move rejected: syntax errors in source {} after removal (file not modified):\n{}",
-                from_file, summary.join("\n")
-            ));
-        }
-    }
-
-    fs::write(&src_full, &src_bytes)
-        .with_context(|| format!("Failed to write source {}", from_file))?;
-
-    // Append to destination.
+    // Build destination (in memory only — no disk write yet).
     let dst_full = root.join(&to_file);
     let mut dst_bytes = if dst_full.exists() {
         fs::read(&dst_full).with_context(|| format!("Failed to read dest {}", to_file))?
@@ -730,7 +712,21 @@ pub fn graph_move(
         out
     };
 
-    // Pre-write AST check on destination — reject before touching disk.
+    // Pre-write AST checks — both files checked before either is written to disk.
+    let src_ext = src_full.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if let Ok(src_str) = std::str::from_utf8(&src_bytes) {
+        let pre_errors = ast_check_str(src_str, src_ext);
+        if !pre_errors.is_empty() {
+            let summary: Vec<String> = pre_errors.iter()
+                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                .collect();
+            return Err(anyhow!(
+                "graph_move rejected: syntax errors in source {} after removal (no files modified):\n{}",
+                from_file, summary.join("\n")
+            ));
+        }
+    }
+
     let dst_ext = dst_full.extension().and_then(|e| e.to_str()).unwrap_or("");
     if let Ok(dst_str) = std::str::from_utf8(&final_dst) {
         let pre_errors = ast_check_str(dst_str, dst_ext);
@@ -739,12 +735,15 @@ pub fn graph_move(
                 .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                 .collect();
             return Err(anyhow!(
-                "graph_move rejected: syntax errors in dest {} (source already written — re-run to retry):\n{}",
+                "graph_move rejected: syntax errors in dest {} (no files modified):\n{}",
                 to_file, summary.join("\n")
             ));
         }
     }
 
+    // Both checks passed — safe to write.
+    fs::write(&src_full, &src_bytes)
+        .with_context(|| format!("Failed to write source {}", from_file))?;
     fs::write(&dst_full, &final_dst)
         .with_context(|| format!("Failed to write dest {}", to_file))?;
 
@@ -1550,5 +1549,90 @@ mod tests {
         // "self" is trivial — skip qualifier matching, fall to same-directory
         let result = resolve_candidate(&candidates, &caller, &Some("self".to_string()));
         assert_eq!(result.unwrap().file, "src/engine/store.rs");
+    }
+
+    // ── compiler guardrail rejection tests ───────────────────────────────────
+
+    #[test]
+    fn graph_rename_succeeds_and_updates_all_occurrences() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn foo() {}\nfn caller() { foo(); }\n");
+        bake_dir(&dir);
+
+        graph_rename(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "foo".into(),
+            "bar".into(),
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn bar()"));
+        assert!(content.contains("bar()"));
+        assert!(!content.contains("foo"));
+    }
+
+    #[test]
+    fn graph_add_rejects_when_scaffold_is_invalid_for_language() {
+        let dir = TempDir::new().unwrap();
+        // entity_type "function" generates JS syntax — invalid in a .rs file.
+        write_file(&dir, "src/lib.rs", "fn existing() {}\n");
+        bake_dir(&dir);
+
+        let err = graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "function".into(), // JS entity_type in a Rust file
+            "new_fn".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
+            None, None, None,
+        ).unwrap_err();
+
+        assert!(err.to_string().contains("graph_add rejected"), "got: {}", err);
+        // File must be untouched.
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(!content.contains("new_fn"), "file was modified despite rejection");
+    }
+
+    #[test]
+    fn graph_add_allows_valid_rust_fn_scaffold() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn existing() {}\n");
+        bake_dir(&dir);
+
+        graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "fn".into(),
+            "new_helper".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
+            None, None, None,
+        ).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn new_helper()"));
+    }
+
+    #[test]
+    fn graph_move_rejects_when_dest_has_invalid_syntax_and_leaves_both_files_untouched() {
+        let dir = TempDir::new().unwrap();
+        // Destination already has broken syntax — moving into it should be rejected.
+        write_file(&dir, "src/a.rs", "fn foo() {}\n");
+        write_file(&dir, "src/b.rs", "fn bar( {}\n"); // pre-broken
+        bake_dir(&dir);
+
+        let err = graph_move(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "foo".into(),
+            "src/b.rs".into(),
+        ).unwrap_err();
+
+        assert!(err.to_string().contains("graph_move rejected"), "got: {}", err);
+        // Both files must be untouched — checks happen before any write.
+        let src = fs::read_to_string(dir.path().join("src/a.rs")).unwrap();
+        let dst = fs::read_to_string(dir.path().join("src/b.rs")).unwrap();
+        assert!(src.contains("fn foo()"), "source was modified despite rejection");
+        assert_eq!(dst, "fn bar( {}\n", "dest was modified despite rejection");
     }
 }
