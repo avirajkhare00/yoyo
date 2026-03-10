@@ -711,4 +711,43 @@ report
         let has_stdlib = matches.iter().any(|m| m["is_stdlib"].as_bool().unwrap_or(false));
         assert!(has_stdlib, "expected at least one is_stdlib: true match for HashMap in Rust stdlib");
     }
+
+    #[test]
+    fn sig_hash_is_populated_for_rust_functions() {
+        // Fixture has add(a: i64, b: i64) -> i64 — a Rust function. Should carry sig_hash.
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+
+        let json = crate::engine::symbol(
+            Some(root),
+            "add".to_string(),
+            false,
+            None,
+            Some(5),
+            false,
+        ).unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().expect("matches array");
+        let has_hash = matches.iter().any(|m| m["sig_hash"].is_string());
+        assert!(has_hash, "expected Rust function 'add' to carry a sig_hash");
+    }
+
+    #[test]
+    fn health_structural_duplicate_detected_via_sig_hash() {
+        // Fixture has add, subtract, multiply — all (i64, i64) -> i64.
+        // health should flag them as structural duplicates via sig_hash.
+        let dir = setup();
+        let root = dir.path().to_string_lossy().into_owned();
+
+        let json = crate::engine::health(Some(root), Some(50)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let dupes = v["duplicate_code"].as_array().expect("duplicate_code array");
+
+        let has_structural = dupes.iter().any(|d| {
+            d["stem"].as_str().map(|s| s.starts_with("sig:")).unwrap_or(false)
+                && d["smell"].as_str() == Some("Structural Duplicate")
+        });
+        assert!(has_structural, "expected health to flag add/subtract/multiply as structural duplicates via sig_hash");
+    }
 }

@@ -522,6 +522,34 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
             refactoring: "Extract Function",
         })
         .collect();
+    // Also group by sig_hash — catches structural duplicates with different names.
+    let mut by_sig: HashMap<String, Vec<&crate::lang::IndexedFunction>> = HashMap::new();
+    for f in &bake.functions {
+        if let Some(ref h) = f.sig_hash {
+            by_sig.entry(h.clone()).or_default().push(f);
+        }
+    }
+    let sig_dupes: Vec<DuplicateGroup> = by_sig
+        .into_iter()
+        .filter(|(_, funcs)| {
+            funcs.len() >= 2
+                && funcs.windows(2).any(|w| stem(&w[0].name) != stem(&w[1].name))
+        })
+        .map(|(h, funcs)| DuplicateGroup {
+            stem: format!("sig:{}", &h[..8]),
+            functions: funcs
+                .iter()
+                .map(|f| DuplicateEntry {
+                    name: f.name.clone(),
+                    file: f.file.clone(),
+                    start_line: f.start_line,
+                })
+                .collect(),
+            smell: "Structural Duplicate",
+            refactoring: "Unify Contract",
+        })
+        .collect();
+    duplicate_code.extend(sig_dupes);
     duplicate_code.sort_by(|a, b| a.stem.cmp(&b.stem));
     duplicate_code.truncate(top_n);
 

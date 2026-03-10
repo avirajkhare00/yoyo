@@ -113,6 +113,30 @@ fn rust_visibility(node: Node, source: &str) -> Visibility {
     Visibility::Private
 }
 
+/// Extract a structural sig_hash from a Rust function_item node.
+/// Hashes (param_types, return_type) — name-agnostic.
+fn rust_sig_hash(node: &tree_sitter::Node, source: &str) -> String {
+    let mut param_types: Vec<String> = Vec::new();
+    if let Some(params) = node.child_by_field_name("parameters") {
+        let mut cur = params.walk();
+        for p in params.children(&mut cur) {
+            if p.kind() == "parameter" {
+                if let Some(t) = p.child_by_field_name("type") {
+                    if let Ok(s) = t.utf8_text(source.as_bytes()) {
+                        param_types.push(s.trim().to_string());
+                    }
+                }
+            }
+        }
+    }
+    let return_type = node
+        .child_by_field_name("return_type")
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    super::compute_sig_hash(&param_types, &return_type)
+}
+
 fn scan_children(
     source: &str,
     root_path: &Path,
@@ -142,6 +166,7 @@ fn scan_children(
                         let (byte_start, byte_end) = byte_range(&child);
                         let vis = rust_visibility(child, source);
                         let qname = qualified_name(mod_path, name, "rust");
+                        let sig_hash = rust_sig_hash(&child, source);
                         functions.push(IndexedFunction {
                             name: name.to_string(),
                             file: relative(root_path, file),
@@ -156,6 +181,7 @@ fn scan_children(
                             qualified_name: qname,
                             visibility: vis,
                             parent_type: parent_type.map(str::to_string),
+                            sig_hash: Some(sig_hash),
                             ..Default::default()
                         });
                         if let Some((method, path)) = pending_http.take() {
