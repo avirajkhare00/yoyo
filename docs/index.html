@@ -675,8 +675,8 @@
 
       <pre><span class="comment">// find all dead functions, return the ones with zero callers</span>
 <span class="kw">let</span> dead = health().dead_code;
-dead.filter(|fn| {
-    <span class="kw">let</span> r = blast_radius(fn.name);
+dead.filter(|f| {
+    <span class="kw">let</span> r = blast_radius(f.name);
     r.total_callers == 0
 })</pre>
 
