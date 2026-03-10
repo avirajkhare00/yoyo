@@ -107,9 +107,35 @@ impl Default for IndexedFunction {
 pub fn compute_sig_hash(param_types: &[String], return_type: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+    // Normalize path prefixes before hashing: `super::X`, `crate::lang::X` → `X`.
+    // This makes structurally identical functions hash to the same node regardless
+    // of how they import the same type.
+    let normalize = |s: &str| -> String {
+        // Replace any sequence of `ident::` prefixes with empty string, keeping the leaf name.
+        // Works inside generics too: Vec<super::CallSite> → Vec<CallSite>.
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+        let mut word = String::new();
+        while let Some(c) = chars.next() {
+            if c.is_alphanumeric() || c == '_' {
+                word.push(c);
+            } else if c == ':' && chars.peek() == Some(&':') {
+                chars.next(); // consume second ':'
+                word.clear(); // drop path segment, keep building next
+            } else {
+                out.push_str(&word);
+                word.clear();
+                out.push(c);
+            }
+        }
+        out.push_str(&word);
+        out
+    };
+    let norm_params: Vec<String> = param_types.iter().map(|t| normalize(t)).collect();
+    let norm_return = normalize(return_type);
     let mut h = DefaultHasher::new();
-    param_types.hash(&mut h);
-    return_type.hash(&mut h);
+    norm_params.hash(&mut h);
+    norm_return.hash(&mut h);
     format!("{:016x}", h.finish())
 }
 
@@ -421,4 +447,24 @@ pub fn estimate_complexity_for(node: Node, branch_kinds: &[&str]) -> u32 {
         count += estimate_complexity_for(child, branch_kinds).saturating_sub(1);
     }
     count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_sig_hash;
+
+    #[test]
+    fn sig_hash_normalizes_module_paths() {
+        // super::CallSite and crate::lang::CallSite are the same type — must hash identically.
+        let h1 = compute_sig_hash(&["Node".to_string(), "super::CallSite".to_string()], "Vec<super::CallSite>");
+        let h2 = compute_sig_hash(&["Node".to_string(), "crate::lang::CallSite".to_string()], "Vec<crate::lang::CallSite>");
+        assert_eq!(h1, h2, "super::X and crate::lang::X should produce the same sig_hash");
+    }
+
+    #[test]
+    fn sig_hash_differs_for_different_types() {
+        let h1 = compute_sig_hash(&["u32".to_string()], "bool");
+        let h2 = compute_sig_hash(&["u64".to_string()], "bool");
+        assert_ne!(h1, h2, "different param types must produce different sig_hash");
+    }
 }

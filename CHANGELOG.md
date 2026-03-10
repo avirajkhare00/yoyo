@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.7] - 2026-03-10
+
+### Fixed
+
+- `sig_hash`: normalize module path prefixes before hashing — `super::CallSite` and `crate::lang::CallSite` now resolve to the same ISG node. All 14 `collect_calls` variants correctly hash to one node. 2 new unit tests. Closes #136.
+
 ## [1.4.6] - 2026-03-10
 
 ### Added
