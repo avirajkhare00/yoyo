@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.5] - 2026-03-10
+
+### Fixed
+
+- `symbol stdlib`: TypeScript detection now tries npm, pnpm, and yarn in order — first valid `typescript/lib` dir wins. Previously only `npm root -g` was probed.
+
 ## [1.4.4] - 2026-03-10
 
 ### Added
