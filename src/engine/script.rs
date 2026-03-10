@@ -33,7 +33,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     {
         let rc = r.clone();
         engine.register_fn("symbol", move |name: String| -> Dynamic {
-            call_to_dynamic(crate::engine::symbol(Some(rc.clone()), name, true, None, None))
+            call_to_dynamic(crate::engine::symbol(Some(rc.clone()), name, true, None, None, false))
         });
     }
     {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2] - 2026-03-10
+
+### Added
+
+- `symbol`: new `stdlib: bool` parameter. When true, walks installed toolchain stdlib dirs (Zig via `zig env`, Go via `go env GOROOT`, Rust via `rustc --print sysroot`), fast-scans for the symbol name, parses candidate files, and returns matches tagged `is_stdlib: true`. Project results are always ranked first. Zero new tools — extends `symbol` in place.
+- `SymbolMatch`: new `is_stdlib` field (omitted from JSON when false).
+
 ## [1.3.7] - 2026-03-09
 
 ### Fixed

@@ -210,6 +210,9 @@ pub(crate) struct SymbolMatch {
     /// For structs: parsed field names and types.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) fields: Vec<crate::lang::FieldInfo>,
+    /// True when this match came from an installed toolchain stdlib, not user code.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) is_stdlib: bool,
 }
 
 #[derive(Serialize)]

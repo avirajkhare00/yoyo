@@ -16,6 +16,7 @@ pub fn symbol(
     include_source: bool,
     file: Option<String>,
     limit: Option<usize>,
+    stdlib: bool,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
@@ -65,8 +66,6 @@ pub fn symbol(
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
-                // Filter calls to project-defined callees, excluding common
-                // stdlib/trait method names that produce false positives (#47).
                 let calls: Vec<_> = f.calls.iter()
                     .filter(|c| {
                         let lc = c.callee.to_lowercase();
@@ -91,6 +90,7 @@ pub fn symbol(
                     implements: vec![],
                     implementors: vec![],
                     fields: vec![],
+                    is_stdlib: false,
                 })
             } else {
                 None
@@ -99,12 +99,10 @@ pub fn symbol(
         .chain(bake.types.iter().filter(|t| !t.is_stdlib).filter_map(|t| {
             let tname = t.name.to_lowercase();
             if tname == needle || tname.contains(&needle) {
-                // For structs/enums: collect traits they implement.
                 let implements: Vec<String> = bake.impls.iter()
                     .filter(|i| i.type_name.to_lowercase() == tname)
                     .filter_map(|i| i.trait_name.clone())
                     .collect();
-                // For traits: collect unique types that implement them.
                 let implementors: Vec<String> = if t.kind == "trait" {
                     let mut seen = std::collections::HashSet::new();
                     bake.impls.iter()
@@ -132,6 +130,7 @@ pub fn symbol(
                     implements,
                     implementors,
                     fields: t.fields.clone(),
+                    is_stdlib: false,
                 })
             } else {
                 None
@@ -139,25 +138,30 @@ pub fn symbol(
         }))
         .collect();
 
-    // Narrow by file substring when caller specifies one.
     if let Some(ref ff) = file_filter {
         matches.retain(|m| m.file.to_lowercase().contains(ff.as_str()));
     }
 
+    if stdlib {
+        let stdlib_matches = symbol_stdlib(&needle, include_source);
+        matches.extend(stdlib_matches);
+    }
+
     matches.sort_by(|a, b| {
-        // Prefer exact name match, then most-called (incoming), then complexity.
         let a_exact = (a.name.to_lowercase() == needle) as i32;
         let b_exact = (b.name.to_lowercase() == needle) as i32;
         let a_in = incoming.get(&a.name.to_lowercase()).copied().unwrap_or(0);
         let b_in = incoming.get(&b.name.to_lowercase()).copied().unwrap_or(0);
-        b_exact
-            .cmp(&a_exact)
+        let a_stdlib = a.is_stdlib as i32;
+        let b_stdlib = b.is_stdlib as i32;
+        a_stdlib
+            .cmp(&b_stdlib)
+            .then(b_exact.cmp(&a_exact))
             .then(b_in.cmp(&a_in))
             .then(b.complexity.cmp(&a.complexity))
             .then(a.file.cmp(&b.file))
     });
 
-    // Mark the first exact-name match as primary.
     if let Some(m) = matches.iter_mut().find(|m| m.name.to_lowercase() == needle) {
         m.primary = true;
     }
@@ -166,6 +170,7 @@ pub fn symbol(
 
     if include_source {
         for m in &mut matches {
+            if m.source.is_some() { continue; }
             let full_path = root.join(&m.file);
             if let Ok(content) = fs::read_to_string(&full_path) {
                 let all_lines: Vec<&str> = content.lines().collect();
@@ -187,8 +192,116 @@ pub fn symbol(
         matches,
     };
 
-    let json = serde_json::to_string_pretty(&payload)?;
-    Ok(json)
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+/// On-demand stdlib lookup. Walks installed toolchain stdlib dirs (Zig/Go/Rust),
+/// fast-scans files for `needle`, parses candidates, returns matches tagged `is_stdlib: true`.
+fn symbol_stdlib(needle: &str, include_source: bool) -> Vec<SymbolMatch> {
+    let stdlib_paths = super::util::detect_stdlib_paths();
+    let mut matches = Vec::new();
+    for (lang, stdlib_dir) in &stdlib_paths {
+        let analyzer = match crate::lang::find_analyzer(lang) {
+            Some(a) => a,
+            None => continue,
+        };
+        walk_stdlib_dir(&stdlib_dir, needle, &*analyzer, &stdlib_dir, include_source, &mut matches);
+    }
+    matches
+}
+
+fn walk_stdlib_dir(
+    dir: &std::path::Path,
+    needle: &str,
+    analyzer: &dyn crate::lang::LanguageAnalyzer,
+    root: &std::path::Path,
+    include_source: bool,
+    matches: &mut Vec<SymbolMatch>,
+) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let path = entry.path();
+        if path.is_dir() {
+            walk_stdlib_dir(&path, needle, analyzer, root, include_source, matches);
+        } else if path.is_file() {
+            let content = match fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if !content.to_lowercase().contains(needle) {
+                continue;
+            }
+            let (funcs, _, types, _) = match analyzer.analyze_file(root, &path) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
+            let lines: Vec<&str> = content.lines().collect();
+
+            for f in &funcs {
+                let fname = f.name.to_lowercase();
+                if fname == needle || fname.contains(needle) {
+                    let src = if include_source {
+                        let s = (f.start_line.saturating_sub(1) as usize).min(lines.len());
+                        let e = (f.end_line.saturating_sub(1) as usize).min(lines.len());
+                        if s <= e { Some(lines[s..=e].join("\n")) } else { None }
+                    } else { None };
+                    matches.push(SymbolMatch {
+                        name: f.name.clone(),
+                        file: rel.clone(),
+                        start_line: f.start_line,
+                        end_line: f.end_line,
+                        complexity: f.complexity,
+                        primary: false,
+                        kind: None,
+                        source: src,
+                        visibility: Some(f.visibility.clone()),
+                        module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
+                        qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
+                        calls: vec![],
+                        parent_type: f.parent_type.clone(),
+                        implements: vec![],
+                        implementors: vec![],
+                        fields: vec![],
+                        is_stdlib: true,
+                    });
+                }
+            }
+            for t in &types {
+                let tname = t.name.to_lowercase();
+                if tname == needle || tname.contains(needle) {
+                    let src = if include_source {
+                        let s = (t.start_line.saturating_sub(1) as usize).min(lines.len());
+                        let e = (t.end_line.saturating_sub(1) as usize).min(lines.len());
+                        if s <= e { Some(lines[s..=e].join("\n")) } else { None }
+                    } else { None };
+                    matches.push(SymbolMatch {
+                        name: t.name.clone(),
+                        file: rel.clone(),
+                        start_line: t.start_line,
+                        end_line: t.end_line,
+                        complexity: 0,
+                        primary: false,
+                        kind: Some(t.kind.clone()),
+                        source: src,
+                        visibility: Some(t.visibility.clone()),
+                        module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
+                        qualified_name: None,
+                        calls: vec![],
+                        parent_type: None,
+                        implements: vec![],
+                        implementors: vec![],
+                        fields: t.fields.clone(),
+                        is_stdlib: true,
+                    });
+                }
+            }
+        }
+    }
 }
 
 /// Public entrypoint for the `supersearch` tool: text-based search over source files.
