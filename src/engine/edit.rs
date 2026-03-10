@@ -12,7 +12,7 @@ use super::util::{load_bake_index, reindex_files, resolve_project_root};
 
 /// Parse `source` with tree-sitter (no file I/O) and return any ERROR/MISSING nodes.
 /// Returns an empty vec if the extension is unsupported.
-fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
+pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
     use ast_grep_language::{LanguageExt, SupportLang};
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
@@ -633,6 +633,21 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
         // Apply edits bottom-up.
         for edit in &file_edits {
             bytes.splice(edit.byte_start..edit.byte_end, edit.new_content.as_bytes().iter().copied());
+        }
+
+        // Pre-write AST check — reject before touching disk.
+        let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if let Ok(patched_str) = std::str::from_utf8(&bytes) {
+            let pre_errors = ast_check_str(patched_str, ext);
+            if !pre_errors.is_empty() {
+                let summary: Vec<String> = pre_errors.iter()
+                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                    .collect();
+                return Err(anyhow!(
+                    "multi_patch rejected: syntax errors in {} (file not modified):\n{}",
+                    file, summary.join("\n")
+                ));
+            }
         }
 
         fs::write(&full_path, &bytes).with_context(|| {

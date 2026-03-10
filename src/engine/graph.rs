@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 
 use super::types::{GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
+use super::edit::ast_check_str;
 use super::util::{detect_language, load_bake_index, reindex_files, resolve_project_root};
 use crate::lang::Visibility;
 
@@ -292,6 +293,21 @@ pub fn graph_rename(
             bytes.splice(start..end, new_name.as_bytes().iter().copied());
         }
 
+        // Pre-write AST check — reject before touching disk.
+        let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if let Ok(patched_str) = std::str::from_utf8(&bytes) {
+            let pre_errors = ast_check_str(patched_str, ext);
+            if !pre_errors.is_empty() {
+                let summary: Vec<String> = pre_errors.iter()
+                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                    .collect();
+                return Err(anyhow!(
+                    "graph_rename rejected: syntax errors in {} (file not modified):\n{}",
+                    rel, summary.join("\n")
+                ));
+            }
+        }
+
         fs::write(&full_path, &bytes)
             .with_context(|| format!("Failed to write {}", rel))?;
         all_changed_files.push(rel);
@@ -379,6 +395,22 @@ pub fn graph_add(
     };
     let insert_at = insert_at.min(bytes.len());
     bytes.splice(insert_at..insert_at, scaffold_bytes.iter().copied());
+
+    // Pre-write AST check — reject before touching disk.
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if let Ok(patched_str) = std::str::from_utf8(&bytes) {
+        let pre_errors = ast_check_str(patched_str, ext);
+        if !pre_errors.is_empty() {
+            let summary: Vec<String> = pre_errors.iter()
+                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                .collect();
+            return Err(anyhow!(
+                "graph_add rejected: syntax errors in {} (file not modified):\n{}",
+                file, summary.join("\n")
+            ));
+        }
+    }
+
     fs::write(&full_path, &bytes)
         .with_context(|| format!("Failed to write {}", file))?;
 
@@ -447,7 +479,22 @@ pub fn graph_create(
     } else {
         generate_scaffold(entity_type, &function_name, lang)
     };
-    fs::write(&full_path, scaffold.trim_start())
+    let scaffold_content = scaffold.trim_start().to_string();
+
+    // Pre-write AST check — reject before touching disk.
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let pre_errors = ast_check_str(&scaffold_content, ext);
+    if !pre_errors.is_empty() {
+        let summary: Vec<String> = pre_errors.iter()
+            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+            .collect();
+        return Err(anyhow!(
+            "graph_create rejected: syntax errors in scaffold for {} (file not modified):\n{}",
+            file, summary.join("\n")
+        ));
+    }
+
+    fs::write(&full_path, &scaffold_content)
         .with_context(|| format!("Failed to create file {}", file))?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
@@ -629,6 +676,22 @@ pub fn graph_move(
 
     // Remove from source.
     src_bytes.drain(byte_start..byte_end);
+
+    // Pre-write AST check on source — reject before touching disk.
+    let src_ext = src_full.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if let Ok(src_str) = std::str::from_utf8(&src_bytes) {
+        let pre_errors = ast_check_str(src_str, src_ext);
+        if !pre_errors.is_empty() {
+            let summary: Vec<String> = pre_errors.iter()
+                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                .collect();
+            return Err(anyhow!(
+                "graph_move rejected: syntax errors in source {} after removal (file not modified):\n{}",
+                from_file, summary.join("\n")
+            ));
+        }
+    }
+
     fs::write(&src_full, &src_bytes)
         .with_context(|| format!("Failed to write source {}", from_file))?;
 
@@ -666,6 +729,21 @@ pub fn graph_move(
         out.extend_from_slice(&dst_bytes);
         out
     };
+
+    // Pre-write AST check on destination — reject before touching disk.
+    let dst_ext = dst_full.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if let Ok(dst_str) = std::str::from_utf8(&final_dst) {
+        let pre_errors = ast_check_str(dst_str, dst_ext);
+        if !pre_errors.is_empty() {
+            let summary: Vec<String> = pre_errors.iter()
+                .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+                .collect();
+            return Err(anyhow!(
+                "graph_move rejected: syntax errors in dest {} (source already written — re-run to retry):\n{}",
+                to_file, summary.join("\n")
+            ));
+        }
+    }
 
     fs::write(&dst_full, &final_dst)
         .with_context(|| format!("Failed to write dest {}", to_file))?;
@@ -1020,7 +1098,7 @@ mod tests {
 
         let result = graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "function".into(),
+            "fn".into(),
             "new_helper".into(),
             "src/lib.rs".into(),
             None,
