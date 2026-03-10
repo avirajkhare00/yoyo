@@ -639,6 +639,52 @@
     <h2>Blog</h2>
     <p class="section-sub">Design decisions, trade-offs, and things learned building yoyo.</p>
 
+    <div class="blog-post" style="margin-bottom: 32px;">
+      <div class="blog-meta">March 9, 2026 &bull; Release &bull; v1.3.8</div>
+      <h3>The compiler guard: <code>patch</code> now proves it compiles</h3>
+
+      <p>
+        Before v1.3.8, <code>patch</code> had a pre-write AST check. It would parse the new content
+        with tree-sitter before touching the file — catching syntax errors before they landed on disk.
+        That was good. It was not enough.
+      </p>
+
+      <p>
+        Syntax is the easy case. The harder failures — wrong identifiers, mismatched signatures,
+        undefined types, moved imports — all pass the AST check and only surface when the compiler
+        runs. In a session where an AI agent patches ten functions, one type error in the middle means
+        the project no longer builds. The agent has to backtrack, find the bad patch, fix it, and
+        rebuild — often losing context along the way.
+      </p>
+
+      <p>
+        v1.3.8 adds a compiler guard. The sequence is now: write → compile → roll back on error.
+        If the compiler rejects the change, the file is restored to its original content and
+        <code>patch</code> returns an error. A successful <code>patch</code> call is a guarantee:
+        the file compiles.
+      </p>
+
+      <pre><span class="comment">// what happens inside patch now</span>
+<span class="kw">1.</span> write new content to file
+<span class="kw">2.</span> run compiler (<span class="cmd">cargo check</span> / <span class="cmd">go build</span> / <span class="cmd">zig ast-check</span>)
+<span class="kw">3a.</span> compiler passes → reindex, return success
+<span class="kw">3b.</span> compiler fails → restore original file, return error</pre>
+
+      <p>
+        Languages covered: Rust (<code>cargo check</code>), Go (<code>go build</code>),
+        Zig (<code>zig ast-check</code>). For other languages, the AST pre-check still runs —
+        syntax errors are caught, type errors are not. Extending the guard to more languages
+        means finding a fast, zero-config compile check for each one.
+      </p>
+
+      <p>
+        The design principle here is the same as <code>graph_delete</code> blocking on live callers:
+        make the unsafe case structurally impossible, not just documented. An agent that patches Rust
+        code cannot leave the project in a broken state — not because of a rule, but because
+        <code>patch</code> won't let the bad write stand.
+      </p>
+    </div>
+
     <div class="blog-post">
       <div class="blog-meta">March 10, 2026 &bull; Design</div>
       <h3>Why <code>script</code> replaced <code>pipeline</code></h3>
