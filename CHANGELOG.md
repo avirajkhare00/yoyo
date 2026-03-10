@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.10] - 2026-03-10
+
+### Fixed
+
+- `supersearch`: recover from natural-language helper queries by retrying with extracted identifier-like tokens and falling back to line search when AST search returns no matches. This closes the dogfood gap where queries like `call sites of resolve_project_root` returned `matches: []` even though usages existed.
+- Project-root resolution for indexed tools: subdirectory `path=` inputs now walk up to the baked project root, and missing-bake errors now suggest the likely project root when possible.
+- Added regression coverage for natural-language `supersearch` recovery, empty-result fallback behavior, and subdirectory bake/root resolution.
+
 ## [1.4.9] - 2026-03-10
 
 ### Fixed

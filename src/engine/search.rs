@@ -360,10 +360,34 @@ pub fn supersearch(
         })
         .collect();
 
-    let mut matches = supersearch_matches_for_query(&searchable_files, &root, &q, &context_norm, &pattern_norm);
+    let fallback_queries = fallback_supersearch_queries(&query);
+    let literal_matches = supersearch_matches_for_query(&searchable_files, &root, &q, &context_norm, &pattern_norm);
+    let mut fallback_matches = Vec::new();
+
+    for candidate in &fallback_queries {
+        if *candidate == q {
+            continue;
+        }
+        fallback_matches = supersearch_matches_for_query(
+            &searchable_files,
+            &root,
+            candidate,
+            &context_norm,
+            &pattern_norm,
+        );
+        if !fallback_matches.is_empty() {
+            break;
+        }
+    }
+
+    let mut matches = if should_prefer_fallback_supersearch_results(&query, &fallback_queries, &fallback_matches) {
+        fallback_matches
+    } else {
+        literal_matches
+    };
 
     if matches.is_empty() {
-        for candidate in fallback_supersearch_queries(&query) {
+        for candidate in fallback_queries {
             if candidate == q {
                 continue;
             }
@@ -485,6 +509,14 @@ fn fallback_supersearch_queries(query: &str) -> Vec<String> {
         .collect()
 }
 
+fn should_prefer_fallback_supersearch_results(
+    query: &str,
+    fallback_queries: &[String],
+    fallback_matches: &[SupersearchMatch],
+) -> bool {
+    query.contains(' ') && !fallback_queries.is_empty() && !fallback_matches.is_empty()
+}
+
 /// Split a symbol/query string into lowercase tokens on `_`, `-`, space, `.`, `/`, `:`
 /// and camelCase boundaries. Tokens shorter than 2 chars are dropped.
 fn tokenize(s: &str) -> Vec<String> {
@@ -537,7 +569,9 @@ fn score_fn<F: Fn(&str) -> f32>(
 
 #[cfg(test)]
 mod tests {
-    use super::fallback_supersearch_queries;
+    use super::{
+        fallback_supersearch_queries, should_prefer_fallback_supersearch_results,
+    };
 
     #[test]
     fn fallback_supersearch_queries_extracts_code_like_identifier() {
@@ -557,6 +591,34 @@ mod tests {
             "expected stopwords to be removed, got {:?}",
             queries
         );
+    }
+
+    #[test]
+    fn prefers_fallback_for_natural_language_query_when_identifier_matches_exist() {
+        let fallback = fallback_supersearch_queries("call sites of resolve_project_root");
+        let matches = vec![super::SupersearchMatch {
+            file: "src/engine/util.rs".into(),
+            line: 64,
+            snippet: "pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {".into(),
+        }];
+        assert!(should_prefer_fallback_supersearch_results(
+            "call sites of resolve_project_root",
+            &fallback
+            ,
+            &matches
+        ));
+    }
+
+    #[test]
+    fn does_not_prefer_fallback_without_identifier_matches() {
+        let fallback = fallback_supersearch_queries("call sites of resolve_project_root");
+        let matches = Vec::new();
+        assert!(!should_prefer_fallback_supersearch_results(
+            "call sites of resolve_project_root",
+            &fallback
+            ,
+            &matches
+        ));
     }
 }
 
