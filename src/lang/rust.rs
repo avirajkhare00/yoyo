@@ -1,8 +1,12 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::Result;
 use ast_grep_language::{LanguageExt, SupportLang};
+use serde::Deserialize;
 use tree_sitter::{Node, Parser};
 
 use super::{
@@ -12,6 +16,8 @@ use super::{
 };
 
 pub struct RustAnalyzer;
+
+static EXPANDED_RUST_CACHE: OnceLock<Mutex<HashMap<PathBuf, Option<String>>>> = OnceLock::new();
 
 const KINDS: NodeKinds = NodeKinds {
     identifiers: &["identifier", "field_identifier", "type_identifier"],
@@ -62,7 +68,21 @@ impl LanguageAnalyzer for RustAnalyzer {
         let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&rel_file, "rust");
 
-        scan_children(&source, root, file, root_node, &mod_path, None, &mut functions, &mut endpoints, &mut types);
+        let known_functions = collect_function_names(root_node, &source);
+
+        scan_children(
+            &source,
+            root,
+            file,
+            root_node,
+            &mod_path,
+            None,
+            None,
+            &known_functions,
+            &mut functions,
+            &mut endpoints,
+            &mut types,
+        );
         let mut cursor = root_node.walk();
         for child in root_node.children(&mut cursor) {
             if child.kind() == "impl_item" {
@@ -80,16 +100,30 @@ impl LanguageAnalyzer for RustAnalyzer {
                     let (start_line, _) = line_range(&child);
                     impls.push(IndexedImpl {
                         type_name: type_name.clone(),
-                        trait_name,
+                        trait_name: trait_name.clone(),
                         file: relative(root, file),
                         start_line,
                     });
                     if let Some(body) = child.child_by_field_name("body") {
-                        scan_children(&source, root, file, body, &mod_path, Some(&type_name), &mut functions, &mut endpoints, &mut types);
+                        scan_children(
+                            &source,
+                            root,
+                            file,
+                            body,
+                            &mod_path,
+                            Some(&type_name),
+                            trait_name.as_deref(),
+                            &known_functions,
+                            &mut functions,
+                            &mut endpoints,
+                            &mut types,
+                        );
                     }
                 }
             }
         }
+
+        merge_compiler_expanded_calls(root, file, &source, &mut functions);
 
         Ok((functions, endpoints, types, impls))
     }
@@ -144,6 +178,8 @@ fn scan_children(
     parent: Node,
     mod_path: &str,
     parent_type: Option<&str>,
+    implemented_trait: Option<&str>,
+    known_functions: &HashSet<String>,
     functions: &mut Vec<IndexedFunction>,
     endpoints: &mut Vec<IndexedEndpoint>,
     types: &mut Vec<IndexedType>,
@@ -174,13 +210,14 @@ fn scan_children(
                             start_line,
                             end_line,
                             complexity: estimate_complexity(child, source),
-                            calls: collect_calls(child, source),
+                            calls: collect_calls(child, source, known_functions),
                             byte_start,
                             byte_end,
                             module_path: mod_path.to_string(),
                             qualified_name: qname,
                             visibility: vis,
                             parent_type: parent_type.map(str::to_string),
+                            implemented_trait: implemented_trait.map(str::to_string),
                             sig_hash: Some(sig_hash),
                             ..Default::default()
                         });
@@ -238,9 +275,20 @@ fn scan_children(
     }
 }
 
-fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
+fn collect_calls(
+    node: Node,
+    source: &str,
+    known_functions: &HashSet<String>,
+) -> Vec<crate::lang::CallSite> {
     let mut calls = Vec::new();
-    collect_calls_inner(node, source, &mut calls);
+    collect_calls_inner(node, source, known_functions, &mut calls);
+    if let Ok(text) = node.utf8_text(source.as_bytes()) {
+        if text.contains('!') {
+            let base_line = node.start_position().row as u32 + 1;
+            calls.extend(scan_macro_invocations(text, base_line));
+            calls.extend(scan_macro_body_calls(text, base_line, known_functions));
+        }
+    }
     calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
     calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
     calls
@@ -267,7 +315,12 @@ fn root_receiver<'a>(node: Node<'a>, source: &str) -> Option<String> {
     }
 }
 
-fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::CallSite>) {
+fn collect_calls_inner(
+    node: Node,
+    source: &str,
+    known_functions: &HashSet<String>,
+    calls: &mut Vec<crate::lang::CallSite>,
+) {
     let line = node.start_position().row as u32 + 1;
     match node.kind() {
         "call_expression" => {
@@ -305,6 +358,9 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                     calls.push(crate::lang::CallSite { callee, qualifier, line });
                 }
             }
+            if let Some(arguments) = node.child_by_field_name("arguments") {
+                collect_fn_refs_from_args(arguments, source, known_functions, calls);
+            }
         }
         "method_call_expression" => {
             if let Some(method) = node.child_by_field_name("method") {
@@ -316,12 +372,300 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                     calls.push(crate::lang::CallSite { callee, qualifier, line });
                 }
             }
+            if let Some(arguments) = node.child_by_field_name("arguments") {
+                collect_fn_refs_from_args(arguments, source, known_functions, calls);
+            }
+        }
+        "macro_invocation" => {
+            collect_macro_invocation_calls(node, source, known_functions, calls);
         }
         _ => {}
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        collect_calls_inner(child, source, calls);
+        collect_calls_inner(child, source, known_functions, calls);
+    }
+}
+
+fn collect_function_names(parent: Node, source: &str) -> HashSet<String> {
+    let mut names = HashSet::new();
+    collect_function_names_inner(parent, source, &mut names);
+    names
+}
+
+fn collect_function_names_inner(parent: Node, source: &str, names: &mut HashSet<String>) {
+    let mut cursor = parent.walk();
+    for child in parent.children(&mut cursor) {
+        if child.kind() == "function_item" {
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source.as_bytes()) {
+                    names.insert(name.to_string());
+                }
+            }
+        }
+        collect_function_names_inner(child, source, names);
+    }
+}
+
+fn collect_fn_refs_from_args(
+    arguments: Node,
+    source: &str,
+    known_functions: &HashSet<String>,
+    calls: &mut Vec<crate::lang::CallSite>,
+) {
+    let mut cursor = arguments.walk();
+    for child in arguments.named_children(&mut cursor) {
+        match child.kind() {
+            "identifier" => {
+                if let Ok(name) = child.utf8_text(source.as_bytes()) {
+                    if known_functions.contains(name) {
+                        calls.push(crate::lang::CallSite {
+                            callee: name.to_string(),
+                            qualifier: None,
+                            line: child.start_position().row as u32 + 1,
+                        });
+                    }
+                }
+            }
+            "scoped_identifier" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok());
+                let qualifier = child
+                    .child_by_field_name("path")
+                    .and_then(|p| p.utf8_text(source.as_bytes()).ok());
+                if let Some(name) = name {
+                    if known_functions.contains(name) {
+                        calls.push(crate::lang::CallSite {
+                            callee: name.to_string(),
+                            qualifier: qualifier.map(str::to_string),
+                            line: child.start_position().row as u32 + 1,
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn collect_macro_invocation_calls(
+    node: Node,
+    source: &str,
+    known_functions: &HashSet<String>,
+    calls: &mut Vec<crate::lang::CallSite>,
+) {
+    let Ok(text) = node.utf8_text(source.as_bytes()) else {
+        return;
+    };
+    let base_line = node.start_position().row as u32 + 1;
+
+    calls.extend(scan_macro_invocations(text, base_line));
+    calls.extend(scan_macro_body_calls(text, base_line, known_functions));
+}
+
+fn scan_macro_body_calls(
+    text: &str,
+    base_line: u32,
+    known_functions: &HashSet<String>,
+) -> Vec<crate::lang::CallSite> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if !is_ident_start(ch) {
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        i += 1;
+        while i < bytes.len() && is_ident_continue(bytes[i] as char) {
+            i += 1;
+        }
+        let token = &text[start..i];
+        let mut j = i;
+        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+            j += 1;
+        }
+
+        let line = base_line + text[..start].chars().filter(|c| *c == '\n').count() as u32;
+
+        if j < bytes.len() && bytes[j] as char == '.' {
+            let mut k = j + 1;
+            while k < bytes.len() && (bytes[k] as char).is_whitespace() {
+                k += 1;
+            }
+            if k < bytes.len() && is_ident_start(bytes[k] as char) {
+                let method_start = k;
+                k += 1;
+                while k < bytes.len() && is_ident_continue(bytes[k] as char) {
+                    k += 1;
+                }
+                let method = &text[method_start..k];
+                let mut l = k;
+                while l < bytes.len() && (bytes[l] as char).is_whitespace() {
+                    l += 1;
+                }
+                if l < bytes.len() && bytes[l] as char == '(' {
+                    out.push(crate::lang::CallSite {
+                        callee: method.to_string(),
+                        qualifier: Some(token.to_string()),
+                        line,
+                    });
+                }
+            }
+            continue;
+        }
+
+        if j < bytes.len() && ((bytes[j] as char == '(') || (bytes[j] as char == '!')) {
+            if let Some((callee, qualifier)) = split_qualified_name(token) {
+                if !is_rust_keyword(&callee) && preceding_keyword(text, start) != Some("fn") {
+                    out.push(crate::lang::CallSite { callee, qualifier, line });
+                }
+            }
+            continue;
+        }
+
+        if known_functions.contains(token) {
+            let prev = text[..start].chars().rev().find(|c| !c.is_whitespace());
+            let next = text[j..].chars().find(|c| !c.is_whitespace());
+            let looks_like_arg_ref = matches!(prev, Some('(' | ',' | '['))
+                && matches!(next, Some(',' | ')' | ']'));
+            if looks_like_arg_ref {
+                out.push(crate::lang::CallSite {
+                    callee: token.to_string(),
+                    qualifier: None,
+                    line,
+                });
+            }
+        }
+    }
+    out
+}
+
+fn scan_macro_invocations(text: &str, base_line: u32) -> Vec<crate::lang::CallSite> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    for (idx, ch) in text.char_indices() {
+        if ch != '!' {
+            continue;
+        }
+        let mut next = idx + 1;
+        while next < bytes.len() && (bytes[next] as char).is_whitespace() {
+            next += 1;
+        }
+        if next >= bytes.len() || !matches!(bytes[next] as char, '(' | '[' | '{') {
+            continue;
+        }
+
+        let mut end = idx;
+        while end > 0 && (bytes[end - 1] as char).is_whitespace() {
+            end -= 1;
+        }
+        let mut start = end;
+        while start > 0 && is_ident_continue(bytes[start - 1] as char) {
+            start -= 1;
+        }
+        if start == end {
+            continue;
+        }
+        let token = &text[start..end];
+        if let Some((callee, qualifier)) = split_qualified_name(token) {
+            if !is_rust_keyword(&callee) {
+                let line = base_line + text[..start].chars().filter(|c| *c == '\n').count() as u32;
+                out.push(crate::lang::CallSite { callee, qualifier, line });
+            }
+        }
+    }
+    out
+}
+
+fn split_qualified_name(token: &str) -> Option<(String, Option<String>)> {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some((qualifier, callee)) = trimmed.rsplit_once("::") {
+        if callee.is_empty() {
+            return None;
+        }
+        return Some((callee.to_string(), Some(qualifier.to_string())));
+    }
+    Some((trimmed.to_string(), None))
+}
+
+fn is_ident_start(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_ident_continue(ch: char) -> bool {
+    ch == '_' || ch == ':' || ch.is_ascii_alphanumeric()
+}
+
+fn is_rust_keyword(token: &str) -> bool {
+    matches!(
+        token,
+        "Self"
+            | "as"
+            | "async"
+            | "await"
+            | "break"
+            | "const"
+            | "continue"
+            | "crate"
+            | "else"
+            | "enum"
+            | "extern"
+            | "false"
+            | "fn"
+            | "for"
+            | "if"
+            | "impl"
+            | "in"
+            | "let"
+            | "loop"
+            | "match"
+            | "mod"
+            | "move"
+            | "mut"
+            | "pub"
+            | "ref"
+            | "return"
+            | "self"
+            | "static"
+            | "struct"
+            | "super"
+            | "trait"
+            | "true"
+            | "type"
+            | "unsafe"
+            | "use"
+            | "where"
+            | "while"
+    )
+}
+
+fn preceding_keyword<'a>(text: &'a str, start: usize) -> Option<&'a str> {
+    let prefix = &text[..start];
+    let mut end = prefix.len();
+    while end > 0 && prefix.as_bytes()[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut begin = end;
+    while begin > 0 {
+        let ch = prefix.as_bytes()[begin - 1] as char;
+        if ch == '_' || ch.is_ascii_alphanumeric() {
+            begin -= 1;
+        } else {
+            break;
+        }
+    }
+    if begin == end {
+        None
+    } else {
+        Some(&prefix[begin..end])
     }
 }
 
@@ -390,4 +734,165 @@ fn collect_struct_fields(struct_node: &Node, source: &str) -> Vec<FieldInfo> {
         }
     }
     fields
+}
+
+fn merge_compiler_expanded_calls(
+    root: &Path,
+    _file: &Path,
+    source: &str,
+    functions: &mut [IndexedFunction],
+) {
+    if !source.contains('!') {
+        return;
+    }
+    let Some(expanded) = cargo_expand_root(root) else {
+        return;
+    };
+    let expanded_functions = analyze_expanded_functions(&expanded);
+    if expanded_functions.is_empty() {
+        return;
+    }
+
+    let mut local_counts: HashMap<String, usize> = HashMap::new();
+    for f in functions.iter() {
+        *local_counts.entry(f.name.clone()).or_default() += 1;
+    }
+
+    let mut expanded_by_name: HashMap<String, Vec<&IndexedFunction>> = HashMap::new();
+    for f in &expanded_functions {
+        expanded_by_name.entry(f.name.clone()).or_default().push(f);
+    }
+
+    for func in functions.iter_mut() {
+        if local_counts.get(&func.name).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        let Some(matches) = expanded_by_name.get(&func.name) else {
+            continue;
+        };
+        if matches.len() != 1 {
+            continue;
+        }
+        for call in &matches[0].calls {
+            func.calls.push(call.clone());
+        }
+        func.calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
+        func.calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier);
+    }
+}
+
+fn analyze_expanded_functions(source: &str) -> Vec<IndexedFunction> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&SupportLang::Rust.get_ts_language())
+        .expect("failed to load Rust grammar");
+    let Some(tree) = parser.parse(source, None) else {
+        return Vec::new();
+    };
+
+    let root_node = tree.root_node();
+    let known_functions = collect_function_names(root_node, source);
+    let mut functions = Vec::new();
+    let mut endpoints = Vec::new();
+    let mut types = Vec::new();
+    scan_children(
+        source,
+        Path::new("."),
+        Path::new("expanded.rs"),
+        root_node,
+        "expanded",
+        None,
+        None,
+        &known_functions,
+        &mut functions,
+        &mut endpoints,
+        &mut types,
+    );
+    functions
+}
+
+fn cargo_expand_root(root: &Path) -> Option<String> {
+    let key = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let cache = EXPANDED_RUST_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(cached) = cache.lock().ok()?.get(&key).cloned() {
+        return cached;
+    }
+
+    let expanded = cargo_expand_root_uncached(&key);
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(key, expanded.clone());
+    }
+    expanded
+}
+
+fn cargo_expand_root_uncached(root: &Path) -> Option<String> {
+    let manifest_path = root.join("Cargo.toml");
+    if !manifest_path.exists() {
+        return None;
+    }
+    let target = select_expand_target(&manifest_path)?;
+    let mut cmd = Command::new("cargo");
+    cmd.arg("+nightly")
+        .arg("rustc")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(&manifest_path);
+    match target.kind.as_str() {
+        "bin" => {
+            cmd.arg("--bin").arg(target.name);
+        }
+        "lib" => {
+            cmd.arg("--lib");
+        }
+        _ => return None,
+    }
+    let output = cmd.arg("--").arg("-Zunpretty=expanded,identified").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout).ok()
+}
+
+fn select_expand_target(manifest_path: &Path) -> Option<ExpandTarget> {
+    let output = Command::new("cargo")
+        .arg("metadata")
+        .arg("--no-deps")
+        .arg("--format-version")
+        .arg("1")
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let metadata: CargoMetadata = serde_json::from_slice(&output.stdout).ok()?;
+    let pkg = metadata.packages.first()?;
+    let bin = pkg.targets.iter().find(|t| t.kind.iter().any(|k| k == "bin"));
+    if let Some(target) = bin {
+        return Some(ExpandTarget { kind: "bin".to_string(), name: target.name.clone() });
+    }
+    let lib = pkg.targets.iter().find(|t| t.kind.iter().any(|k| k == "lib"));
+    lib.map(|target| ExpandTarget { kind: "lib".to_string(), name: target.name.clone() })
+}
+
+#[derive(Deserialize)]
+struct CargoMetadata {
+    packages: Vec<CargoPackage>,
+}
+
+#[derive(Deserialize)]
+struct CargoPackage {
+    targets: Vec<CargoTarget>,
+}
+
+#[derive(Deserialize)]
+struct CargoTarget {
+    kind: Vec<String>,
+    name: String,
+}
+
+struct ExpandTarget {
+    kind: String,
+    name: String,
 }

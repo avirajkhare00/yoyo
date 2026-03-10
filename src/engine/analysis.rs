@@ -250,6 +250,24 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         }
     }
 
+    for (file, refs) in collect_serde_default_refs(&root, &bake.functions) {
+        for callee in refs {
+            callee_to_caller_files
+                .entry(callee)
+                .or_default()
+                .insert(file.clone());
+        }
+    }
+
+    for (file, refs) in collect_rust_text_usage_refs(&root, &bake.functions) {
+        for callee in refs {
+            callee_to_caller_files
+                .entry(callee)
+                .or_default()
+                .insert(file.clone());
+        }
+    }
+
     let all_callees: HashSet<String> = callee_to_caller_files.keys().cloned().collect();
 
     // ── 1. Dead Code (Fowler: Dead Code) ─────────────────────────────────────
@@ -270,6 +288,7 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
                 && !file_lc.contains("/bench")
                 && !lc.starts_with("handle_")
                 && !file_lc.contains("handler")
+                && f.implemented_trait.is_none()
                 && f.visibility != crate::lang::Visibility::Public
                 && f.name.len() > 2
         })
@@ -564,6 +583,179 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         duplicate_code,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+fn collect_serde_default_refs(
+    root: &Path,
+    functions: &[crate::lang::IndexedFunction],
+) -> Vec<(String, Vec<String>)> {
+    let rust_files: HashMap<String, HashSet<String>> = functions
+        .iter()
+        .filter(|f| f.language == "rust")
+        .fold(HashMap::new(), |mut acc, f| {
+            acc.entry(f.file.clone())
+                .or_default()
+                .insert(f.name.to_lowercase());
+            acc
+        });
+
+    let mut out = Vec::new();
+    for (file, known) in rust_files {
+        let path = root.join(&file);
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        let refs = scan_serde_default_function_names(&text)
+            .into_iter()
+            .filter(|name| known.contains(name))
+            .collect::<Vec<_>>();
+        if !refs.is_empty() {
+            out.push((file, refs));
+        }
+    }
+    out
+}
+
+fn scan_serde_default_function_names(text: &str) -> Vec<String> {
+    let needle = "default";
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    let mut out = Vec::new();
+    while i + needle.len() < bytes.len() {
+        if !bytes[i..].starts_with(needle.as_bytes()) {
+            i += 1;
+            continue;
+        }
+        let mut j = i + needle.len();
+        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] as char != '=' {
+            i += 1;
+            continue;
+        }
+        j += 1;
+        while j < bytes.len() && (bytes[j] as char).is_whitespace() {
+            j += 1;
+        }
+        if j >= bytes.len() || bytes[j] as char != '"' {
+            i += 1;
+            continue;
+        }
+        let start = j + 1;
+        let mut end = start;
+        while end < bytes.len() && (bytes[end] as char) != '"' {
+            end += 1;
+        }
+        if end > start {
+            out.push(text[start..end].to_lowercase());
+        }
+        i = end.saturating_add(1);
+    }
+    out
+}
+
+fn collect_rust_text_usage_refs(
+    root: &Path,
+    functions: &[crate::lang::IndexedFunction],
+) -> Vec<(String, Vec<String>)> {
+    let rust_files: HashMap<String, HashSet<String>> = functions
+        .iter()
+        .filter(|f| f.language == "rust")
+        .fold(HashMap::new(), |mut acc, f| {
+            acc.entry(f.file.clone())
+                .or_default()
+                .insert(f.name.to_lowercase());
+            acc
+        });
+
+    let mut out = Vec::new();
+    for (file, known) in rust_files {
+        let path = root.join(&file);
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        let refs = scan_rust_text_usage_refs(&text, &known);
+        if !refs.is_empty() {
+            out.push((file, refs));
+        }
+    }
+    out
+}
+
+fn scan_rust_text_usage_refs(text: &str, known: &HashSet<String>) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut out = HashSet::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+        if !(ch == '_' || ch.is_ascii_alphabetic()) {
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        i += 1;
+        while i < bytes.len() {
+            let ch = bytes[i] as char;
+            if ch == '_' || ch == ':' || ch.is_ascii_alphanumeric() {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+
+        let token = &text[start..i];
+        let (name, _) = split_qualified_name(token);
+        let name_lc = name.to_lowercase();
+        if !known.contains(&name_lc) {
+            continue;
+        }
+
+        let prev = text[..start].chars().rev().find(|c| !c.is_whitespace());
+        let next = text[i..].chars().find(|c| !c.is_whitespace());
+        let prev_word = preceding_word(text, start);
+
+        let looks_like_call = matches!(next, Some('(' | '!')) && prev_word.as_deref() != Some("fn");
+        let looks_like_arg_ref = matches!(prev, Some('(' | ',' | '[' | '='))
+            && matches!(next, Some(',' | ')' | ']' | '}'));
+
+        if looks_like_call || looks_like_arg_ref {
+            out.insert(name_lc);
+        }
+    }
+    out.into_iter().collect()
+}
+
+fn split_qualified_name(token: &str) -> (&str, Option<&str>) {
+    let trimmed = token.trim();
+    if let Some((qualifier, callee)) = trimmed.rsplit_once("::") {
+        (callee, Some(qualifier))
+    } else {
+        (trimmed, None)
+    }
+}
+
+fn preceding_word(text: &str, start: usize) -> Option<String> {
+    let prefix = &text[..start];
+    let mut end = prefix.len();
+    while end > 0 && prefix.as_bytes()[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut begin = end;
+    while begin > 0 {
+        let ch = prefix.as_bytes()[begin - 1] as char;
+        if ch == '_' || ch.is_ascii_alphanumeric() {
+            begin -= 1;
+        } else {
+            break;
+        }
+    }
+    if begin == end {
+        None
+    } else {
+        Some(prefix[begin..end].to_string())
+    }
 }
 
 // ── graph_delete ──────────────────────────────────────────────────────────────

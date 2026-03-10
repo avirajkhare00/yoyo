@@ -71,6 +71,8 @@ If you feel the need to add another prose rule, ask whether the constraint shoul
 ## Testing
 Every behavior change needs a test.
 
+Prefer to increase both unit and end-to-end coverage in each session when the change exposes a gap. Do not stop at the minimum test needed to ship if an adjacent assertion would harden the behavior cheaply.
+
 Sequence:
 1. add or update test
 2. implement

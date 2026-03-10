@@ -157,6 +157,7 @@ Every change must have a test. No exceptions.
 
 - **TDD**: write the test before (or alongside) the implementation. If you're adding a feature, the test exists before the feature is complete.
 - **BDD**: for user-visible behaviour (tool outputs, CLI commands), write tests that assert on observable output — not internal state.
+- **Grow coverage, not just sufficiency**: when a change exposes a nearby gap, add both unit and end-to-end assertions if they are cheap and materially increase confidence.
 - **Broken release rule**: `cargo test` must pass in full before any commit that touches `src/`. If tests fail, fix them. Do not push, tag, or release with a red test suite.
 - **New behaviour = new test**: if you fix a bug or add a feature and there is no test covering it, add one. The `.gitignore` bake fix (#105) is the template — behaviour confirmed, test written, then shipped.
 
