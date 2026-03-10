@@ -128,6 +128,59 @@ The combinations are what's deadly.
 
 ---
 
+## Meta-Learning: Rule-Less Beats Rule-Heavy
+
+Another pattern emerged while designing yoyo itself:
+
+**As context windows get larger, prose constraints get weaker.**
+
+The model can hold more state, but the importance of any single instruction falls.
+The first things to decay are soft constraints:
+
+- \"always run X before Y\"
+- \"don't do this without checking Z\"
+- \"prefer this tool over that one\"
+
+This is not a prompt-writing problem. It is a product-design problem.
+
+The answer is not more rules. The answer is to make the right path feel native:
+
+- prerequisites run automatically
+- unsafe operations refuse to proceed
+- outputs tell the agent what is safe next
+- constraints live inside tools, not in distant instructions
+
+That is the design target for rule-less yoyo:
+
+- **intent-first**: user asks for an outcome, not a tool sequence
+- **local guardrails**: each dangerous tool carries its own safety checks
+- **progressive disclosure**: safe default first, evidence second, override last
+- **action-oriented output**: what was found, what is blocked, what to do next
+
+### How We Reached This
+
+We got here by noticing a mismatch:
+
+- the docs already say \"encode constraints into the tool, not into instructions\"
+- `graph_delete` already proves the model: it blocks unsafe deletion at runtime
+- `script` is stronger than prose because it executes the safe sequence instead of describing it
+- stale workflow guidance immediately weakens the whole system because the agent now has two stories
+
+So the metapattern is broader than any one workflow:
+
+**Do not teach the workflow if the product can embody it.**
+
+If a sequence matters, encode it in one of these places:
+
+1. tool semantics
+2. automatic prerequisites
+3. refusal with next-step guidance
+4. structured outputs that narrow the next move
+
+When that happens, the agent needs less context, fewer retries, and fewer global rules.
+
+---
+
 ## How agents learn metapatterns
 
 Metapatterns are embedded in `llm_instructions` output under the `metapatterns`

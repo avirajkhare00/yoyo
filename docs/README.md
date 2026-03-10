@@ -9,6 +9,7 @@ yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, 
 ## Contents
 
 - [Philosophy](#philosophy)
+- [Architecture](./architecture.md)
 - [How it works](#how-it-works)
 - [How Claude works with yoyo](#how-claude-works-with-yoyo)
 - [Installation](#installation)
