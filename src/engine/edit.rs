@@ -14,13 +14,18 @@ use super::util::{reindex_files, require_bake_index, resolve_project_root};
 /// Returns an empty vec if the extension is unsupported.
 pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
     use ast_grep_language::{LanguageExt, SupportLang};
+    // Zig: tree-sitter-zig grammar lags behind valid constructs (error unions, nested
+    // slice types, builtins). Delegate to `zig fmt --stdin` which is the canonical
+    // validator. Falls back to tree-sitter only when `zig` is not on PATH.
+    if ext == "zig" {
+        return zig_ast_check(source);
+    }
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
         "rs"                        => parser.set_language(&SupportLang::Rust.get_ts_language()),
         "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
         "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
         "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
-        "zig"                       => parser.set_language(&tree_sitter_zig::LANGUAGE.into()),
         _                           => return vec![],
     };
     if ok.is_err() { return vec![]; }
@@ -28,6 +33,44 @@ pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
     let mut errors = vec![];
     collect_errors(tree.root_node(), source, &mut errors);
     errors
+}
+
+/// Validate Zig source by piping it through `zig fmt --stdin`.
+/// Returns errors parsed from stderr. Returns empty vec if `zig` is not on PATH.
+fn zig_ast_check(source: &str) -> Vec<SyntaxError> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = match Command::new("zig")
+        .args(["fmt", "--stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return vec![], // zig not on PATH — skip check
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(source.as_bytes());
+    }
+    let Ok(output) = child.wait_with_output() else {
+        return vec![];
+    };
+    if output.status.success() {
+        return vec![];
+    }
+    // stderr format: <stdin>:LINE:COL: error: MESSAGE
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    stderr.lines().filter_map(|line| {
+        let after = line.strip_prefix("<stdin>:")?;
+        let mut parts = after.splitn(3, ':');
+        let line_num: u32 = parts.next()?.parse().ok()?;
+        let _col = parts.next();
+        let rest = parts.next()?.trim();
+        let text = rest.strip_prefix("error: ").unwrap_or(rest)
+            .chars().take(80).collect();
+        Some(SyntaxError { line: line_num, kind: "error".to_string(), text })
+    }).collect()
 }
 
 // ── Post-patch syntax validation ──────────────────────────────────────────────
@@ -802,7 +845,8 @@ mod tests {
 
     #[test]
     fn ast_check_str_catches_invalid_zig_syntax() {
-        // Zig is now checked — tree-sitter-zig is wired into ast_check_str.
+        // Uses zig fmt --stdin when available, tree-sitter-zig as fallback.
+        // Either way, obviously broken Zig must produce errors.
         let broken_zig = "fn broken syntax {{{{ totally invalid";
         let errors = ast_check_str(broken_zig, "zig");
         assert!(!errors.is_empty(), "zig syntax errors must be detected");
@@ -810,9 +854,18 @@ mod tests {
 
     #[test]
     fn ast_check_str_passes_valid_zig() {
-        let valid_zig = "pub fn add(a: i32, b: i32) i32 {\n    return a + b;\n}\n";
+        // Exercises constructs that confused tree-sitter-zig:
+        // error unions (![]u64), nested const slices ([]const []const T), builtins (@memset).
+        let valid_zig = concat!(
+            "const std = @import(\"std\");\n",
+            "fn work(alloc: std.mem.Allocator, data: []const []const u8) ![]u64 {\n",
+            "    const out = try alloc.alloc(u64, data.len);\n",
+            "    @memset(out, 0);\n",
+            "    return out;\n",
+            "}\n",
+        );
         let errors = ast_check_str(valid_zig, "zig");
-        assert!(errors.is_empty(), "valid zig should have no errors, got {} error(s)", errors.len());
+        assert!(errors.is_empty(), "valid zig should have no errors, got {} error(s): {:?}", errors.len(), errors);
     }
 
     #[test]

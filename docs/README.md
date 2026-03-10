@@ -57,7 +57,7 @@ The index is a plain JSON file (`bakes/latest/bake.json`) in your project root. 
 
 Each session follows this sequence:
 
-1. **Bootstrap** — Claude loads `llm_instructions` on first contact. Returns tool list, workflows, prime directives. No file reading, no grepping.
+1. **Bootstrap** — Claude loads `llm_instructions` on first contact. Returns the lean tool catalog, prime directives, and concurrency rules. No file reading, no grepping.
 2. **Read** — `supersearch`, `symbol`, `slice` replace grep and cat. Structured data from the AST index, not line matches.
 3. **Understand** — `blast_radius`, `flow`, `trace_down`, `health` answer structural questions no text tool can: who calls this? what does this touch? is this dead?
 4. **Write** — `patch`, `graph_rename`, `graph_create`, `graph_add`, `graph_move`, `graph_delete` mutate code and auto-reindex. Claude does not edit files directly when a yoyo write tool applies.
@@ -160,7 +160,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | Tool | requires bake | What it does |
 |---|---|---|
 | `llm_instructions` | No | Lean bootstrap: tool catalog, prime directives, concurrency rules. Claude calls this first. |
-| `llm_workflows` | No | On-demand reference: 21 workflows, decision map, antipatterns, metapatterns. |
+| `llm_workflows` | No | On-demand reference: combination workflows, decision map, antipatterns, metapatterns. |
 | `bake` | No | Parse the project, write the index. Run before any indexed tool. |
 | `shake` | No | Language breakdown, file count, top-complexity functions. |
 

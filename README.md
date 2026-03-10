@@ -184,7 +184,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `bake` | Parse the project, write the AST index. Run first. |
 | `shake` | Language breakdown, file count, top-complexity functions. |
 | `llm_instructions` | Lean bootstrap: tool catalog, prime directives, concurrency rules. |
-| `llm_workflows` | On-demand reference: 21 workflows, decision map, antipatterns, metapatterns. |
+| `llm_workflows` | On-demand reference: combination workflows, decision map, antipatterns, metapatterns. |
 
 ### Read
 | Tool | What it does |

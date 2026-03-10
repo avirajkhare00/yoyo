@@ -825,7 +825,7 @@ report
         let dir = setup();
         let root = dir.path().to_string_lossy().into_owned();
 
-        let json = crate::engine::health(Some(root), Some(50)).unwrap();
+        let json = crate::engine::health(Some(root), Some(50), None, None, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let dupes = v["duplicate_code"].as_array().expect("duplicate_code array");
 
@@ -834,6 +834,140 @@ report
                 && d["smell"].as_str() == Some("Structural Duplicate")
         });
         assert!(has_structural, "expected health to flag add/subtract/multiply as structural duplicates via sig_hash");
+    }
+
+    #[test]
+    fn health_compact_view_paginates_sections() {
+        let dir = setup();
+        let file = dir.path().join("src/paging.rs");
+        fs::write(
+            &file,
+            r#"fn unused_one() {}
+fn unused_two() {}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let json = crate::engine::health(
+            root(&dir),
+            Some(50),
+            Some("compact".to_string()),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["view"], "compact");
+        let sections = v["sections"].as_array().expect("sections array");
+        let dead_code = sections
+            .iter()
+            .find(|section| section["section"] == "dead_code")
+            .expect("dead_code section");
+        assert_eq!(dead_code["limit"], 1);
+        assert_eq!(dead_code["offset"], 0);
+        assert_eq!(dead_code["items"].as_array().unwrap().len(), 1);
+        assert_eq!(dead_code["next_cursor"], "dead_code:1");
+
+        let page_2 = crate::engine::health(
+            root(&dir),
+            Some(50),
+            Some("compact".to_string()),
+            Some(1),
+            Some("dead_code:1".to_string()),
+        )
+        .unwrap();
+        let page_2_json: serde_json::Value = serde_json::from_str(&page_2).unwrap();
+        let page_2_sections = page_2_json["sections"].as_array().expect("sections array");
+        assert_eq!(page_2_sections.len(), 1, "cursor should return one section page");
+        assert_eq!(page_2_sections[0]["section"], "dead_code");
+        assert_eq!(page_2_sections[0]["offset"], 1);
+    }
+
+    #[test]
+    fn llm_workflows_compact_view_sections_reference_catalog() {
+        let json = crate::engine::llm_workflows(
+            None,
+            Some("compact".to_string()),
+            Some(2),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["view"], "compact");
+        let sections = v["sections"].as_array().expect("sections array");
+        assert!(
+            sections.iter().any(|section| section["section"] == "workflows"),
+            "compact workflows view must include the workflows section"
+        );
+        let workflows = sections
+            .iter()
+            .find(|section| section["section"] == "workflows")
+            .expect("workflows section");
+        assert_eq!(workflows["limit"], 2);
+        assert!(workflows["next_cursor"].is_string());
+    }
+
+    #[test]
+    fn llm_workflows_query_returns_ranked_matches() {
+        let json = crate::engine::llm_workflows(
+            None,
+            None,
+            None,
+            None,
+            Some("rename symbol".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["query"], "rename symbol");
+        let matches = v["matches"].as_array().expect("matches array");
+        assert!(!matches.is_empty(), "query 'rename symbol' must return at least one match");
+        // graph_rename workflow or decision should rank highest
+        assert!(
+            matches.iter().any(|m| {
+                m["item"]["name"] == "Graph rename (one-shot)"
+                    || m["item"]["right_tool"] == "graph_rename"
+                    || m["item"]["name"] == "Rename with safety check"
+            }),
+            "query 'rename symbol' must surface graph_rename workflow or decision"
+        );
+        // results are sorted descending by score
+        let scores: Vec<u64> = matches
+            .iter()
+            .map(|m| m["score"].as_u64().unwrap_or(0))
+            .collect();
+        assert!(
+            scores.windows(2).all(|w| w[0] >= w[1]),
+            "matches must be sorted by descending score"
+        );
+    }
+
+    #[test]
+    fn llm_workflows_query_delete_dead_code() {
+        let json = crate::engine::llm_workflows(
+            None,
+            None,
+            None,
+            None,
+            Some("delete dead code".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().expect("matches array");
+        assert!(!matches.is_empty(), "query 'delete dead code' must return matches");
+        assert!(
+            matches.iter().any(|m| {
+                m["item"]["name"] == "Safely delete dead code"
+                    || m["item"]["right_tool"] == "graph_delete"
+                    || (m["kind"] == "antipattern"
+                        && m["item"]["text"]
+                            .as_str()
+                            .unwrap_or("")
+                            .contains("graph_delete"))
+            }),
+            "query 'delete dead code' must surface the safe-delete workflow or graph_delete decision"
+        );
     }
 
     #[test]
@@ -866,7 +1000,7 @@ fn get_registry() -> &'static Vec<&'static str> {
             "expected get_registry to be reported as a caller when build_registry is passed as a function item"
         );
 
-        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
         let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
         assert!(
@@ -903,7 +1037,7 @@ impl Greeter for Person {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
         let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
 
@@ -1016,7 +1150,7 @@ struct Event {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
         let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
 
@@ -1077,7 +1211,7 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
         let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
 
@@ -1112,7 +1246,7 @@ func main() {}
 
         crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
 
-        let health = crate::engine::health(Some(root_path.to_string_lossy().into_owned()), Some(100)).unwrap();
+        let health = crate::engine::health(Some(root_path.to_string_lossy().into_owned()), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
         let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
 

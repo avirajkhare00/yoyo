@@ -1,4 +1,4 @@
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 
 /// High-level yoyo commands exposed to humans.
 #[derive(Subcommand, Debug)]
@@ -58,6 +58,23 @@ pub enum Command {
     Update(UpdateArgs),
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+pub enum OutputView {
+    Compact,
+    Full,
+    Raw,
+}
+
+impl OutputView {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Full => "full",
+            Self::Raw => "raw",
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct LlmInstructionsArgs {
     /// Optional path to the project directory to analyze.
@@ -70,6 +87,22 @@ pub struct LlmWorkflowsArgs {
     /// Optional path to the project directory (unused; kept for API symmetry).
     #[arg(long)]
     pub path: Option<String>,
+
+    /// Response view: compact for paged summaries, raw/full for the full catalog.
+    #[arg(long, value_enum, default_value = "raw")]
+    pub view: OutputView,
+
+    /// Items per section when using --view compact (default 3).
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Section cursor in the form <section>:<offset>, returned by a previous compact response.
+    #[arg(long)]
+    pub cursor: Option<String>,
+
+    /// Natural-language query: return top matching workflows, decisions, and antipatterns.
+    #[arg(long)]
+    pub query: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -493,7 +526,13 @@ async fn run_llm_instructions(args: LlmInstructionsArgs) -> anyhow::Result<()> {
 }
 
 async fn run_llm_workflows(args: LlmWorkflowsArgs) -> anyhow::Result<()> {
-    let json = crate::engine::llm_workflows(args.path)?;
+    let json = crate::engine::llm_workflows(
+        args.path,
+        Some(args.view.as_str().to_string()),
+        args.limit,
+        args.cursor,
+        args.query,
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -670,10 +709,28 @@ pub struct HealthArgs {
     /// Max results per category (default 10).
     #[arg(long)]
     pub top: Option<usize>,
+
+    /// Response view: compact for paged summaries, raw/full for the full payload.
+    #[arg(long, value_enum, default_value = "raw")]
+    pub view: OutputView,
+
+    /// Items per section when using --view compact (default 3).
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Section cursor in the form <section>:<offset>, returned by a previous compact response.
+    #[arg(long)]
+    pub cursor: Option<String>,
 }
 
 async fn run_health(args: HealthArgs) -> anyhow::Result<()> {
-    let json = crate::engine::health(args.path, args.top)?;
+    let json = crate::engine::health(
+        args.path,
+        args.top,
+        Some(args.view.as_str().to_string()),
+        args.limit,
+        args.cursor,
+    )?;
     println!("{json}");
     Ok(())
 }
