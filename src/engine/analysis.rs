@@ -5,8 +5,10 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::types::{
-    DeadFunction, DocMatch, DuplicateEntry, DuplicateGroup, FeatureEnvy, FindDocsPayload,
-    GraphDeletePayload, HealthPayload, InsiderTrading, LargeFunction, LongMethod, ShotgunSurgery,
+    build_compact_section, parse_section_cursor, DeadFunction, DEFAULT_COMPACT_LIMIT, DocMatch,
+    DuplicateEntry, DuplicateGroup, FeatureEnvy, FindDocsPayload, GraphDeletePayload,
+    HealthCompactPayload, HealthPayload, InsiderTrading, LargeFunction, LongMethod, ResponseView,
+    ShotgunSurgery,
 };
 use super::util::{load_bake_index, reindex_files, require_bake_index, resolve_project_root};
 
@@ -224,9 +226,18 @@ pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<u
 // ── health ────────────────────────────────────────────────────────────────────
 
 /// Diagnose a codebase: dead code, god functions, duplicate hints.
-pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
+pub fn health(
+    path: Option<String>,
+    top: Option<usize>,
+    view: Option<String>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
+    let view = ResponseView::parse(view.as_deref())?;
+    let compact_limit = limit.unwrap_or(DEFAULT_COMPACT_LIMIT);
+    let cursor = parse_section_cursor(cursor.as_deref())?;
 
     let top_n = top.unwrap_or(10);
 
@@ -234,11 +245,18 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
 
     // callee_name (lowercased) → set of caller files
     let mut callee_to_caller_files: HashMap<String, HashSet<String>> = HashMap::new();
-    // name → file (for feature envy cross-file resolution)
-    let name_to_file: HashMap<String, &str> = bake
-        .functions
-        .iter()
-        .map(|f| (f.name.to_lowercase(), f.file.as_str()))
+    // name → file (for feature envy cross-file resolution).
+    // Only include names that are unambiguous — present in exactly one file.
+    // Common names like `new`, `len`, `push` appear across many files and produce
+    // false-positive feature envy when the AST matches them to unrelated modules.
+    let mut name_to_files: HashMap<String, Vec<&str>> = HashMap::new();
+    for f in &bake.functions {
+        name_to_files.entry(f.name.to_lowercase()).or_default().push(f.file.as_str());
+    }
+    let name_to_file: HashMap<String, &str> = name_to_files
+        .into_iter()
+        .filter(|(_, files)| files.len() == 1)
+        .map(|(name, files)| (name, files[0]))
         .collect();
 
     for f in &bake.functions {
@@ -375,13 +393,16 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         .filter_map(|f| {
             let mut cross_file_by_target: HashMap<&str, usize> = HashMap::new();
             let mut same_file = 0usize;
+            // Only count cross-file calls within the same top-level subtree.
+            // A function in src/ envying evals/ is always a name-resolution false positive.
+            let source_root = f.file.split('/').next().unwrap_or("");
             for c in &f.calls {
                 match name_to_file.get(&c.callee.to_lowercase()) {
                     Some(&target_file) if target_file == f.file => same_file += 1,
-                    Some(&target_file) => {
+                    Some(&target_file) if target_file.starts_with(source_root) => {
                         *cross_file_by_target.entry(target_file).or_default() += 1;
                     }
-                    None => {}
+                    _ => {}
                 }
             }
             let cross_file: usize = cross_file_by_target.values().sum();
@@ -583,6 +604,167 @@ pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
         insider_trading,
         duplicate_code,
     };
+
+    if matches!(view, ResponseView::Compact) {
+        let cursor_ref = cursor.as_ref().map(|(section, offset)| (section.as_str(), *offset));
+        let sections = vec![
+            build_compact_section(
+                "dead_code",
+                payload
+                    .dead_code
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "name": item.name,
+                            "file": item.file,
+                            "line": item.start_line,
+                            "lines": item.lines,
+                            "refactoring": item.refactoring,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "large_functions",
+                payload
+                    .large_functions
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "name": item.name,
+                            "file": item.file,
+                            "line": item.start_line,
+                            "score": item.score,
+                            "complexity": item.complexity,
+                            "fan_out": item.fan_out,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "long_methods",
+                payload
+                    .long_methods
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "name": item.name,
+                            "file": item.file,
+                            "line": item.start_line,
+                            "lines": item.lines,
+                            "refactoring": item.refactoring,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "feature_envy",
+                payload
+                    .feature_envy
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "name": item.name,
+                            "file": item.file,
+                            "line": item.start_line,
+                            "envies": item.envies,
+                            "cross_file_calls": item.cross_file_calls,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "shotgun_surgery",
+                payload
+                    .shotgun_surgery
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "name": item.name,
+                            "file": item.file,
+                            "line": item.start_line,
+                            "caller_files": item.caller_files,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "insider_trading",
+                payload
+                    .insider_trading
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "file_a": item.file_a,
+                            "file_b": item.file_b,
+                            "a_calls_b": item.a_calls_b,
+                            "b_calls_a": item.b_calls_a,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "duplicate_code",
+                payload
+                    .duplicate_code
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "stem": item.stem,
+                            "functions": item.functions.iter().take(3).map(|f| serde_json::json!({
+                                "name": f.name,
+                                "file": f.file,
+                                "line": f.start_line,
+                            })).collect::<Vec<_>>(),
+                            "function_count": item.functions.len(),
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        let compact = HealthCompactPayload {
+            tool: payload.tool,
+            version: payload.version,
+            project_root: payload.project_root.clone(),
+            view: view.as_str(),
+            summary: format!(
+                "{} dead code, {} large functions, {} long methods, {} feature envy, {} shotgun surgery, {} insider trading pairs, {} duplicate groups",
+                payload.dead_code.len(),
+                payload.large_functions.len(),
+                payload.long_methods.len(),
+                payload.feature_envy.len(),
+                payload.shotgun_surgery.len(),
+                payload.insider_trading.len(),
+                payload.duplicate_code.len(),
+            ),
+            sections,
+            detail_hints: vec![
+                "use --view raw for the full health payload",
+                "use --cursor <section>:<offset> to page one section forward",
+                "use symbol(name) or slice(file,start,end) to inspect one item deeply",
+            ],
+        };
+        return Ok(serde_json::to_string_pretty(&compact)?);
+    }
+
     Ok(serde_json::to_string_pretty(&payload)?)
 }
 

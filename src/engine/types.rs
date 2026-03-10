@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 // ── Core index structs ────────────────────────────────────────────────────────
 
@@ -56,6 +58,91 @@ pub(crate) struct EndpointSummary {
     pub(crate) handler_name: Option<String>,
 }
 
+pub(crate) const DEFAULT_COMPACT_LIMIT: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResponseView {
+    Compact,
+    Full,
+    Raw,
+}
+
+impl ResponseView {
+    pub(crate) fn parse(view: Option<&str>) -> Result<Self> {
+        match view.unwrap_or("raw") {
+            "compact" => Ok(Self::Compact),
+            "full" => Ok(Self::Full),
+            "raw" => Ok(Self::Raw),
+            other => Err(anyhow!(
+                "Unsupported view '{other}'. Expected one of: compact, full, raw."
+            )),
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Full => "full",
+            Self::Raw => "raw",
+        }
+    }
+}
+
+pub(crate) fn parse_section_cursor(cursor: Option<&str>) -> Result<Option<(String, usize)>> {
+    let Some(cursor) = cursor else {
+        return Ok(None);
+    };
+
+    let (section, offset) = cursor
+        .split_once(':')
+        .ok_or_else(|| anyhow!("Invalid cursor '{cursor}'. Expected format <section>:<offset>."))?;
+    let offset = offset
+        .parse::<usize>()
+        .map_err(|_| anyhow!("Invalid cursor '{cursor}'. Offset must be a non-negative integer."))?;
+    Ok(Some((section.to_string(), offset)))
+}
+
+#[derive(Serialize)]
+pub(crate) struct CompactSection {
+    pub(crate) section: String,
+    pub(crate) total: usize,
+    pub(crate) offset: usize,
+    pub(crate) limit: usize,
+    pub(crate) items: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_cursor: Option<String>,
+}
+
+pub(crate) fn build_compact_section(
+    section: &str,
+    items: Vec<Value>,
+    limit: usize,
+    cursor: Option<(&str, usize)>,
+) -> Option<CompactSection> {
+    if let Some((cursor_section, _)) = cursor {
+        if cursor_section != section {
+            return None;
+        }
+    }
+
+    let total = items.len();
+    let offset = cursor
+        .and_then(|(cursor_section, offset)| (cursor_section == section).then_some(offset))
+        .unwrap_or(0)
+        .min(total);
+    let end = offset.saturating_add(limit).min(total);
+    let next_cursor = (end < total).then(|| format!("{section}:{end}"));
+
+    Some(CompactSection {
+        section: section.to_string(),
+        total,
+        offset,
+        limit,
+        items: items[offset..end].to_vec(),
+        next_cursor,
+    })
+}
+
 // ── Per-tool payload structs ──────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -84,6 +171,31 @@ pub(crate) struct LlmWorkflowsPayload {
     pub(crate) antipatterns: Vec<&'static str>,
     /// High-level shapes that all workflows are instances of.
     pub(crate) metapatterns: Vec<Metapattern>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct LlmWorkflowsCompactPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) view: &'static str,
+    pub(crate) summary: String,
+    pub(crate) sections: Vec<CompactSection>,
+    pub(crate) detail_hints: Vec<&'static str>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct WorkflowQueryMatch {
+    pub(crate) kind: &'static str,
+    pub(crate) score: usize,
+    pub(crate) item: serde_json::Value,
+}
+
+#[derive(Serialize)]
+pub(crate) struct LlmWorkflowsQueryPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) query: String,
+    pub(crate) matches: Vec<WorkflowQueryMatch>,
 }
 
 #[derive(Serialize)]
@@ -324,6 +436,7 @@ pub(crate) struct DocMatch {
 }
 
 #[derive(Serialize)]
+#[derive(Debug)]
 pub(crate) struct SyntaxError {
     pub(crate) line: u32,
     pub(crate) kind: String,   // "error" | "missing"
@@ -519,6 +632,17 @@ pub(crate) struct HealthPayload {
     pub(crate) insider_trading: Vec<InsiderTrading>,
     /// Fowler: Duplicate Code — same-stem functions spread across multiple files.
     pub(crate) duplicate_code: Vec<DuplicateGroup>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct HealthCompactPayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) view: &'static str,
+    pub(crate) summary: String,
+    pub(crate) sections: Vec<CompactSection>,
+    pub(crate) detail_hints: Vec<&'static str>,
 }
 
 #[derive(Serialize)]

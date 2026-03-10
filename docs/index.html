@@ -396,7 +396,7 @@
     <div class="grid">
       <div class="card">
         <h3>1. Bootstrap</h3>
-        <p>Claude loads <code>llm_instructions</code> on first contact — lean catalog, prime directives, concurrency rules. Calls <code>llm_workflows</code> on demand for the full reference (21 combos, decision map, antipatterns). No file reading, no grepping.</p>
+        <p>Claude loads <code>llm_instructions</code> on first contact — lean catalog, prime directives, concurrency rules. Calls <code>llm_workflows</code> on demand for the full reference (combination workflows, decision map, antipatterns). No file reading, no grepping.</p>
       </div>
       <div class="card">
         <h3>2. Read</h3>
@@ -419,7 +419,7 @@
 
 <section id="tools">
   <div class="container">
-    <h2>All 27 tools</h2>
+    <h2>Tools</h2>
     <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
@@ -429,7 +429,7 @@
         <tr><td><code>bake</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
         <tr><td><code>shake</code></td><td><span class="pill pill-green">Stable</span></td><td>Language breakdown, file count, and the top-complexity functions.</td></tr>
         <tr><td><code>llm_instructions</code></td><td><span class="pill pill-green">Stable</span></td><td>Lean bootstrap: tool catalog, prime directives, concurrency rules. Claude calls this on first contact.</td></tr>
-        <tr><td><code>llm_workflows</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand reference: 21 combination workflows, decision map, antipatterns, metapatterns.</td></tr>
+        <tr><td><code>llm_workflows</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand reference: combination workflows, decision map, antipatterns, metapatterns.</td></tr>
         <tr><td><code>symbol</code></td><td><span class="pill pill-green">Stable</span></td><td>Function lookup by name. Returns file, line range, and optionally the full body.</td></tr>
         <tr><td><code>slice</code></td><td><span class="pill pill-green">Stable</span></td><td>Reads any line range from any file.</td></tr>
         <tr><td><code>file_functions</code></td><td><span class="pill pill-green">Stable</span></td><td>Every function in a file with line ranges and complexity scores.</td></tr>

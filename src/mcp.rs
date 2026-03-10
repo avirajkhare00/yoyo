@@ -143,18 +143,22 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 .and_then(|v| v.as_str())
                 .unwrap_or("2025-11-25");
 
-            let result = json!({
-                "protocolVersion": protocol_version,
-                "capabilities": {"tools": {"listChanged": false}},
-                "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "You have access to yoyo, a code intelligence MCP server — 27 tools to read and edit any codebase from the AST, not model memory. \
+            let n_tools = crate::engine::tool_catalog().len();
+            let instructions = format!(
+                "You have access to yoyo, a code intelligence MCP server — {n_tools} tools to read and edit any codebase from the AST, not model memory. \
                     ON FIRST CONTACT: call `llm_instructions` and `bake` in parallel — do not wait for one before starting the other. \
                     `llm_instructions` returns the lean tool catalog, prime directives, and concurrency rules. Read it before doing anything else. \
-                    `llm_workflows` returns the full reference catalog (21 combination workflows, decision map, antipatterns, metapatterns) — call on demand when you need to look up a combo or decide between tools. \
+                    `llm_workflows` returns the full reference catalog (combination workflows, decision map, antipatterns, metapatterns) — call on demand when you need to look up a combo or decide between tools. \
                     `bake` builds the index all read-indexed tools depend on. \
                     THE COMBINATIONS ARE THE POINT: no single tool is impressive — the chains are. \
                     Key combos: health→blast_radius→graph_delete (safe dead code removal), flow→symbol→multi_patch (fix endpoint end-to-end), blast_radius→graph_rename→symbol (safe rename). \
                     REPLACEMENTS — no exceptions: supersearch replaces grep/rg. symbol+include_source replaces cat/Read. slice replaces line-range reads. patch replaces Edit for function-level changes. flow replaces api_trace+trace_down+symbol."
+            );
+            let result = json!({
+                "protocolVersion": protocol_version,
+                "capabilities": {"tools": {"listChanged": false}},
+                "serverInfo": {"name": "yoyo", "version": env!("CARGO_PKG_VERSION")},
+                "instructions": instructions
             });
 
             JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(result), error: None }
@@ -232,8 +236,20 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: Box::new(|_a, path| crate::engine::llm_instructions(path)),
         },
         ToolEntry {
-            schema: schema("llm_workflows", d("llm_workflows"), json!({"path": p()})),
-            handler: Box::new(|_a, path| crate::engine::llm_workflows(path)),
+            schema: schema("llm_workflows", d("llm_workflows"), json!({
+                "path": p(),
+                "view": s("Response view: compact | full | raw"),
+                "limit": i("Items per section when view=compact (default 3)"),
+                "cursor": s("Section cursor in the form <section>:<offset>, returned by a previous compact response"),
+                "query": s("Natural-language query: return top matching workflows, decisions, and antipatterns ranked by relevance")
+            })),
+            handler: Box::new(|a, path| crate::engine::llm_workflows(
+                path,
+                a.str_opt("view"),
+                a.uint_opt("limit"),
+                a.str_opt("cursor"),
+                a.str_opt("query"),
+            )),
         },
         ToolEntry {
             schema: schema("shake", d("shake"), json!({"path": p()})),
@@ -585,9 +601,18 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema("health", d("health"), json!({
                 "path": p(),
-                "top": i("Max results per category (default 10)")
+                "top": i("Max results per category (default 10)"),
+                "view": s("Response view: compact | full | raw"),
+                "limit": i("Items per section when view=compact (default 3)"),
+                "cursor": s("Section cursor in the form <section>:<offset>, returned by a previous compact response")
             })),
-            handler: Box::new(|a, path| crate::engine::health(path, a.uint_opt("top"))),
+            handler: Box::new(|a, path| crate::engine::health(
+                path,
+                a.uint_opt("top"),
+                a.str_opt("view"),
+                a.uint_opt("limit"),
+                a.str_opt("cursor"),
+            )),
         },
         ToolEntry {
             schema: schema_req("graph_delete", d("graph_delete"), &["name"], json!({

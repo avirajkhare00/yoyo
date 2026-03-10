@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0] - 2026-03-10
+
+### Added
+
+- `llm_workflows` query mode: pass `query=` (MCP) or `--query` (CLI) with a natural-language string to get top-ranked workflows, decisions, and antipatterns by relevance. Stop words are filtered so "how do I rename a symbol" ranks the three rename workflows first. Replaces blind paging through 27 workflows with intent-directed lookup.
+- `llm_workflows` compact view: `--view compact` returns paginated summaries with section cursors for iterative exploration.
+- `health` compact view: `--view compact`, `--limit`, `--cursor` for paginated health sections.
+- `ResponseView`, `CompactSection`, `build_compact_section`, `parse_section_cursor` shared infrastructure in `types.rs`.
+
+### Fixed
+
+- `health` feature envy false positives: common names (`new`, `len`, `push`) now excluded from `name_to_file` (only unambiguous names kept); cross-tree calls (e.g. `src/` envying `evals/`) filtered out.
+
+### Tests
+
+- `llm_workflows_query_returns_ranked_matches`: verifies rename queries surface graph_rename workflows and sorted scores.
+- `llm_workflows_query_delete_dead_code`: verifies dead-code queries surface the safe-delete workflow.
+- `llm_workflows_compact_view_sections_reference_catalog`: updated for new 5-arg signature.
+
 ## [1.4.12] - 2026-03-10
 
 ### Fixed

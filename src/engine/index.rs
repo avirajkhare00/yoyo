@@ -3,9 +3,10 @@ use std::fs;
 use anyhow::Result;
 
 use super::types::{
-    BakeSummary, DecisionEntry, EndpointSummary, FunctionSummary, LlmInstructionsPayload,
-    LlmWorkflowsPayload, Metapattern, MetapatternStep, ShakePayload, ToolDescription, Workflow,
-    WorkflowStep,
+    build_compact_section, parse_section_cursor, BakeSummary, DecisionEntry, EndpointSummary,
+    FunctionSummary, LlmInstructionsPayload, LlmWorkflowsCompactPayload, LlmWorkflowsPayload,
+    LlmWorkflowsQueryPayload, Metapattern, MetapatternStep, ResponseView, ShakePayload,
+    ToolDescription, Workflow, WorkflowQueryMatch, WorkflowStep, DEFAULT_COMPACT_LIMIT,
 };
 use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
 
@@ -47,8 +48,17 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
 /// Public entrypoint for the `llm_workflows` CLI/MCP tool.
 /// Returns the full reference catalog: workflows, decision map, antipatterns, metapatterns.
 /// Call on demand — not required for basic tool use.
-pub fn llm_workflows(path: Option<String>) -> Result<String> {
+pub fn llm_workflows(
+    path: Option<String>,
+    view: Option<String>,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    query: Option<String>,
+) -> Result<String> {
     let _ = path; // unused; kept for API symmetry with llm_instructions
+    let view = ResponseView::parse(view.as_deref())?;
+    let compact_limit = limit.unwrap_or(DEFAULT_COMPACT_LIMIT);
+    let cursor = parse_section_cursor(cursor.as_deref())?;
     let payload = LlmWorkflowsPayload {
         tool: "llm_workflows",
         version: env!("CARGO_PKG_VERSION"),
@@ -70,8 +80,200 @@ pub fn llm_workflows(path: Option<String>) -> Result<String> {
         metapatterns: metapattern_catalog(),
     };
 
+    // ── query mode ────────────────────────────────────────────────────────────
+    if let Some(q) = query {
+        let words: Vec<&str> = q.split_whitespace().collect();
+        let mut matches: Vec<WorkflowQueryMatch> = Vec::new();
+
+        for wf in &payload.workflows {
+            let text = format!(
+                "{} {} {}",
+                wf.name,
+                wf.description,
+                wf.steps
+                    .iter()
+                    .map(|s| format!("{} {}", s.tool, s.hint))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            let score = query_score(&text, &words);
+            if score > 0 {
+                matches.push(WorkflowQueryMatch {
+                    kind: "workflow",
+                    score,
+                    item: serde_json::json!({
+                        "name": wf.name,
+                        "description": wf.description,
+                        "steps": wf.steps.iter().map(|s| serde_json::json!({
+                            "tool": s.tool,
+                            "hint": s.hint,
+                        })).collect::<Vec<_>>(),
+                    }),
+                });
+            }
+        }
+
+        for d in &payload.decision_map {
+            let text = format!("{} {} {} {}", d.question, d.right_tool, d.right_field, d.wrong_because);
+            let score = query_score(&text, &words);
+            if score > 0 {
+                matches.push(WorkflowQueryMatch {
+                    kind: "decision",
+                    score,
+                    item: serde_json::json!({
+                        "question": d.question,
+                        "right_tool": d.right_tool,
+                        "right_field": d.right_field,
+                    }),
+                });
+            }
+        }
+
+        for ap in &payload.antipatterns {
+            let score = query_score(ap, &words);
+            if score > 0 {
+                matches.push(WorkflowQueryMatch {
+                    kind: "antipattern",
+                    score,
+                    item: serde_json::json!({ "text": ap }),
+                });
+            }
+        }
+
+        for mp in &payload.metapatterns {
+            let text = format!("{} {}", mp.shape, mp.when);
+            let score = query_score(&text, &words);
+            if score > 0 {
+                matches.push(WorkflowQueryMatch {
+                    kind: "metapattern",
+                    score,
+                    item: serde_json::json!({
+                        "shape": mp.shape,
+                        "when": mp.when,
+                    }),
+                });
+            }
+        }
+
+        matches.sort_by(|a, b| b.score.cmp(&a.score));
+        matches.truncate(10);
+
+        let result = LlmWorkflowsQueryPayload {
+            tool: payload.tool,
+            version: payload.version,
+            query: q,
+            matches,
+        };
+        return Ok(serde_json::to_string_pretty(&result)?);
+    }
+
+    // ── compact mode ─────────────────────────────────────────────────────────
+    if matches!(view, ResponseView::Compact) {
+        let cursor_ref = cursor.as_ref().map(|(section, offset)| (section.as_str(), *offset));
+        let sections = vec![
+            build_compact_section(
+                "workflows",
+                payload
+                    .workflows
+                    .iter()
+                    .map(|workflow| {
+                        serde_json::json!({
+                            "name": workflow.name,
+                            "description": workflow.description,
+                            "steps": workflow.steps.len(),
+                            "first_tool": workflow.steps.first().map(|step| step.tool),
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "decision_map",
+                payload
+                    .decision_map
+                    .iter()
+                    .map(|entry| {
+                        serde_json::json!({
+                            "question": entry.question,
+                            "right_tool": entry.right_tool,
+                            "right_field": entry.right_field,
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "antipatterns",
+                payload
+                    .antipatterns
+                    .iter()
+                    .map(|entry| serde_json::json!({ "text": entry }))
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+            build_compact_section(
+                "metapatterns",
+                payload
+                    .metapatterns
+                    .iter()
+                    .map(|entry| {
+                        serde_json::json!({
+                            "shape": entry.shape,
+                            "when": entry.when,
+                            "instances": entry.instances.len(),
+                        })
+                    })
+                    .collect(),
+                compact_limit,
+                cursor_ref,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        let compact = LlmWorkflowsCompactPayload {
+            tool: payload.tool,
+            version: payload.version,
+            view: view.as_str(),
+            summary: format!(
+                "{} workflows, {} decision entries, {} antipatterns, {} metapatterns",
+                payload.workflows.len(),
+                payload.decision_map.len(),
+                payload.antipatterns.len(),
+                payload.metapatterns.len(),
+            ),
+            sections,
+            detail_hints: vec![
+                "use --view raw for the full reference catalog",
+                "use --cursor <section>:<offset> to page one section forward",
+                "use llm_instructions first and call llm_workflows only when you need deeper guidance",
+            ],
+        };
+        return Ok(serde_json::to_string_pretty(&compact)?);
+    }
+
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
+}
+
+/// Score a text against a set of query words (case-insensitive word overlap).
+/// Score a text against a set of query words (case-insensitive word overlap).
+/// Stop words (how, do, i, a, an, the, to, in, of, for, is, it, be, with) are skipped.
+fn query_score(text: &str, words: &[&str]) -> usize {
+    const STOP: &[&str] = &[
+        "how", "do", "i", "a", "an", "the", "to", "in", "of", "for", "is", "it", "be", "with",
+        "what", "when", "where", "why", "can", "use", "get", "my",
+    ];
+    let lower = text.to_lowercase();
+    words
+        .iter()
+        .filter(|w| !STOP.contains(&w.to_lowercase().as_str()))
+        .filter(|w| lower.contains(&w.to_lowercase()))
+        .count()
 }
 
 fn decision_map() -> Vec<DecisionEntry> {
@@ -187,7 +389,7 @@ fn decision_map() -> Vec<DecisionEntry> {
 pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
         ToolDescription { name: "llm_instructions", description: "Bootstrap: lean tool catalog, prime directives, and concurrency rules. Call in parallel with bake on first contact — do not skip.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: 21 combination workflows, decision map, antipatterns, metapatterns. Call on demand — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: combination workflows, decision map, antipatterns, metapatterns. Call on demand — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "bake",             description: "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "shake",            description: "Language breakdown, file count, top-complexity functions.", requires_bake: false, category: "read", parallelisable: true,
             output_shape: Some(r#"{"files_indexed":0,"languages":[],"top_functions":[{"name":"","file":"","start_line":0,"complexity":0}],"express_endpoints":[]}"#) },
@@ -217,7 +419,7 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "graph_delete",     description: "Remove a function by name. Blocks if callers exist. Always run health→blast_radius first to confirm the function is dead.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
         ToolDescription { name: "health",           description: "Dead code, large functions, and duplicate name hints. Router-registered handlers may appear dead — cross-check with blast_radius before deleting.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"large_functions":[{"name":"","file":"","start_line":0,"score":0,"complexity":0,"fan_out":0}],"dead_code":[{"name":"","file":"","start_line":0,"lines":0}],"duplicate_code":[{"stem":"","functions":[{"name":"","file":""}]}],"long_methods":[{"name":"","file":"","start_line":0,"lines":0}],"feature_envy":[{"name":"","file":"","envies":"","cross_file_calls":0}],"shotgun_surgery":[{"name":"","file":"","caller_files":0}]}"#) },
-        ToolDescription { name: "script", description: "Use when you need to loop, filter, or cross-reference multiple tool outputs — things no single tool can do. Runs a Rhai script with all read tools available as functions. When to reach for it: (1) cross-reference health categories (large AND dead), (2) batch blast_radius across N functions, (3) filter/classify arrays from health/file_functions, (4) aggregate across multiple files in one call. Read: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write: graph_delete(name). Tip: fn is a reserved keyword in Rhai — use f or item as loop variable names.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
+        ToolDescription { name: "script", description: "Use when you need to loop, filter, or cross-reference multiple tool outputs — things no single tool can do. Runs a Rhai script with all read tools available as functions. When to reach for it: (1) cross-reference health categories (large AND dead), (2) batch blast_radius across N functions, (3) filter/classify arrays from health/file_functions, (4) aggregate across multiple files in one call. Read: symbol(name) [always returns source], blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write: graph_delete(name). Tip: fn is a reserved keyword in Rhai — use f or item as loop variable names.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
     ]
 }
 

@@ -45,7 +45,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     {
         let rc = r.clone();
         engine.register_fn("health", move || -> Dynamic {
-            call_to_dynamic(crate::engine::health(Some(rc.clone()), None))
+            call_to_dynamic(crate::engine::health(Some(rc.clone()), None, None, None, None))
         });
     }
     {
