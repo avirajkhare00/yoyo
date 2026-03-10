@@ -339,7 +339,7 @@ pub fn supersearch(
         _ => "all".to_string(),
     };
 
-    let mut matches: Vec<SupersearchMatch> = bake
+    let searchable_files: Vec<_> = bake
         .files
         .par_iter()
         .filter(|file| {
@@ -358,48 +358,27 @@ pub fn supersearch(
             }
             true
         })
-        .flat_map(|file| {
-            let lang = file.language.as_str();
-            let full_path = root.join(&file.path);
-            let content = match fs::read_to_string(&full_path) {
-                Ok(c) => c,
-                Err(_) => return vec![],
-            };
-            let file_rel = file.path.to_string_lossy().into_owned();
-            let mut file_matches = Vec::new();
-
-            let analyzer = crate::lang::find_analyzer(lang);
-            let mut used_ast = false;
-            if let Some(analyzer) = analyzer {
-                if analyzer.supports_ast_search() {
-                    let mut ast_matches =
-                        analyzer.ast_search(&content, &q, &context_norm, &pattern_norm);
-                    ast_matches.sort_by_key(|m| m.line);
-                    ast_matches.dedup_by_key(|m| m.line);
-                    for m in ast_matches {
-                        file_matches.push(SupersearchMatch {
-                            file: file_rel.clone(),
-                            line: m.line,
-                            snippet: m.snippet,
-                        });
-                    }
-                    used_ast = true;
-                }
-            }
-            if !used_ast {
-                for (idx, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(&q) {
-                        file_matches.push(SupersearchMatch {
-                            file: file_rel.clone(),
-                            line: (idx + 1) as u32,
-                            snippet: line.trim().to_string(),
-                        });
-                    }
-                }
-            }
-            file_matches
-        })
         .collect();
+
+    let mut matches = supersearch_matches_for_query(&searchable_files, &root, &q, &context_norm, &pattern_norm);
+
+    if matches.is_empty() {
+        for candidate in fallback_supersearch_queries(&query) {
+            if candidate == q {
+                continue;
+            }
+            matches = supersearch_matches_for_query(
+                &searchable_files,
+                &root,
+                &candidate,
+                &context_norm,
+                &pattern_norm,
+            );
+            if !matches.is_empty() {
+                break;
+            }
+        }
+    }
 
     matches.truncate(limit.unwrap_or(200));
 
@@ -415,6 +394,95 @@ pub fn supersearch(
     };
 
     Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+fn supersearch_matches_for_query(
+    files: &[&super::types::BakeFile],
+    root: &std::path::Path,
+    query_lc: &str,
+    context_norm: &str,
+    pattern_norm: &str,
+) -> Vec<SupersearchMatch> {
+    use rayon::prelude::*;
+
+    files
+        .par_iter()
+        .flat_map(|file| {
+            let lang = file.language.as_str();
+            let full_path = root.join(&file.path);
+            let content = match fs::read_to_string(&full_path) {
+                Ok(c) => c,
+                Err(_) => return vec![],
+            };
+            let file_rel = file.path.to_string_lossy().into_owned();
+
+            let analyzer = crate::lang::find_analyzer(lang);
+            if let Some(analyzer) = analyzer {
+                if analyzer.supports_ast_search() {
+                    let mut ast_matches =
+                        analyzer.ast_search(&content, query_lc, context_norm, pattern_norm);
+                    ast_matches.sort_by_key(|m| m.line);
+                    ast_matches.dedup_by_key(|m| m.line);
+                    if !ast_matches.is_empty() {
+                        return ast_matches
+                            .into_iter()
+                            .map(|m| SupersearchMatch {
+                                file: file_rel.clone(),
+                                line: m.line,
+                                snippet: m.snippet,
+                            })
+                            .collect();
+                    }
+                }
+            }
+
+            line_search_matches(&content, &file_rel, query_lc)
+        })
+        .collect()
+}
+
+fn line_search_matches(content: &str, file_rel: &str, query_lc: &str) -> Vec<SupersearchMatch> {
+    let mut matches = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        if line.to_lowercase().contains(query_lc) {
+            matches.push(SupersearchMatch {
+                file: file_rel.to_string(),
+                line: (idx + 1) as u32,
+                snippet: line.trim().to_string(),
+            });
+        }
+    }
+    matches
+}
+
+fn fallback_supersearch_queries(query: &str) -> Vec<String> {
+    const STOPWORDS: &[&str] = &[
+        "all", "call", "calls", "caller", "callers", "site", "sites", "usage", "usages",
+        "reference", "references", "refs", "find", "show", "where", "used", "use", "of",
+        "the", "a", "an", "for", "to", "in", "from", "with", "function", "helper", "symbol",
+    ];
+
+    let mut candidates = Vec::new();
+    let mut current = String::new();
+    for c in query.chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '/' | '.') {
+            current.push(c);
+        } else if !current.is_empty() {
+            candidates.push(current.clone());
+            current.clear();
+        }
+    }
+    if !current.is_empty() {
+        candidates.push(current);
+    }
+
+    candidates.sort_by_key(|token| std::cmp::Reverse(token.len()));
+    candidates.dedup();
+    candidates
+        .into_iter()
+        .map(|token| token.to_lowercase())
+        .filter(|token| !STOPWORDS.contains(&token.as_str()))
+        .collect()
 }
 
 /// Split a symbol/query string into lowercase tokens on `_`, `-`, space, `.`, `/`, `:`

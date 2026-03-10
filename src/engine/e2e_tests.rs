@@ -117,6 +117,29 @@ mod tests {
         assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
     }
 
+    #[test]
+    fn e2e_supersearch_extracts_identifier_from_natural_language_query() {
+        let dir = setup();
+        let out = crate::engine::supersearch(
+            root(&dir),
+            "call sites of add".into(),
+            "identifiers".into(),
+            "all".into(),
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let matches = v["matches"].as_array().unwrap();
+        assert!(!matches.is_empty(), "expected natural-language supersearch query to find 'add' usages");
+        assert!(
+            matches.iter().any(|m| m["snippet"].as_str().unwrap().contains("add")),
+            "expected at least one match snippet to contain 'add': {:?}",
+            matches
+        );
+    }
+
     // ── blast_radius ──────────────────────────────────────────────────────────
 
     #[test]
