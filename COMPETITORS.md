@@ -1,10 +1,24 @@
 # yoyo — Competitive Landscape
 
-Last updated: 2026-03-08
+Last updated: 2026-03-11
 
 ---
 
 ## MCP Servers — Direct Competitors
+
+### Probe (probelabs) — NEW
+- **What:** Semantic code search for large codebases. Combines ripgrep speed with tree-sitter AST parsing. MCP server + CLI.
+- **Approach:** Rust, no persistent index (parses on demand), Elasticsearch-style query syntax.
+- **Strength:** Fast, Rust binary, tree-sitter AST extraction, works with Cursor/Cline/Windsurf. Closest positioning to yoyo.
+- **Gap vs yoyo:** Read-only — no write tools, no patch/rename/delete. No persistent bake index. No LLM bootstrap. No eval harness or published benchmark.
+- **Links:** [GitHub](https://github.com/probelabs/probe) | [probelabs.com](https://probelabs.com)
+
+### Serena (oraios) — NEW
+- **What:** Coding agent toolkit with semantic retrieval and editing via MCP. LSP-backed symbol navigation. Read + write tools. "Akin to IDE capabilities."
+- **Approach:** Python, delegates to language servers for type inference. v0.1.4, approaching v1.0.
+- **Strength:** 30+ languages (vs yoyo ~8), LSP-quality type inference, write tools, JetBrains plugin, Codex integration.
+- **Gap vs yoyo:** Python runtime dependency (not a single binary). No persistent local index (LSP-backed, requires running servers). No LLM bootstrap tool. No published benchmark. Write tools less structured (no blast_radius safety gate).
+- **Links:** [GitHub](https://github.com/oraios/serena)
 
 ### ast-grep MCP
 - **What:** Structural code search via AST pattern matching. 4 tools: `dump_syntax_tree`, `test_match_code_rule`, `find_code`, `find_code_by_rule`.
@@ -95,6 +109,8 @@ Last updated: 2026-03-08
 | CLI + MCP unified | Rarely | Same engine, two adapters |
 | Self-contained binary | No (runtime + deps) | Single Rust binary |
 | Language scope | Python-only or needs LSP | Multi-language via tree-sitter |
+| Language coverage | Serena: 30+, others: 1-25 | ~8 (growing) |
+| Published benchmark | None | yes — evals/token_benchmark/ |
 | Security analysis | Joern specializes here | Not the goal |
 | Org-scale cross-repo | Sourcegraph specializes here | Not the goal |
 
@@ -102,8 +118,12 @@ Last updated: 2026-03-08
 
 ## Strategic read
 
-- **Nobody else has write tools** at the MCP layer. `patch`, `multi_patch`, `graph_create` are effectively unchallenged.
-- **The persistent local index** (bake/shake) is yoyo's deepest moat. Competitors parse on-demand or require external DBs.
-- **LSP bridges are the most credible threat** for navigation-heavy use cases — but they can't scaffold, can't patch, can't do health/blast_radius analysis.
-- **Aider is the most mature agent workflow tool** but operates at a different layer — it's a peer, not a replacement.
-- **Cursor is the dominant end-product** but it's closed. yoyo is infrastructure that works *inside* any agent, including Cursor alternatives.
+- **Probe is the closest read-side competitor** — Rust, tree-sitter, ripgrep, similar positioning. But read-only. No write tools, no bake index, no benchmark. Watch it closely.
+- **Serena is the most capable overall competitor** — 30+ languages, read + write, LSP-quality inference. Gap: Python runtime, no single binary, no bake index, no published eval. Language coverage is their lead; benchmark and binary are yoyo's.
+- **Nobody else has write tools with safety gates.** `graph_delete` blocking on callers, `graph_rename` atomic across call sites — unchallenged at the MCP layer.
+- **The persistent local index** (bake/shake) is yoyo's deepest moat. Competitors parse on-demand or require external DBs (Neo4j, RocksDB).
+- **The published benchmark is currently unique.** No competitor has quantified accuracy vs linux tools across multiple repos. That's a credibility gap in their favour to close.
+- **Language coverage (8 vs 30+) is the sharpest gap to close.** Serena's 30+ languages via LSP is a real advantage for polyglot repos.
+- **LSP bridges remain a credible threat** for navigation-heavy use cases — but they can't scaffold, can't patch, can't do health/blast_radius analysis.
+- **Aider is the most mature agent workflow tool** but operates at a different layer — peer, not replacement.
+- **Cursor is the dominant end-product** but it's closed. yoyo is infrastructure that works inside any agent, including Cursor alternatives.
