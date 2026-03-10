@@ -147,6 +147,16 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
         }
     }
 
+    // TypeScript: npm root -g → <global_node_modules>/typescript/lib
+    if let Ok(out) = std::process::Command::new("npm").args(["root", "-g"]).output() {
+        if let Ok(s) = std::str::from_utf8(&out.stdout) {
+            let p = PathBuf::from(s.trim()).join("typescript").join("lib");
+            if p.is_dir() {
+                paths.push(("typescript".to_string(), p));
+            }
+        }
+    }
+
     paths
 }
 
