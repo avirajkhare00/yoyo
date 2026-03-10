@@ -54,6 +54,7 @@ Preferred languages:
 - Zig where it is the right low-level fit
 
 Avoid Python for new project logic.
+Write idiomatic code in the host language when possible. Do not import habits from another language when the local standard library or type system already gives the obvious solution.
 
 Before generating code for a systems language, read the relevant playbook if one exists. For Zig, read [`playbook/zig-0.15.md`](./playbook/zig-0.15.md) first.
 
