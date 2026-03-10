@@ -389,7 +389,7 @@ fn decision_map() -> Vec<DecisionEntry> {
 pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
         ToolDescription { name: "llm_instructions", description: "Bootstrap: lean tool catalog, prime directives, and concurrency rules. Call in parallel with bake on first contact — do not skip.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: combination workflows, decision map, antipatterns, metapatterns. Call on demand — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: combination workflows, decision map, antipatterns, metapatterns. Pass query= to search by intent (e.g. query='rename symbol') and get top-ranked matches instead of the full catalog. Call on demand — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "bake",             description: "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "shake",            description: "Language breakdown, file count, top-complexity functions.", requires_bake: false, category: "read", parallelisable: true,
             output_shape: Some(r#"{"files_indexed":0,"languages":[],"top_functions":[{"name":"","file":"","start_line":0,"complexity":0}],"express_endpoints":[]}"#) },
