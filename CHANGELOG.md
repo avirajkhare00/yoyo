@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.11] - 2026-03-10
+
+### Fixed
+
+- Rust macro-hidden call edges: Rust analysis now runs a narrow compiler-assisted expansion pass (`cargo +nightly rustc -Zunpretty=expanded,identified`) for macro-bearing crates and merges recovered call edges back into the source index when the mapping is unambiguous. This fixes call-site visibility through `macro_rules!` indirection such as `invoke!(work)` and closes #58.
+- Rust dead-code false positives: `health` now recognizes function-item references like `get_or_init(build_registry)`, excludes trait-impl methods from dead-code reporting, and preserves Rust helper usages referenced through serde defaults and closure-heavy macro bodies. This closes #137.
+- Added regression coverage for function-item usage, trait-impl dead-code exclusions, serde default refs, macro-body nested calls, closure-heavy helper calls, and compiler-expansion recovery of macro-hidden call edges.
+
 ## [1.4.10] - 2026-03-10
 
 ### Fixed

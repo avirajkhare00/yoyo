@@ -835,4 +835,257 @@ report
         });
         assert!(has_structural, "expected health to flag add/subtract/multiply as structural duplicates via sig_hash");
     }
+
+    #[test]
+    fn e2e_function_item_argument_counts_as_usage() {
+        let dir = setup();
+        let cache_file = dir.path().join("src/cache.rs");
+        fs::write(
+            &cache_file,
+            r#"use std::sync::OnceLock;
+
+static REGISTRY: OnceLock<Vec<&'static str>> = OnceLock::new();
+
+fn build_registry() -> Vec<&'static str> {
+    vec!["ok"]
+}
+
+fn get_registry() -> &'static Vec<&'static str> {
+    REGISTRY.get_or_init(build_registry)
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let blast = crate::engine::blast_radius(root(&dir), "build_registry".into(), Some(2)).unwrap();
+        let blast_json: serde_json::Value = serde_json::from_str(&blast).unwrap();
+        let callers = blast_json["callers"].as_array().expect("callers array");
+        assert!(
+            callers.iter().any(|caller| caller["caller"] == "get_registry"),
+            "expected get_registry to be reported as a caller when build_registry is passed as a function item"
+        );
+
+        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
+        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        assert!(
+            !dead_code.iter().any(|f| f["name"] == "build_registry" && f["file"] == "src/cache.rs"),
+            "build_registry should not be flagged as dead when passed to get_or_init"
+        );
+    }
+
+    #[test]
+    fn e2e_health_excludes_trait_impl_methods_from_dead_code() {
+        let dir = setup();
+        let file = dir.path().join("src/trait_impl.rs");
+        fs::write(
+            &file,
+            r#"trait Greeter {
+    fn greet(&self) -> &'static str;
+}
+
+struct Person;
+
+impl Person {
+    fn unused_helper(&self) -> &'static str {
+        "helper"
+    }
+}
+
+impl Greeter for Person {
+    fn greet(&self) -> &'static str {
+        "hello"
+    }
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
+        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+
+        assert!(
+            !dead_code.iter().any(|f| f["name"] == "greet" && f["file"] == "src/trait_impl.rs"),
+            "trait impl methods should not be classified as dead code"
+        );
+        assert!(
+            dead_code.iter().any(|f| f["name"] == "unused_helper" && f["file"] == "src/trait_impl.rs"),
+            "unused inherent methods should still be classified as dead code"
+        );
+    }
+
+    #[test]
+    fn e2e_macro_body_nested_calls_are_indexed_for_rust() {
+        let dir = setup();
+        let file = dir.path().join("src/macro_calls.rs");
+        fs::write(
+            &file,
+            r#"fn work() {}
+
+fn runner() {
+    vec![tokio::spawn!(work())];
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let symbol = crate::engine::symbol(root(&dir), "runner".into(), false, None, Some(5), false).unwrap();
+        let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
+        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+
+        assert!(
+            calls.iter().any(|c| c["callee"] == "work"),
+            "macro bodies should contribute nested function calls when the token tree contains call-like syntax: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+    }
+
+    #[test]
+    fn e2e_compiler_expansion_recovers_macro_hidden_call_edges() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+        fs::write(
+            root_path.join("Cargo.toml"),
+            "[package]\nname = \"macro_expand_test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root_path.join("src")).unwrap();
+        fs::write(
+            root_path.join("src/main.rs"),
+            r#"macro_rules! invoke {
+    ($f:ident) => {
+        $f()
+    };
+}
+
+fn work() {}
+
+fn runner() {
+    invoke!(work);
+}
+
+fn main() {
+    runner();
+}
+"#,
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let symbol = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "runner".into(),
+            false,
+            None,
+            Some(5),
+            false,
+        )
+        .unwrap();
+        let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
+        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+
+        assert!(
+            calls.iter().any(|c| c["callee"] == "work"),
+            "compiler expansion should recover call edges hidden behind macro_rules indirection: {}",
+            serde_json::to_string(calls).unwrap()
+        );
+    }
+
+    #[test]
+    fn e2e_health_excludes_serde_default_function_refs_from_dead_code() {
+        let dir = setup();
+        let file = dir.path().join("src/serde_defaults.rs");
+        fs::write(
+            &file,
+            r#"fn default_origin() -> String {
+    "user".to_string()
+}
+
+#[derive(Default)]
+struct Event {
+    #[serde(default = "default_origin")]
+    origin: String,
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
+        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+
+        assert!(
+            !dead_code.iter().any(|f| f["name"] == "default_origin" && f["file"] == "src/serde_defaults.rs"),
+            "functions referenced by serde default attributes should not be classified as dead code"
+        );
+    }
+
+    #[test]
+    fn e2e_health_excludes_macro_closure_helper_calls_from_dead_code() {
+        let dir = setup();
+        let file = dir.path().join("src/mcp_like.rs");
+        fs::write(
+            &file,
+            r#"use std::sync::OnceLock;
+
+struct Args;
+
+impl Args {
+    fn str_req(&self) -> String {
+        "ok".to_string()
+    }
+
+    fn bool_opt(&self) -> Option<bool> {
+        Some(true)
+    }
+}
+
+struct ToolEntry {
+    handler: Box<dyn Fn(&Args) -> String>,
+}
+
+static REGISTRY: OnceLock<Vec<ToolEntry>> = OnceLock::new();
+
+fn build_registry() -> Vec<ToolEntry> {
+    vec![
+        ToolEntry {
+            handler: Box::new(|a| a.str_req()),
+        },
+        ToolEntry {
+            handler: Box::new(|a| {
+                if a.bool_opt().unwrap_or(false) {
+                    a.str_req()
+                } else {
+                    String::new()
+                }
+            }),
+        },
+    ]
+}
+
+fn get_registry() -> &'static Vec<ToolEntry> {
+    REGISTRY.get_or_init(build_registry)
+}
+"#,
+        )
+        .unwrap();
+        crate::engine::bake(root(&dir)).unwrap();
+
+        let health = crate::engine::health(root(&dir), Some(100)).unwrap();
+        let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
+        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+
+        for name in ["build_registry", "str_req", "bool_opt"] {
+            assert!(
+                !dead_code.iter().any(|f| f["name"] == name && f["file"] == "src/mcp_like.rs"),
+                "{name} should not be classified as dead code when referenced from closure-heavy macro bodies"
+            );
+        }
+    }
 }

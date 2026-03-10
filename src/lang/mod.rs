@@ -68,6 +68,9 @@ pub struct IndexedFunction {
     /// None for free functions.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_type: Option<String>,
+    /// For trait methods implemented inside `impl Trait for Type`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implemented_trait: Option<String>,
     /// True when this function was indexed from a toolchain stdlib (not user code).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_stdlib: bool,
@@ -95,6 +98,7 @@ impl Default for IndexedFunction {
             qualified_name: String::new(),
             visibility: Visibility::default(),
             parent_type: None,
+            implemented_trait: None,
             is_stdlib: false,
             sig_hash: None,
         }
