@@ -8,12 +8,19 @@ Target: **80% of requests handled by SLM without escalation.**
 
 ## Phase 0 — Data
 
-1. Write a generation prompt that covers the full space of Zig tasks: function completions, bug fixes, refactors.
-2. Generate 1000 examples via a mix of SOTA LLMs (GPT-4o, Claude, Gemini).
-   - Include relevant stdlib signatures in each generation prompt (Phase 2.5 mechanism) — the SLM trains on correct API usage from day one.
-3. Auto-verify each example by passing it through `zig build-lib` / `zig test`.
-4. Keep examples that compile clean. Target ~800; hard floor is enough to fill the 640/160 split.
-5. Split: **640 train / 160 validation**.
+**Source: Zigistry as repo index.** Do not generate Zig from scratch — LLMs hallucinate APIs and wrong versions. Use real ecosystem code as the ground truth output, generate only the instruction.
+
+1. Download [Zigistry/Zigistry-complete-dataset](https://huggingface.co/datasets/Zigistry/Zigistry-complete-dataset) (3,420 Zig repos with metadata).
+2. Filter: `has_build_zig=true` + `zig_minimum_version=0.14.x` + stars > threshold.
+3. Clone filtered repos — these are the ground truth outputs.
+4. Run `yoyo bake` + `file_functions` to extract functions from each repo.
+5. For each real function: prompt a SOTA LLM to generate a natural language task that would produce it → synthetic `(instruction, output)` pair.
+   - Include relevant stdlib signatures in each prompt (Phase 2.5 mechanism) — the SLM trains on correct API usage from day one.
+6. Verify every pair: `zig build-lib` / `zig test`. Keep only what compiles clean.
+7. Target ~800 verified pairs; hard floor is enough to fill the split.
+8. Split: **640 train / 160 validation**.
+
+**Why answer-first:** the output already exists and already compiles. The LLM only generates the question — much lower error surface than pure synthetic generation.
 
 ---
 
