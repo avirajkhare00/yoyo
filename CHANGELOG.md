@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.8] - 2026-03-10
+
+### Fixed
+
+- Compiler guardrails: added `ast_check_str` pre-write guard to `multi_patch`, `graph_rename`, `graph_add`, `graph_create`, and `graph_move`. All 5 mutating paths now reject invalid syntax before touching disk. Previously only `patch`, `patch_string`, `patch_by_symbol`, and `patch_bytes` were guarded.
+- `graph_add` test: fixed `entity_type: "function"` → `"fn"` for Rust files — the guard correctly caught that `function name() {}` is invalid Rust syntax.
+- `ast_check_str` visibility: promoted to `pub(super)` to allow use from `graph.rs`.
+
 ## [1.4.7] - 2026-03-10
 
 ### Fixed
