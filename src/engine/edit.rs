@@ -737,3 +737,57 @@ fn apply_patch_to_range(
 
     Ok((file.to_string(), start, end, total_lines))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_file(dir: &TempDir, rel: &str, content: &str) {
+        let p = dir.path().join(rel);
+        if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).unwrap(); }
+        std::fs::write(p, content).unwrap();
+    }
+
+    #[test]
+    fn multi_patch_rejects_invalid_rust_syntax() {
+        let dir = TempDir::new().unwrap();
+        // "fn foo() {}\n" — "{}" is at bytes 9..11
+        write_file(&dir, "lib.rs", "fn foo() {}\n");
+
+        let edits = vec![PatchEdit {
+            file: "lib.rs".to_string(),
+            byte_start: 9,
+            byte_end: 11,
+            new_content: "{{{".to_string(), // break the body
+        }];
+        let err = multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            edits,
+        ).unwrap_err();
+
+        assert!(err.to_string().contains("multi_patch rejected"), "got: {}", err);
+        // File must be untouched.
+        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), "fn foo() {}\n");
+    }
+
+    #[test]
+    fn multi_patch_allows_valid_rust_edit() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "lib.rs", "fn foo() {}\n");
+
+        // Replace "foo" (bytes 3..6) with "bar" — valid rename.
+        let edits = vec![PatchEdit {
+            file: "lib.rs".to_string(),
+            byte_start: 3,
+            byte_end: 6,
+            new_content: "bar".to_string(),
+        }];
+        multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            edits,
+        ).unwrap();
+
+        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), "fn bar() {}\n");
+    }
+}
