@@ -167,6 +167,28 @@ write test → implement → cargo test (all green) → build --release → sign
 
 Never skip steps. Never reorder them.
 
+## MCP binary path — troubleshooting
+
+If yoyo tools error or the MCP server fails to connect, check which binary Claude Code is loading:
+
+```bash
+ps aux | grep yoyo | grep -v grep
+```
+
+The MCP config lives in `~/.claude.json` (Claude Code CLI) and `~/Library/Application Support/Claude/claude_desktop_config.json` (Claude Desktop). Both must point to the same built binary — **not** the Homebrew symlink at `/opt/homebrew/bin/yoyo`, which may lag behind local builds.
+
+Canonical install path: `/Users/avirajkhare/.local/bin/yoyo`
+
+After any `cargo build --release`, copy and sign:
+```bash
+cp target/release/yoyo ~/.local/bin/yoyo && codesign --force --deep --sign - ~/.local/bin/yoyo
+```
+
+If `~/.claude.json` has `/opt/homebrew/bin/yoyo`, update it:
+```bash
+# edit mcpServers.yoyo.command → /Users/avirajkhare/.local/bin/yoyo
+```
+
 ## Dev workflow — macOS binary signing
 
 After every `cargo build --release`, sign the binary before running it. macOS Gatekeeper kills unsigned binaries with exit 137 and no useful error.
