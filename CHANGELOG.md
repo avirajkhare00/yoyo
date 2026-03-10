@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.2] - 2026-03-11
+
+### Fixed
+
+- llm_instructions prime_directives reframed as "yoyo + linux together" — accurate framing backed by benchmark findings
+- Token benchmark eval harness (evals/token_benchmark/): 12 tasks, 5 dimensions, works on any repo
+- Benchmark results included for yoyo, ripgrep (52K lines), tokio (102K lines)
+
 ## [1.5.1] - 2026-03-10
 
 ### Fixed
