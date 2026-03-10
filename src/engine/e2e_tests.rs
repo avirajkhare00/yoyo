@@ -140,6 +140,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn e2e_supersearch_keeps_empty_result_for_missing_natural_language_query() {
+        let dir = setup();
+        let out = crate::engine::supersearch(
+            root(&dir),
+            "call sites of definitely_missing_symbol".into(),
+            "identifiers".into(),
+            "all".into(),
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let matches = v["matches"].as_array().unwrap();
+        assert!(
+            matches.is_empty(),
+            "expected no matches for a missing symbol even after natural-language fallback: {:?}",
+            matches
+        );
+    }
+
     // ── blast_radius ──────────────────────────────────────────────────────────
 
     #[test]
