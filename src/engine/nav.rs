@@ -1,19 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use super::types::{
     ArchitectureDir, ArchitectureMapPayload, ArchitectureSuggestion, EndpointSummary,
     FunctionSummary, PackageFileSummary, PackageSummaryPayload, PlacementSuggestion,
     SuggestPlacementPayload,
 };
-use super::util::{load_bake_index, resolve_project_root};
+use super::util::{require_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `package_summary` tool.
 pub fn package_summary(path: Option<String>, package: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let package_str = package.unwrap_or_default();
     let package_lc = package_str.to_lowercase();
@@ -73,8 +72,7 @@ pub fn package_summary(path: Option<String>, package: Option<String>) -> Result<
 /// Public entrypoint for the `architecture_map` tool: project structure and placement hints.
 pub fn architecture_map(path: Option<String>, intent: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let mut directories: BTreeMap<String, ArchitectureDir> = BTreeMap::new();
 
@@ -182,8 +180,7 @@ pub fn suggest_placement(
     related_to: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let fn_type = function_type.to_lowercase();
     let mut candidates = Vec::new();

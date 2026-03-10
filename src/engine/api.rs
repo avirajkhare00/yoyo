@@ -2,13 +2,12 @@ use anyhow::{anyhow, Result};
 
 use super::types::{AllEndpointsPayload, EndpointSummary, FlowHandlerInfo, FlowPayload};
 use super::graph::trace_chain;
-use super::util::{load_bake_index, resolve_project_root};
+use super::util::{require_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `all_endpoints` tool: list Express-style endpoints.
 pub fn all_endpoints(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let endpoints: Vec<EndpointSummary> = bake
         .endpoints
@@ -47,8 +46,7 @@ pub fn flow(
     include_source: bool,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow!("No bake index found. Run `bake` first."))?;
+    let bake = require_bake_index(&root)?;
 
     let method_uc = method.map(|m| m.to_uppercase());
     let endpoint_lc = endpoint.to_lowercase();

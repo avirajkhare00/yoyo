@@ -8,14 +8,13 @@ use super::types::{
     DeadFunction, DocMatch, DuplicateEntry, DuplicateGroup, FeatureEnvy, FindDocsPayload,
     GraphDeletePayload, HealthPayload, InsiderTrading, LargeFunction, LongMethod, ShotgunSurgery,
 };
-use super::util::{load_bake_index, reindex_files, resolve_project_root};
+use super::util::{load_bake_index, reindex_files, require_bake_index, resolve_project_root};
 
 
 /// Public entrypoint for the `blast_radius` tool.
 pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No bake index found. Run `bake` first to build bakes/latest/bake.json."))?;
+    let bake = require_bake_index(&root)?;
 
     let max_depth = depth.unwrap_or(2);
 
@@ -227,8 +226,7 @@ pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<u
 /// Diagnose a codebase: dead code, god functions, duplicate hints.
 pub fn health(path: Option<String>, top: Option<usize>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = load_bake_index(&root)?
-        .ok_or_else(|| anyhow::anyhow!("No bake index found. Run `bake` first."))?;
+    let bake = require_bake_index(&root)?;
 
     let top_n = top.unwrap_or(10);
 
