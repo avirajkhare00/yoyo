@@ -682,9 +682,10 @@ dead.filter(|f| {
 
       <p>
         This replaces a multi-turn conversation. No back-and-forth: one tool call, one structured result.
-        The safety model is the same as pipeline — only read tools are exposed inside scripts. Write tools
-        (<code>patch</code>, <code>graph_delete</code>, etc.) are not callable from Rhai. Scripts observe;
-        they do not mutate.
+        Scripts expose read tools and one write tool: <code>graph_delete</code>. Patch, rename, move, and
+        create are not available — mutations that require precise content are intentionally left to the
+        agent, which can verify before writing. Deletion is safe to automate because
+        <code>graph_delete</code> already blocks if callers exist.
       </p>
 
       <p>
