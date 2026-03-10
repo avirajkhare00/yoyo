@@ -682,10 +682,29 @@ dead.filter(|f| {
 
       <p>
         This replaces a multi-turn conversation. No back-and-forth: one tool call, one structured result.
-        Scripts expose read tools and one write tool: <code>graph_delete</code>. Patch, rename, move, and
-        create are not available — mutations that require precise content are intentionally left to the
-        agent, which can verify before writing. Deletion is safe to automate because
-        <code>graph_delete</code> already blocks if callers exist.
+      </p>
+
+      <p>
+        Scripts expose all seven read tools plus one write tool: <code>graph_delete</code>.
+        The other write tools — <code>patch</code>, <code>graph_rename</code>, <code>graph_create</code>,
+        <code>graph_add</code>, <code>graph_move</code> — are intentionally absent. Here is why.
+      </p>
+
+      <p>
+        Every mutation except deletion requires precise content: the new function body, the new name,
+        the target file, the exact string to replace. That content has to come from somewhere — usually
+        from the agent reading the code, understanding it, and deciding what to write. Automating that
+        decision inside a script removes the verification step. The agent can no longer see what it is
+        about to write before it writes it.
+      </p>
+
+      <p>
+        Deletion is different. <code>graph_delete</code> has one job: remove a named function.
+        It carries its own safety net — it blocks if any callers exist, and only proceeds if the
+        function is unreachable. A script can iterate over dead code candidates, confirm zero callers
+        with <code>blast_radius</code>, and call <code>graph_delete</code> on each. The safety
+        property is structural, not policy — the tool itself refuses the unsafe case.
+        That is why deletion is the one write operation that belongs in a script.
       </p>
 
       <p>
