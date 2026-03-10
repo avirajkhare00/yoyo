@@ -91,6 +91,7 @@ pub fn symbol(
                     implementors: vec![],
                     fields: vec![],
                     is_stdlib: false,
+                    sig_hash: f.sig_hash.clone(),
                 })
             } else {
                 None
@@ -131,6 +132,7 @@ pub fn symbol(
                     implementors,
                     fields: t.fields.clone(),
                     is_stdlib: false,
+                    sig_hash: None,
                 })
             } else {
                 None
@@ -268,6 +270,7 @@ fn walk_stdlib_dir(
                         implementors: vec![],
                         fields: vec![],
                         is_stdlib: true,
+                        sig_hash: f.sig_hash.clone(),
                     });
                 }
             }
@@ -297,6 +300,7 @@ fn walk_stdlib_dir(
                         implementors: vec![],
                         fields: t.fields.clone(),
                         is_stdlib: true,
+                        sig_hash: None,
                     });
                 }
             }

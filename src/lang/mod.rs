@@ -71,6 +71,10 @@ pub struct IndexedFunction {
     /// True when this function was indexed from a toolchain stdlib (not user code).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_stdlib: bool,
+    /// Structural signature fingerprint: hash of (param_types, return_type).
+    /// Name-agnostic — two functions with identical type contracts share a hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sig_hash: Option<String>,
 }
 
 /// Default enables `..Default::default()` in struct initializers so future
@@ -92,8 +96,21 @@ impl Default for IndexedFunction {
             visibility: Visibility::default(),
             parent_type: None,
             is_stdlib: false,
+            sig_hash: None,
         }
     }
+}
+
+/// Compute a structural signature fingerprint from param types and return type.
+/// Name-agnostic: strips param names, hashes only the type shapes.
+/// Returns an 8-char lowercase hex string.
+pub fn compute_sig_hash(param_types: &[String], return_type: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    param_types.hash(&mut h);
+    return_type.hash(&mut h);
+    format!("{:016x}", h.finish())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

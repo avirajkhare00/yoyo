@@ -213,6 +213,9 @@ pub(crate) struct SymbolMatch {
     /// True when this match came from an installed toolchain stdlib, not user code.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) is_stdlib: bool,
+    /// Structural signature fingerprint — hash of (param_types, return_type). Name-agnostic.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) sig_hash: Option<String>,
 }
 
 #[derive(Serialize)]

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.6] - 2026-03-10
+
+### Added
+
+- `IndexedFunction`: new `sig_hash: Option<String>` field — structural signature fingerprint, hash of `(param_types, return_type)`. Name-agnostic: two functions with different names but identical type contracts share a hash.
+- `compute_sig_hash(param_types, return_type)` helper in `src/lang/mod.rs`.
+- Rust analyzer: populates `sig_hash` for every `function_item` by extracting param types and return type from the AST via tree-sitter.
+- `symbol` output: `sig_hash` field included when present.
+- `health` duplicate_code: second pass groups by `sig_hash` — flags structural duplicates (different names, identical contracts) across files, tagged as `"Structural Duplicate"` / `"Unify Contract"`. Closes #135.
+
 ## [1.4.5] - 2026-03-10
 
 ### Fixed
