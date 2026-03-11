@@ -26,7 +26,7 @@ fn requested_root(path: Option<String>) -> Result<PathBuf> {
 }
 
 fn bake_index_path(root: &Path) -> PathBuf {
-    root.join("bakes").join("latest").join("bake.json")
+    root.join("bakes").join("latest").join("bake.db")
 }
 
 fn find_bake_root(start: &Path) -> Option<PathBuf> {
@@ -49,14 +49,14 @@ fn find_project_root_hint(start: &Path) -> Option<PathBuf> {
 fn missing_bake_error(root: &Path) -> anyhow::Error {
     if let Some(project_root) = find_project_root_hint(root) {
         return anyhow!(
-            "No bake index found under {}. Did you mean to pass the project root {}? Run `bake` there first to build bakes/latest/bake.json.",
+            "No bake index found under {}. Did you mean to pass the project root {}? Run `bake` there first to build bakes/latest/bake.db.",
             root.display(),
             project_root.display()
         );
     }
 
     anyhow!(
-        "No bake index found under {}. Run `bake` first to build bakes/latest/bake.json.",
+        "No bake index found under {}. Run `bake` first to build bakes/latest/bake.db.",
         root.display()
     )
 }
@@ -110,15 +110,13 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
         return Ok(None);
     }
 
-    let data =
-        fs::read_to_string(&bake_path).with_context(|| format!("Failed to read {}", bake_path.display()))?;
-    let bake: BakeIndex = serde_json::from_str(&data)
-        .with_context(|| format!("Failed to parse bake index from {}", bake_path.display()))?;
+    let bake = super::db::read_bake_from_db(&bake_path)
+        .with_context(|| format!("Failed to read bake index from {}", bake_path.display()))?;
 
     // Auto-reindex if the running binary is newer than what generated the index.
     let version_stale = parse_semver(env!("CARGO_PKG_VERSION")) > parse_semver(&bake.version);
 
-    // Auto-reindex if any source file is newer than bake.json (or has gone missing).
+    // Auto-reindex if any source file is newer than bake.db (or has gone missing).
     let bake_mtime = fs::metadata(&bake_path)
         .and_then(|m| m.modified())
         .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
@@ -131,8 +129,9 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
 
     if version_stale || content_stale {
         let fresh = build_bake_index(root)?;
-        let json = serde_json::to_string_pretty(&fresh)?;
-        fs::write(&bake_path, &json)
+        let bakes_dir = root.join("bakes").join("latest");
+        fs::create_dir_all(&bakes_dir)?;
+        super::db::write_bake_to_db(&fresh, &bake_path)
             .with_context(|| format!("Failed to write refreshed bake index to {}", bake_path.display()))?;
         return Ok(Some(fresh));
     }
@@ -253,19 +252,31 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
     // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
     // Stdlib is NOT pre-indexed here — it is too large (Go stdlib = 3000+ files).
     // The router pulls specific stdlib signatures on demand via detect_stdlib_paths() + symbol().
-    let results: Vec<_> = files
-        .par_iter()
-        .enumerate()
-        .filter_map(|(idx, file)| {
-            let lang = file.language.as_str();
-            let analyzer = crate::lang::find_analyzer(lang)?;
-            let full_path = root.join(&file.path);
-            let source = std::fs::read_to_string(&full_path).ok()?;
-            let imports = analyzer.extract_imports(&source);
-            let (funcs, eps, typs, imps) = analyzer.analyze_file(root, &full_path).ok()?;
-            Some((idx, funcs, eps, typs, imps, imports))
-        })
-        .collect();
+    //
+    // Scale stack size with repo size. The default rayon stack (2 MB) overflows
+    // on large repos where tree-sitter AST recursion depth exceeds the limit.
+    // Formula: 8 MB base + 1 KB per file, capped at 128 MB.
+    let stack_bytes = (8 * 1024 * 1024 + files.len() * 1024).min(128 * 1024 * 1024);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(stack_bytes)
+        .build()
+        .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+
+    let results: Vec<_> = pool.install(|| {
+        files
+            .par_iter()
+            .enumerate()
+            .filter_map(|(idx, file)| {
+                let lang = file.language.as_str();
+                let analyzer = crate::lang::find_analyzer(lang)?;
+                let full_path = root.join(&file.path);
+                let source = std::fs::read_to_string(&full_path).ok()?;
+                let imports = analyzer.extract_imports(&source);
+                let (funcs, eps, typs, imps) = analyzer.analyze_file(root, &full_path).ok()?;
+                Some((idx, funcs, eps, typs, imps, imports))
+            })
+            .collect()
+    });
 
     let mut functions = Vec::new();
     let mut endpoints = Vec::new();
@@ -328,11 +339,7 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
         return Ok(());
     }
 
-    let data = match fs::read_to_string(&bake_path) {
-        Ok(d) => d,
-        Err(_) => return Ok(()),
-    };
-    let mut bake: super::types::BakeIndex = match serde_json::from_str(&data) {
+    let mut bake = match super::db::read_bake_from_db(&bake_path) {
         Ok(b) => b,
         Err(_) => return Ok(()),
     };
@@ -359,8 +366,7 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
         }
     }
 
-    let json = serde_json::to_string_pretty(&bake)?;
-    fs::write(&bake_path, json)?;
+    super::db::write_bake_to_db(&bake, &bake_path)?;
     Ok(())
 }
 
@@ -386,11 +392,7 @@ mod tests {
             types: vec![],
             impls: vec![],
         };
-        fs::write(
-            bakes_dir.join("bake.json"),
-            serde_json::to_string_pretty(&bake).unwrap(),
-        )
-        .unwrap();
+        crate::engine::db::write_bake_to_db(&bake, &bakes_dir.join("bake.db")).unwrap();
     }
 
     #[test]

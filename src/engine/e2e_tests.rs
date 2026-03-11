@@ -548,11 +548,11 @@ pub fn fetch_user(id: u32) -> String {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         // .git/ blobs must not appear in the file list
-        let bake_json = std::fs::read_to_string(
-            root_path.join("bakes/latest/bake.json")
+        let bake = crate::engine::db::read_bake_from_db(
+            &root_path.join("bakes/latest/bake.db")
         ).unwrap();
         assert!(
-            !bake_json.contains(".git/objects"),
+            bake.files.iter().all(|f| !f.path.to_string_lossy().contains(".git/objects")),
             ".git/objects must not be indexed"
         );
         // main.rs must still be found

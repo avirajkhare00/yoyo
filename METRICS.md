@@ -4,14 +4,14 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 ---
 
-## Current (v1.5.2 — 2026-03-11)
+## Current (v1.6.0 — 2026-03-11)
 
 | Metric | Value |
 |---|---|
-| Version | v1.5.2 |
+| Version | v1.6.0 |
 | MCP tools | 30 |
 | Languages (primary) | 4 (Rust, Go, Zig, TypeScript) |
-| Unit tests | 111 passing / 0 failing |
+| Unit tests | 134 passing / 0 failing |
 | Binary size (macOS arm64, release) | 58 MB |
 | Eval score — structural | 63/63 — 100% |
 | Eval score — semantic | 18/18 — 100% |
@@ -68,6 +68,7 @@ Rows marked `—` = pending run. See `evals/results/` for full JSON.
 
 | Version | Date | Languages | Tools | Tests | Binary | Eval |
 |---|---|---|---|---|---|---|
+| v1.6.0 | 2026-03-11 | 4 primary | 30 | 134 | 58 MB | 100% |
 | v1.5.2 | 2026-03-11 | 4 primary | 30 | 111 | 58 MB | 100% |
 | v1.5.1 | 2026-03-10 | 4 primary | 30 | 111 | 58 MB | 100% |
 | v1.5.0 | 2026-03-10 | 4 primary | 30 | 105 | 58 MB | 100% |

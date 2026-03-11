@@ -753,7 +753,7 @@ pub fn shake(path: Option<String>) -> Result<String> {
             project_root: root,
             languages: bake.languages.into_iter().collect(),
             files_indexed: bake.files.len(),
-            notes: "Shake is using the bake index: languages, files, top complex functions, and Express endpoints are derived from bakes/latest/bake.json.".to_string(),
+            notes: "Shake is using the bake index: languages, files, top complex functions, and Express endpoints are derived from bakes/latest/bake.db.".to_string(),
             top_functions: Some(top_functions),
             express_endpoints: Some(express_endpoints),
         };
@@ -783,7 +783,7 @@ pub fn shake(path: Option<String>) -> Result<String> {
 /// Public entrypoint for the `bake` tool: build and persist a basic project index.
 ///
 /// This first version records files, languages, and sizes, and writes
-/// `bakes/latest/bake.json` under the project root.
+/// `bakes/latest/bake.db` under the project root.
 pub fn bake(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = build_bake_index(&root)?;
@@ -791,10 +791,9 @@ pub fn bake(path: Option<String>) -> Result<String> {
     let bakes_dir = root.join("bakes").join("latest");
     fs::create_dir_all(&bakes_dir)
         .map_err(|e| anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e))?;
-    let bake_path = bakes_dir.join("bake.json");
+    let bake_path = bakes_dir.join("bake.db");
 
-    let json = serde_json::to_string_pretty(&bake)?;
-    fs::write(&bake_path, &json)
+    crate::engine::db::write_bake_to_db(&bake, &bake_path)
         .map_err(|e| anyhow::anyhow!("Failed to write bake index to {}: {}", bake_path.display(), e))?;
 
     // Build embeddings DB for semantic_search (best-effort — never fails the bake)

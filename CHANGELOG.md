@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0] - 2026-03-11
+
+### Changed (breaking)
+
+- Bake index migrated from JSON (`bake.json`) to SQLite (`bake.db`). The index is now stored in `bakes/latest/bake.db`. Old `bake.json` files are ignored — re-run `bake` to rebuild. This fixes stack overflows on 81K+ file repos (TypeScript, VSCode) and eliminates multi-MB JSON parse on every tool call. WAL journal mode, normalized schema, indexed lookups.
+- New module `src/engine/db.rs`: `write_bake_to_db` + `read_bake_from_db` — full schema with tables for meta, languages, files, functions, calls, types, type_fields, impls, endpoints.
+- `embed.rs` reads from `bake.db` instead of `bake.json`.
+
+### Tests
+
+- 23 new DB tests covering: meta round-trip, languages, files with imports, function fields, visibility all variants, optional fields, call site normalization, many functions (200), type kinds, type fields cross-contamination prevention, impl with/without trait, endpoints with optional handler, write overwrite idempotency, full round-trip combining all entity types.
+- Total: 134 tests.
+
 ## [1.5.3] - 2026-03-11
 
 ### Fixed

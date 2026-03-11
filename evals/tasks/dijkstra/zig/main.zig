@@ -14,11 +14,28 @@ const Item = struct {
 // dijkstra returns shortest distances from start; std.math.maxInt(u64) for unreachable.
 // Caller owns returned slice.
 fn dijkstra(alloc: std.mem.Allocator, graph: []const []const Edge, start: usize) ![]u64 {
-    // TODO: fill in
-    _ = alloc;
-    _ = graph;
-    _ = start;
-    return error.NotImplemented;
+    const n = graph.len;
+    const dist = try alloc.alloc(u64, n);
+    @memset(dist, std.math.maxInt(u64));
+    dist[start] = 0;
+
+    var pq = std.PriorityQueue(Item, void, Item.lessThan).init(alloc, {});
+    defer pq.deinit();
+    try pq.add(.{ .node = start, .dist = 0 });
+
+    while (pq.count() > 0) {
+        const cur = pq.remove();
+        if (cur.dist > dist[cur.node]) continue;
+        for (graph[cur.node]) |e| {
+            const nd = cur.dist + e.weight;
+            if (nd < dist[e.to]) {
+                dist[e.to] = nd;
+                try pq.add(.{ .node = e.to, .dist = nd });
+            }
+        }
+    }
+
+    return dist;
 }
 
 pub fn main() !void {

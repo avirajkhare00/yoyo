@@ -1,5 +1,6 @@
 mod analysis;
 mod api;
+pub(crate) mod db;
 mod edit;
 pub(crate) mod embed;
 mod graph;

@@ -11,11 +11,8 @@ const MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2;
 /// Build or refresh the embeddings database at `db_path`.
 /// Called at the end of `bake()`. Idempotent — uses INSERT OR REPLACE.
 pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
-    let bake_path = bake_dir.join("bake.json");
     let db_path = bake_dir.join("embeddings.db");
-
-    let bake_str = std::fs::read_to_string(&bake_path)?;
-    let bake: super::types::BakeIndex = serde_json::from_str(&bake_str)?;
+    let bake = super::db::read_bake_from_db(&bake_dir.join("bake.db"))?;
 
     // Always rebuild from scratch — remove stale entries from previous bakes.
     if db_path.exists() {
