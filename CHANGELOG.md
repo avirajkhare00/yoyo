@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.7.1] - 2026-03-11
+
+### Fixed
+
+- Embeddings build now runs in a detached background thread. `bake` returns its JSON immediately after writing `bake.db`; the `embeddings.db` is built in parallel. Eliminates the multi-minute freeze on large repos (VSCode: 68K functions). `semantic_search` may briefly see a stale index while the thread runs — all other tools are unaffected.
+
 ## [1.7.0] - 2026-03-11
 
 ### Added

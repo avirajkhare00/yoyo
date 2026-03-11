@@ -812,10 +812,15 @@ pub fn bake(path: Option<String>) -> Result<String> {
         (bake.files.len(), bake.languages.iter().cloned().collect())
     };
 
-    // Build embeddings DB for semantic_search (best-effort — never fails the bake)
-    if let Err(e) = crate::engine::embed::build_embeddings(&bakes_dir) {
-        eprintln!("[yoyo] Embeddings skipped: {e}");
-    }
+    // Build embeddings DB for semantic_search in a detached thread — best-effort,
+    // never blocks the bake response. semantic_search reads from a separate file
+    // so there is no read/write race with the bake.db we just wrote.
+    let bakes_dir_for_embed = bakes_dir.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = crate::engine::embed::build_embeddings(&bakes_dir_for_embed) {
+            eprintln!("[yoyo] Embeddings skipped: {e}");
+        }
+    });
 
     let summary = BakeSummary {
         tool: "bake",
