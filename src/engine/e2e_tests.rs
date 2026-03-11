@@ -1520,10 +1520,13 @@ fn get_registry() -> &'static Vec<ToolEntry> {
 
     #[test]
     fn e2e_semantic_search_note_absent_when_embeddings_ready() {
+        // Disable background embed so it can't race with our manually-seeded embeddings.db.
+        std::env::set_var("YOYO_SKIP_EMBED", "1");
         let dir = setup();
+        std::env::remove_var("YOYO_SKIP_EMBED");
         // Write a fake embeddings.db so vector_search path is attempted.
-        // It will fail (wrong schema) and fall through, but what matters is
-        // the note is NOT set when the file exists.
+        // It will return empty results (no rows), fall through to TF-IDF,
+        // but what matters is the note is NOT set when the file exists.
         let embed_path = dir.path().join("bakes/latest/embeddings.db");
         // Create an empty-but-valid SQLite DB with the embeddings table.
         {

@@ -70,9 +70,10 @@ pub fn package_summary(path: Option<String>, package: Option<String>) -> Result<
 }
 
 /// Public entrypoint for the `architecture_map` tool: project structure and placement hints.
-pub fn architecture_map(path: Option<String>, intent: Option<String>) -> Result<String> {
+pub fn architecture_map(path: Option<String>, intent: Option<String>, limit: Option<usize>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
+    let cap = limit.unwrap_or(100);
 
     let mut directories: BTreeMap<String, ArchitectureDir> = BTreeMap::new();
 
@@ -116,7 +117,11 @@ pub fn architecture_map(path: Option<String>, intent: Option<String>) -> Result<
     }
 
     let mut dirs: Vec<ArchitectureDir> = directories.into_values().collect();
-    dirs.sort_by(|a, b| a.path.cmp(&b.path));
+    // Sort by file_count descending so the most active directories appear first,
+    // then truncate to cap to keep output bounded.
+    dirs.sort_by(|a, b| b.file_count.cmp(&a.file_count).then(a.path.cmp(&b.path)));
+    let total_dirs = dirs.len();
+    dirs.truncate(cap);
 
     let intent_str = intent.clone().unwrap_or_default();
     let intent_lc = intent_str.to_lowercase();
@@ -164,6 +169,7 @@ pub fn architecture_map(path: Option<String>, intent: Option<String>) -> Result<
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         intent,
+        total_dirs,
         directories: dirs,
         suggestions,
     };

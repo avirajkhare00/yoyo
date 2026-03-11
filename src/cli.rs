@@ -262,6 +262,10 @@ pub struct ArchitectureMapArgs {
     /// Intent description, e.g. "user handler" or "auth service".
     #[arg(long)]
     pub intent: Option<String>,
+
+    /// Max directories to return (default 100).
+    #[arg(long)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -601,7 +605,7 @@ async fn run_package_summary(args: PackageSummaryArgs) -> anyhow::Result<()> {
 }
 
 async fn run_architecture_map(args: ArchitectureMapArgs) -> anyhow::Result<()> {
-    let json = crate::engine::architecture_map(args.path, args.intent)?;
+    let json = crate::engine::architecture_map(args.path, args.intent, args.limit)?;
     println!("{json}");
     Ok(())
 }

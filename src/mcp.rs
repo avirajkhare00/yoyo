@@ -373,9 +373,10 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema("architecture_map", d("architecture_map"), json!({
                 "path": p(),
-                "intent": s("Intent description, e.g. \"user handler\" or \"auth service\"")
+                "intent": s("Intent description, e.g. \"user handler\" or \"auth service\""),
+                "limit": {"type": "integer", "description": "Max directories to return (default 100). Increase for very large repos."}
             })),
-            handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"))),
+            handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"), a.uint_opt("limit"))),
         },
         ToolEntry {
             schema: schema("suggest_placement", d("suggest_placement"), json!({

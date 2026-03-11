@@ -389,6 +389,7 @@ pub(crate) struct ArchitectureMapPayload {
     pub(crate) version: &'static str,
     pub(crate) project_root: PathBuf,
     pub(crate) intent: Option<String>,
+    pub(crate) total_dirs: usize,
     pub(crate) directories: Vec<ArchitectureDir>,
     pub(crate) suggestions: Vec<ArchitectureSuggestion>,
 }

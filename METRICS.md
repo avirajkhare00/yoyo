@@ -4,19 +4,20 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 ---
 
-## Current (v1.6.0 — 2026-03-11)
+## Current (v1.7.2 — 2026-03-11)
 
 | Metric | Value |
 |---|---|
-| Version | v1.6.0 |
+| Version | v1.7.2 |
 | MCP tools | 30 |
 | Languages (primary) | 4 (Rust, Go, Zig, TypeScript) |
-| Unit tests | 134 passing / 0 failing |
+| Unit tests | 146 passing / 0 failing |
 | Binary size (macOS arm64, release) | 58 MB |
 | Eval score — structural | 63/63 — 100% |
 | Eval score — semantic | 18/18 — 100% |
-| Token benchmark — yoyo+linux accuracy | 4–9/10 across 8 repos (avg 7/10) |
-| Token benchmark — linux-only accuracy | 1–7/10 across 8 repos (avg 3/10) |
+| Token benchmark — yoyo accuracy (ripgrep) | 7/10 avg, 41% fewer tokens than linux |
+| Token benchmark — yoyo accuracy (tokio) | 7/10 avg vs linux 6/10 |
+| Token benchmark — linux-only accuracy | 6/10 avg (ripgrep + tokio) |
 | Baseline (Claude Code, no index) | 20/81 — 25% |
 | Delta vs baseline | +75pp |
 
@@ -47,20 +48,25 @@ JavaScript, Python, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash — `bake` 
 
 Eval harness at `evals/token_benchmark/` — 18 tasks (6 structural, 6 semantic, 6 mutation), 5 dimensions, repo-agnostic (dynamic task generation).
 
-| Repo | Language | Lines | Linux acc | yoyo+linux acc | Notes |
-|---|---|---|---|---|---|
-| tokio | Rust | 102K | 3/10 | 9/10 | |
-| ripgrep | Rust | 52K | 5/10 | 8/10 | |
-| gin | Go | 24K | 6/10 | 9/10 | |
-| httprouter | Go | 3K | 7/10 | 7/10 | small repo |
-| tigerbeetle | Zig | 149K | 3/10 | 7/10 | 2 tasks hit 128K limit (#149) |
-| zig-lang | Zig | 688K | 1/10 | 5/10 | massive overflow both sides |
-| typescript | TypeScript | 453K | — | — | silent fail — rerun needed |
-| vscode | TypeScript | 1.7M | 3/10 | 4/10 | heavy overflow, 1.7M lines |
+| Repo | Language | Lines | Linux tok (avg) | yoyo tok (avg) | Linux acc | yoyo acc | Notes |
+|---|---|---|---|---|---|---|---|
+| ripgrep | Rust | 52K | 5,527 | 3,249 (-41%) | 6/10 | **7/10** | |
+| tokio | Rust | 102K | 5,025 | 6,932 (+38%) | 6/10 | **7/10** | blast_radius inflates token count on high-caller fns |
+| gin | Go | 24K | — | — | 6/10 | 9/10 | older run, pre-harness |
+| httprouter | Go | 3K | — | — | 7/10 | 7/10 | small repo |
+| tigerbeetle | Zig | 149K | — | — | 3/10 | 7/10 | 2 tasks hit 128K limit (#149) |
+| zig-lang | Zig | 688K | — | — | 1/10 | 5/10 | massive overflow both sides |
+| typescript | TypeScript | 453K | — | — | — | — | pending rerun |
+| vscode | TypeScript | 1.7M | — | — | 3/10 | 4/10 | heavy overflow, 1.7M lines |
 
 Rows marked `—` = pending run. See `evals/results/` for full JSON.
 
-**Key finding:** on repos >100K lines, linux tools return empty or overflowing context — accuracy collapses to 1–3/10. yoyo structured output stays relevant at 7–9/10. The gap widens with repo size.
+**Key finding (2026-03-11):** yoyo is +1 accuracy point on every tested repo. Token cost is mixed — yoyo wins big on structural tasks (complexity, call chains, function bodies: 43–95% fewer tokens) but `blast_radius` and `health` are verbose for simple queries and inflate yoyo's average on repos with highly-connected functions. Root cause: these tools return full transitive closure by design — correct for safety, expensive for simple lookups. A `--limit` / concise mode is the next fix.
+
+**Inflation commands identified:**
+- `blast_radius` on high-caller symbols → 20–34K tokens vs grep's 150–700
+- `health` → 8K tokens (all categories); dead-code-only mode needed
+- `architecture_map` → 4K tokens even at 100-dir cap
 
 ---
 
@@ -68,6 +74,7 @@ Rows marked `—` = pending run. See `evals/results/` for full JSON.
 
 | Version | Date | Languages | Tools | Tests | Binary | Eval |
 |---|---|---|---|---|---|---|
+| v1.7.2 | 2026-03-11 | 4 primary | 30 | 146 | 58 MB | 100% |
 | v1.6.0 | 2026-03-11 | 4 primary | 30 | 134 | 58 MB | 100% |
 | v1.5.2 | 2026-03-11 | 4 primary | 30 | 111 | 58 MB | 100% |
 | v1.5.1 | 2026-03-10 | 4 primary | 30 | 111 | 58 MB | 100% |
