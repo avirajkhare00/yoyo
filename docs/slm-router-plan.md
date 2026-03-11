@@ -34,6 +34,22 @@ Target: **80% of requests handled by SLM without escalation.**
 
 Reference: [hollance/neural-engine](https://github.com/hollance/neural-engine) — ground truth on what the ANE can and cannot do.
 
+### Alternative inference path — llama.cpp
+
+[RunanywhereAI/runanywhere-sdks](https://github.com/RunanywhereAI/runanywhere-sdks) ships a production C++ core wrapping llama.cpp (GGUF format) across iOS, Android, Web (WASM), React Native, and Flutter. Their `android-use-agent` playground runs Qwen3-4B fully on-device with tool calling and Accessibility API as the action layer — same model family, agentic loop, no cloud.
+
+**MLX vs llama.cpp tradeoff:**
+
+| | MLX (current plan) | llama.cpp |
+|---|---|---|
+| Platform | Apple Silicon only | Linux, Windows, macOS, Android, iOS, Web/WASM |
+| Training | `mlx_lm.lora` — native | external (unsloth, axolotl) |
+| Inference | Metal GPU, fastest on M-series | CPU + GPU, cross-platform |
+| LoRA adapter | supported | supported (GGUF format) |
+| Deployment | Python subprocess | C++ binary or embedded |
+
+**Decision: keep MLX for now.** yoyo's primary users are on Apple Silicon. MLX is faster and simpler for the training loop. If Linux support becomes a priority, the llama.cpp path is production-validated by RunanywhereAI — migrate `mlx_lm.server` to a llama.cpp server subprocess with no changes to Phase 3 (Router) or Phase 4 (Compiler Loop).
+
 ---
 
 ## Phase 1.5 — Weights deployment
@@ -60,6 +76,8 @@ adapter     (zig-slm fine-tune)  ~20-50MB  versioned → Hugging Face Hub
 - Retrain = push a new adapter, users pull small delta
 - Rollback = pull a previous adapter tag
 - Base model is shared HF cache — not yoyo's problem to manage
+
+**Validated by RunanywhereAI:** they ship GGUF LoRA adapters separately from base models, support hot-swap at runtime without reloading the base model, multiple adapters simultaneously with per-adapter scaling factors, and per-version adapter tags. Identical pattern to what Phase 1.5 describes — confirms this is production-grade, not speculative.
 
 ---
 

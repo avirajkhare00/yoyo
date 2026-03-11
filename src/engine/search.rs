@@ -8,6 +8,29 @@ use super::types::{
 };
 use super::util::{require_bake_index, resolve_project_root};
 
+/// Cap on lines returned by include_source. Prevents context overflow on monster functions.
+/// Functions exceeding this get the first N lines + a slice hint pointing at the rest.
+const SOURCE_LINE_CAP: usize = 500;
+
+/// Extract source for a function body, capping at SOURCE_LINE_CAP lines.
+/// Returns the first SOURCE_LINE_CAP lines + a truncation hint when the body is larger.
+fn cap_source(lines: &[&str], s: usize, e: usize, file: &str, start_line: u32, end_line: u32) -> Option<String> {
+    if s >= lines.len() || s > e {
+        return None;
+    }
+    let e = e.min(lines.len().saturating_sub(1));
+    let total = e - s + 1;
+    if total > SOURCE_LINE_CAP {
+        let truncated = lines[s..s + SOURCE_LINE_CAP].join("\n");
+        Some(format!(
+            "{}\n... [truncated: {} lines total, showing first {}. Use slice(\"{}\", {}, {}) for the full body]",
+            truncated, total, SOURCE_LINE_CAP, file, start_line, end_line,
+        ))
+    } else {
+        Some(lines[s..=e].join("\n"))
+    }
+}
+
 /// Public entrypoint for the `symbol` tool: detailed lookup by function name.
 /// When `include_source` is true, each match includes the function body (lines start_line..end_line).
 pub fn symbol(
@@ -184,9 +207,7 @@ pub fn symbol(
                 let total = all_lines.len() as u32;
                 let s = (m.start_line.saturating_sub(1) as usize).min(all_lines.len());
                 let e = (m.end_line.min(total).saturating_sub(1) as usize).min(all_lines.len());
-                if s <= e {
-                    m.source = Some(all_lines[s..=e].join("\n"));
-                }
+                m.source = cap_source(&all_lines, s, e, &m.file, m.start_line, m.end_line);
             }
         }
     }
@@ -255,7 +276,7 @@ fn walk_stdlib_dir(
                     let src = if include_source {
                         let s = (f.start_line.saturating_sub(1) as usize).min(lines.len());
                         let e = (f.end_line.saturating_sub(1) as usize).min(lines.len());
-                        if s <= e { Some(lines[s..=e].join("\n")) } else { None }
+                        cap_source(&lines, s, e, &rel, f.start_line, f.end_line)
                     } else { None };
                     matches.push(SymbolMatch {
                         name: f.name.clone(),
@@ -285,7 +306,7 @@ fn walk_stdlib_dir(
                     let src = if include_source {
                         let s = (t.start_line.saturating_sub(1) as usize).min(lines.len());
                         let e = (t.end_line.saturating_sub(1) as usize).min(lines.len());
-                        if s <= e { Some(lines[s..=e].join("\n")) } else { None }
+                        cap_source(&lines, s, e, &rel, t.start_line, t.end_line)
                     } else { None };
                     matches.push(SymbolMatch {
                         name: t.name.clone(),
@@ -576,8 +597,33 @@ fn score_fn<F: Fn(&str) -> f32>(
 #[cfg(test)]
 mod tests {
     use super::{
-        fallback_supersearch_queries, should_prefer_fallback_supersearch_results,
+        cap_source, fallback_supersearch_queries, should_prefer_fallback_supersearch_results,
     };
+
+    #[test]
+    fn cap_source_returns_full_body_under_cap() {
+        let lines: Vec<&str> = (0..100).map(|_| "fn foo() {}").collect();
+        let result = cap_source(&lines, 0, 99, "foo.rs", 1, 100).unwrap();
+        assert!(!result.contains("[truncated"));
+        assert_eq!(result.lines().count(), 100);
+    }
+
+    #[test]
+    fn cap_source_truncates_and_adds_slice_hint_over_cap() {
+        let lines: Vec<&str> = (0..600).map(|_| "fn foo() {}").collect();
+        let result = cap_source(&lines, 0, 599, "src/foo.rs", 1, 600).unwrap();
+        assert!(result.contains("[truncated: 600 lines total, showing first 500"));
+        assert!(result.contains("Use slice(\"src/foo.rs\", 1, 600)"));
+        // Only 500 content lines + 1 truncation line
+        assert_eq!(result.lines().count(), 501);
+    }
+
+    #[test]
+    fn cap_source_returns_none_for_invalid_range() {
+        let lines: Vec<&str> = vec!["fn foo() {}"];
+        assert!(cap_source(&lines, 5, 2, "foo.rs", 5, 2).is_none());
+        assert!(cap_source(&lines, 10, 10, "foo.rs", 10, 10).is_none());
+    }
 
     #[test]
     fn fallback_supersearch_queries_extracts_code_like_identifier() {

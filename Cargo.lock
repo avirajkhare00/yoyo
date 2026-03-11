@@ -3904,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "yoyo"
-version = "1.5.1"
+version = "1.5.3"
 dependencies = [
  "anyhow",
  "ast-grep-core",

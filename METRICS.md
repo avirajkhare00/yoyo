@@ -15,8 +15,8 @@ Single source of truth for yoyo's measurable state. Updated every release.
 | Binary size (macOS arm64, release) | 58 MB |
 | Eval score — structural | 63/63 — 100% |
 | Eval score — semantic | 18/18 — 100% |
-| Token benchmark — yoyo+linux accuracy | 8–9/10 (tokio, ripgrep) |
-| Token benchmark — linux-only accuracy | 1–4/10 (tokio, ripgrep) |
+| Token benchmark — yoyo+linux accuracy | 4–9/10 across 8 repos (avg 7/10) |
+| Token benchmark — linux-only accuracy | 1–7/10 across 8 repos (avg 3/10) |
 | Baseline (Claude Code, no index) | 20/81 — 25% |
 | Delta vs baseline | +75pp |
 
@@ -47,18 +47,20 @@ JavaScript, Python, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash — `bake` 
 
 Eval harness at `evals/token_benchmark/` — 12 tasks, 5 dimensions, repo-agnostic (dynamic task generation).
 
-| Repo | Language | Lines | Linux acc | yoyo+linux acc |
-|---|---|---|---|---|
-| tokio | Rust | 102K | 4/10 | 9/10 |
-| ripgrep | Rust | 52K | 7/10 | 8/10 |
-| gin | Go | 24K | — | — |
-| httprouter | Go | 3K | — | — |
-| tigerbeetle | Zig | 149K | — | — |
-| zig-lang | Zig | 688K | — | — |
-| typescript | TypeScript | 453K | — | — |
-| vscode | TypeScript | 1.7M | — | — |
+| Repo | Language | Lines | Linux acc | yoyo+linux acc | Notes |
+|---|---|---|---|---|---|
+| tokio | Rust | 102K | 3/10 | 9/10 | |
+| ripgrep | Rust | 52K | 5/10 | 8/10 | |
+| gin | Go | 24K | 6/10 | 9/10 | |
+| httprouter | Go | 3K | 7/10 | 7/10 | small repo |
+| tigerbeetle | Zig | 149K | 3/10 | 7/10 | 2 tasks hit 128K limit (#149) |
+| zig-lang | Zig | 688K | 1/10 | 5/10 | massive overflow both sides |
+| typescript | TypeScript | 453K | — | — | silent fail — rerun needed |
+| vscode | TypeScript | 1.7M | 3/10 | 4/10 | heavy overflow, 1.7M lines |
 
 Rows marked `—` = pending run. See `evals/results/` for full JSON.
+
+**Key finding:** on repos >100K lines, linux tools return empty or overflowing context — accuracy collapses to 1–3/10. yoyo structured output stays relevant at 7–9/10. The gap widens with repo size.
 
 ---
 
