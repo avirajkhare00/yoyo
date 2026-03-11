@@ -128,7 +128,7 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
     });
 
     if version_stale || content_stale {
-        let fresh = build_bake_index(root)?;
+        let (fresh, _, _) = build_bake_index(root, &std::collections::HashMap::new())?;
         let bakes_dir = root.join("bakes").join("latest");
         fs::create_dir_all(&bakes_dir)?;
         super::db::write_bake_to_db(&fresh, &bake_path)
@@ -211,13 +211,28 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
     paths
 }
 
-pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
+/// Build or incrementally update the bake index.
+///
+/// `fingerprints` maps relative file path → (mtime_ns, bytes) from the existing DB.
+/// Pass an empty map for a fresh full build.
+///
+/// Returns `(index, removed_paths, skipped_count)`:
+/// - `index` contains only changed/new files and their parsed data
+/// - `removed_paths` are files present in `fingerprints` but no longer on disk
+/// - `skipped_count` is the number of files skipped due to matching fingerprint
+pub(crate) fn build_bake_index(
+    root: &PathBuf,
+    fingerprints: &std::collections::HashMap<String, (i64, i64)>,
+) -> Result<(BakeIndex, Vec<String>, usize)> {
     use ignore::WalkBuilder;
     use rayon::prelude::*;
+    use std::collections::HashSet;
 
-    // Phase 1: collect file metadata using .gitignore-aware walker.
+    // Phase 1: walk files, stat for mtime+size, skip unchanged ones.
     let mut languages = BTreeSet::new();
     let mut files: Vec<BakeFile> = Vec::new();
+    let mut seen_paths: HashSet<String> = HashSet::with_capacity(fingerprints.len());
+    let mut skipped = 0usize;
 
     for result in WalkBuilder::new(root)
         .hidden(false)       // don't skip hidden files — .gitignore handles exclusions
@@ -234,22 +249,55 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         if !path.is_file() {
             continue;
         }
-        let bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+        let meta = entry.metadata().ok();
+        let bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mtime_ns = meta
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos() as i64)
+            .unwrap_or(0);
+
         let lang = detect_language(&path);
         if lang != "other" {
             languages.insert(lang.to_string());
         }
         let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+        let path_str = rel.to_string_lossy().into_owned();
+
+        // Skip if mtime_ns+bytes match the stored fingerprint (and fingerprint is non-zero).
+        let is_unchanged = fingerprints
+            .get(&path_str)
+            .map(|&(stored_mtime, stored_bytes)| {
+                stored_mtime != 0 && stored_mtime == mtime_ns && stored_bytes == bytes as i64
+            })
+            .unwrap_or(false);
+
+        seen_paths.insert(path_str);
+
+        if is_unchanged {
+            skipped += 1;
+            continue;
+        }
+
         files.push(BakeFile {
             path: rel,
             language: lang.to_string(),
             bytes,
+            mtime_ns,
             imports: vec![],
             origin: "user".to_string(),
         });
     }
 
-    // Phase 2: parse files in parallel (CPU-bound tree-sitter work).
+    // Files in fingerprints that were not seen on disk have been removed.
+    let removed: Vec<String> = fingerprints
+        .keys()
+        .filter(|p| !seen_paths.contains(*p))
+        .cloned()
+        .collect();
+
+    // Phase 2: parse only changed/new files in parallel (CPU-bound tree-sitter work).
     // Stdlib is NOT pre-indexed here — it is too large (Go stdlib = 3000+ files).
     // The router pulls specific stdlib signatures on demand via detect_stdlib_paths() + symbol().
     //
@@ -290,16 +338,20 @@ pub(crate) fn build_bake_index(root: &PathBuf) -> Result<BakeIndex> {
         files[idx].imports = imports;
     }
 
-    Ok(BakeIndex {
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        project_root: root.clone(),
-        languages,
-        files,
-        functions,
-        endpoints,
-        types,
-        impls,
-    })
+    Ok((
+        BakeIndex {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            project_root: root.clone(),
+            languages,
+            files,
+            functions,
+            endpoints,
+            types,
+            impls,
+        },
+        removed,
+        skipped,
+    ))
 }
 
 pub(crate) fn detect_language(path: &Path) -> &'static str {

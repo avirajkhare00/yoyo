@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS files (
     path     TEXT PRIMARY KEY,
     language TEXT NOT NULL,
     bytes    INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL DEFAULT 0,
     origin   TEXT NOT NULL,
     imports  TEXT NOT NULL   -- JSON array
 );
@@ -143,11 +144,12 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     for f in &bake.files {
         let imports = serde_json::to_string(&f.imports).unwrap_or_else(|_| "[]".into());
         tx.execute(
-            "INSERT OR REPLACE INTO files (path, language, bytes, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO files (path, language, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 f.path.to_string_lossy().as_ref(),
                 f.language,
                 f.bytes as i64,
+                f.mtime_ns,
                 f.origin,
                 imports,
             ],
@@ -243,6 +245,185 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── incremental ───────────────────────────────────────────────────────────────
+
+/// Load (path → (mtime_ns, bytes)) for all files in an existing bake.db.
+/// Returns an empty map if the DB doesn't exist or can't be read.
+pub fn load_file_fingerprints(db_path: &Path) -> std::collections::HashMap<String, (i64, i64)> {
+    let Ok(conn) = Connection::open(db_path) else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(mut stmt) = conn.prepare("SELECT path, mtime_ns, bytes FROM files") else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(rows) = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
+    }) else {
+        return std::collections::HashMap::new();
+    };
+    let mut map = std::collections::HashMap::new();
+    for row in rows.flatten() {
+        map.insert(row.0, (row.1, row.2));
+    }
+    map
+}
+
+/// Incrementally update an existing bake.db:
+/// - Removes rows for `removed` paths and all changed files in `bake.files`
+/// - Inserts fresh rows for all changed/new files
+/// - Leaves unchanged files untouched
+/// Returns (total_file_count, all_languages) queried from the DB after the write.
+pub fn write_bake_incremental(
+    bake: &BakeIndex,
+    removed: &[String],
+    db_path: &Path,
+) -> Result<(usize, Vec<String>)> {
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open bake.db at {}", db_path.display()))?;
+
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+    // Migrate older DBs that predate the mtime_ns column (error is ignored when column exists).
+    let _ = conn.execute_batch(
+        "ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
+    );
+    // Ensure all tables and indexes exist (no-op when schema is current).
+    conn.execute_batch(SCHEMA)?;
+
+    {
+        let tx = conn.unchecked_transaction()?;
+
+        // Upsert meta.
+        tx.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?1), ('project_root', ?2)",
+            params![bake.version, bake.project_root.to_string_lossy().as_ref()],
+        )?;
+
+        // Upsert languages (adds new ones, leaves existing untouched).
+        for lang in &bake.languages {
+            tx.execute("INSERT OR IGNORE INTO languages (name) VALUES (?1)", params![lang])?;
+        }
+
+        // Collect all paths that need to be deleted: removed files + every changed/new file.
+        let paths_to_delete: Vec<String> = removed
+            .iter()
+            .cloned()
+            .chain(bake.files.iter().map(|f| f.path.to_string_lossy().into_owned()))
+            .collect();
+
+        for path in &paths_to_delete {
+            tx.execute(
+                "DELETE FROM calls WHERE function_id IN (SELECT id FROM functions WHERE file = ?1)",
+                params![path],
+            )?;
+            tx.execute(
+                "DELETE FROM type_fields WHERE type_id IN (SELECT id FROM types WHERE file = ?1)",
+                params![path],
+            )?;
+            tx.execute("DELETE FROM functions WHERE file = ?1", params![path])?;
+            tx.execute("DELETE FROM types WHERE file = ?1", params![path])?;
+            tx.execute("DELETE FROM impls WHERE file = ?1", params![path])?;
+            tx.execute("DELETE FROM endpoints WHERE file = ?1", params![path])?;
+            tx.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+        }
+
+        // Insert new rows for changed/new files.
+        for f in &bake.files {
+            let imports = serde_json::to_string(&f.imports).unwrap_or_else(|_| "[]".into());
+            tx.execute(
+                "INSERT OR REPLACE INTO files (path, language, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    f.path.to_string_lossy().as_ref(),
+                    f.language,
+                    f.bytes as i64,
+                    f.mtime_ns,
+                    f.origin,
+                    imports,
+                ],
+            )?;
+        }
+
+        {
+            let mut fn_stmt = tx.prepare(
+                "INSERT INTO functions (name, file, language, start_line, end_line, complexity, \
+                 byte_start, byte_end, module_path, qualified_name, visibility, parent_type, \
+                 implemented_trait, is_stdlib, sig_hash) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+            )?;
+            let mut call_stmt = tx.prepare(
+                "INSERT INTO calls (function_id, callee, qualifier, line) VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for f in &bake.functions {
+                fn_stmt.execute(params![
+                    f.name, f.file, f.language, f.start_line, f.end_line, f.complexity,
+                    f.byte_start as i64, f.byte_end as i64, f.module_path, f.qualified_name,
+                    vis_str(&f.visibility), f.parent_type, f.implemented_trait,
+                    f.is_stdlib as i32, f.sig_hash,
+                ])?;
+                let fn_id = tx.last_insert_rowid();
+                for c in &f.calls {
+                    call_stmt.execute(params![fn_id, c.callee, c.qualifier, c.line])?;
+                }
+            }
+        }
+
+        {
+            let mut ty_stmt = tx.prepare(
+                "INSERT INTO types (name, file, language, start_line, end_line, kind, module_path, \
+                 visibility, is_stdlib) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            )?;
+            let mut field_stmt = tx.prepare(
+                "INSERT INTO type_fields (type_id, name, type_str, visibility) VALUES (?1,?2,?3,?4)",
+            )?;
+            for t in &bake.types {
+                ty_stmt.execute(params![
+                    t.name, t.file, t.language, t.start_line, t.end_line, t.kind,
+                    t.module_path, vis_str(&t.visibility), t.is_stdlib as i32,
+                ])?;
+                let ty_id = tx.last_insert_rowid();
+                for field in &t.fields {
+                    field_stmt.execute(params![
+                        ty_id, field.name, field.type_str, vis_str(&field.visibility),
+                    ])?;
+                }
+            }
+        }
+
+        {
+            let mut impl_stmt = tx.prepare(
+                "INSERT INTO impls (type_name, trait_name, file, start_line) VALUES (?1,?2,?3,?4)",
+            )?;
+            for i in &bake.impls {
+                impl_stmt.execute(params![i.type_name, i.trait_name, i.file, i.start_line])?;
+            }
+        }
+
+        {
+            let mut ep_stmt = tx.prepare(
+                "INSERT INTO endpoints (method, path, file, handler_name, language, framework) VALUES (?1,?2,?3,?4,?5,?6)",
+            )?;
+            for e in &bake.endpoints {
+                ep_stmt.execute(params![
+                    e.method, e.path, e.file, e.handler_name, e.language, e.framework,
+                ])?;
+            }
+        }
+
+        tx.commit()?;
+    }
+
+    // Query totals from the now-updated DB.
+    let total_files = conn
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0))
+        .unwrap_or(0) as usize;
+    let mut lang_stmt = conn.prepare("SELECT name FROM languages")?;
+    let languages: Vec<String> = lang_stmt
+        .query_map([], |r| r.get(0))?
+        .flatten()
+        .collect();
+
+    Ok((total_files, languages))
+}
+
 // ── read ──────────────────────────────────────────────────────────────────────
 
 pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
@@ -271,23 +452,25 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
     // files
     let mut files: Vec<BakeFile> = Vec::new();
     {
-        let mut stmt = conn.prepare("SELECT path, language, bytes, origin, imports FROM files")?;
+        let mut stmt = conn.prepare("SELECT path, language, bytes, mtime_ns, origin, imports FROM files")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, i64>(2)?,
-                r.get::<_, String>(3)?,
+                r.get::<_, i64>(3)?,
                 r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
             ))
         })?;
         for row in rows {
-            let (path, language, bytes, origin, imports_json) = row?;
+            let (path, language, bytes, mtime_ns, origin, imports_json) = row?;
             let imports: Vec<String> = serde_json::from_str(&imports_json).unwrap_or_default();
             files.push(BakeFile {
                 path: PathBuf::from(path),
                 language,
                 bytes: bytes as u64,
+                mtime_ns,
                 origin,
                 imports,
             });
@@ -541,6 +724,7 @@ mod tests {
             path: PathBuf::from("src/main.rs"),
             language: "rust".to_string(),
             bytes: 1024,
+            mtime_ns: 0,
             origin: "local".to_string(),
             imports: vec!["std::fs".to_string(), "anyhow".to_string()],
         });
@@ -548,6 +732,7 @@ mod tests {
             path: PathBuf::from("src/lib.rs"),
             language: "rust".to_string(),
             bytes: 512,
+            mtime_ns: 0,
             origin: "local".to_string(),
             imports: vec![],
         });
@@ -570,6 +755,7 @@ mod tests {
             path: PathBuf::from("pkg/foo.go"),
             language: "go".to_string(),
             bytes: 100,
+            mtime_ns: 0,
             origin: "local".to_string(),
             imports: vec![
                 "github.com/gin-gonic/gin".to_string(),
@@ -907,6 +1093,7 @@ mod tests {
             path: PathBuf::from("src/main.rs"),
             language: "rust".to_string(),
             bytes: 2048,
+            mtime_ns: 0,
             origin: "local".to_string(),
             imports: vec!["anyhow".to_string()],
         });
@@ -958,5 +1145,189 @@ mod tests {
         // rusqlite creates an empty db on open, but reading meta will use defaults
         // or succeed with empty tables — either is acceptable. Just ensure no panic.
         let _ = result;
+    }
+
+    // ── mtime_ns round-trip ───────────────────────────────────────────────────
+
+    #[test]
+    fn roundtrip_file_mtime_ns() {
+        let dir = TempDir::new().unwrap();
+        let mut bake = empty_bake(dir.path());
+        bake.files.push(BakeFile {
+            path: PathBuf::from("src/main.rs"),
+            language: "rust".to_string(),
+            bytes: 512,
+            mtime_ns: 1_700_000_000_000_000_000,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        let out = roundtrip(bake);
+        assert_eq!(out.files[0].mtime_ns, 1_700_000_000_000_000_000);
+    }
+
+    // ── load_file_fingerprints ────────────────────────────────────────────────
+
+    #[test]
+    fn load_fingerprints_empty_when_no_db() {
+        let dir = TempDir::new().unwrap();
+        let fp = load_file_fingerprints(&dir.path().join("missing.db"));
+        assert!(fp.is_empty());
+    }
+
+    #[test]
+    fn load_fingerprints_returns_mtime_and_bytes() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("bake.db");
+        let mut bake = empty_bake(dir.path());
+        bake.files.push(BakeFile {
+            path: PathBuf::from("src/lib.rs"),
+            language: "rust".to_string(),
+            bytes: 1024,
+            mtime_ns: 999_999_999,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        bake.files.push(BakeFile {
+            path: PathBuf::from("pkg/foo.go"),
+            language: "go".to_string(),
+            bytes: 2048,
+            mtime_ns: 123_456_789,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        write_bake_to_db(&bake, &db).unwrap();
+
+        let fp = load_file_fingerprints(&db);
+        assert_eq!(fp.len(), 2);
+        assert_eq!(fp["src/lib.rs"], (999_999_999, 1024));
+        assert_eq!(fp["pkg/foo.go"], (123_456_789, 2048));
+    }
+
+    // ── write_bake_incremental ────────────────────────────────────────────────
+
+    fn make_bake_with_file(root: &std::path::Path, rel_path: &str, mtime_ns: i64, bytes: u64) -> BakeIndex {
+        let mut bake = empty_bake(root);
+        bake.files.push(BakeFile {
+            path: PathBuf::from(rel_path),
+            language: "rust".to_string(),
+            bytes,
+            mtime_ns,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        bake.languages.insert("rust".to_string());
+        bake
+    }
+
+    #[test]
+    fn incremental_adds_new_file() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("bake.db");
+
+        // Initial full bake with one file.
+        let bake1 = make_bake_with_file(dir.path(), "src/a.rs", 100, 512);
+        write_bake_to_db(&bake1, &db).unwrap();
+
+        // Incremental: add a second file, keep first unchanged.
+        let bake2 = make_bake_with_file(dir.path(), "src/b.rs", 200, 1024);
+        let (total, _langs) = write_bake_incremental(&bake2, &[], &db).unwrap();
+
+        assert_eq!(total, 2);
+        let out = read_bake_from_db(&db).unwrap();
+        assert_eq!(out.files.len(), 2);
+        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/a.rs")));
+        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/b.rs")));
+    }
+
+    #[test]
+    fn incremental_removes_deleted_file() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("bake.db");
+
+        let mut bake1 = empty_bake(dir.path());
+        for name in &["src/a.rs", "src/b.rs", "src/c.rs"] {
+            bake1.files.push(BakeFile {
+                path: PathBuf::from(name),
+                language: "rust".to_string(),
+                bytes: 100,
+                mtime_ns: 500,
+                origin: "user".to_string(),
+                imports: vec![],
+            });
+        }
+        write_bake_to_db(&bake1, &db).unwrap();
+
+        // Remove src/b.rs.
+        let empty_changed = empty_bake(dir.path());
+        let (total, _) = write_bake_incremental(
+            &empty_changed,
+            &["src/b.rs".to_string()],
+            &db,
+        ).unwrap();
+
+        assert_eq!(total, 2);
+        let out = read_bake_from_db(&db).unwrap();
+        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/a.rs")));
+        assert!(!out.files.iter().any(|f| f.path == PathBuf::from("src/b.rs")));
+        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/c.rs")));
+    }
+
+    #[test]
+    fn incremental_updates_changed_file() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("bake.db");
+
+        let bake1 = make_bake_with_file(dir.path(), "src/main.rs", 100, 512);
+        write_bake_to_db(&bake1, &db).unwrap();
+
+        // Same path, different mtime and bytes — simulates a file edit.
+        let bake2 = make_bake_with_file(dir.path(), "src/main.rs", 999, 1024);
+        let (total, _) = write_bake_incremental(&bake2, &[], &db).unwrap();
+
+        assert_eq!(total, 1);
+        let out = read_bake_from_db(&db).unwrap();
+        assert_eq!(out.files.len(), 1);
+        assert_eq!(out.files[0].mtime_ns, 999);
+        assert_eq!(out.files[0].bytes, 1024);
+    }
+
+    #[test]
+    fn incremental_functions_scoped_to_changed_file() {
+        let dir = TempDir::new().unwrap();
+        let db = dir.path().join("bake.db");
+
+        // Initial bake with a function in src/a.rs.
+        let mut bake1 = empty_bake(dir.path());
+        bake1.files.push(BakeFile {
+            path: PathBuf::from("src/a.rs"),
+            language: "rust".to_string(),
+            bytes: 100,
+            mtime_ns: 1,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        let mut f = make_fn("old_fn");
+        f.file = "src/a.rs".to_string();
+        bake1.functions.push(f);
+        write_bake_to_db(&bake1, &db).unwrap();
+
+        // Incremental: replace src/a.rs with a new function.
+        let mut bake2 = empty_bake(dir.path());
+        bake2.files.push(BakeFile {
+            path: PathBuf::from("src/a.rs"),
+            language: "rust".to_string(),
+            bytes: 200,
+            mtime_ns: 2,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+        let mut f2 = make_fn("new_fn");
+        f2.file = "src/a.rs".to_string();
+        bake2.functions.push(f2);
+        write_bake_incremental(&bake2, &[], &db).unwrap();
+
+        let out = read_bake_from_db(&db).unwrap();
+        assert_eq!(out.functions.len(), 1);
+        assert_eq!(out.functions[0].name, "new_fn");
     }
 }

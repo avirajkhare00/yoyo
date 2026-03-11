@@ -786,15 +786,31 @@ pub fn shake(path: Option<String>) -> Result<String> {
 /// `bakes/latest/bake.db` under the project root.
 pub fn bake(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bake = build_bake_index(&root)?;
-
     let bakes_dir = root.join("bakes").join("latest");
-    fs::create_dir_all(&bakes_dir)
-        .map_err(|e| anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e))?;
     let bake_path = bakes_dir.join("bake.db");
 
-    crate::engine::db::write_bake_to_db(&bake, &bake_path)
-        .map_err(|e| anyhow::anyhow!("Failed to write bake index to {}: {}", bake_path.display(), e))?;
+    // Load fingerprints from existing DB for incremental mode.
+    // Empty map → fresh full build.
+    let fingerprints = if bake_path.exists() {
+        crate::engine::db::load_file_fingerprints(&bake_path)
+    } else {
+        std::collections::HashMap::new()
+    };
+    let is_incremental = !fingerprints.is_empty();
+
+    let (bake, removed, skipped) = build_bake_index(&root, &fingerprints)?;
+
+    fs::create_dir_all(&bakes_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e))?;
+
+    let (total_files, all_languages) = if is_incremental {
+        crate::engine::db::write_bake_incremental(&bake, &removed, &bake_path)
+            .map_err(|e| anyhow::anyhow!("Failed to update bake index at {}: {}", bake_path.display(), e))?
+    } else {
+        crate::engine::db::write_bake_to_db(&bake, &bake_path)
+            .map_err(|e| anyhow::anyhow!("Failed to write bake index to {}: {}", bake_path.display(), e))?;
+        (bake.files.len(), bake.languages.iter().cloned().collect())
+    };
 
     // Build embeddings DB for semantic_search (best-effort — never fails the bake)
     if let Err(e) = crate::engine::embed::build_embeddings(&bakes_dir) {
@@ -806,8 +822,9 @@ pub fn bake(path: Option<String>) -> Result<String> {
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         bake_path,
-        files_indexed: bake.files.len(),
-        languages: bake.languages.iter().cloned().collect(),
+        files_indexed: total_files,
+        languages: all_languages,
+        files_skipped: if skipped > 0 { Some(skipped) } else { None },
     };
 
     let out = serde_json::to_string_pretty(&summary)?;

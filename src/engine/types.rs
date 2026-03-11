@@ -30,6 +30,10 @@ pub(crate) struct BakeFile {
     pub(crate) path: PathBuf,
     pub(crate) language: String,
     pub(crate) bytes: u64,
+    /// Modification time in nanoseconds since UNIX epoch. Used for incremental bake.
+    /// Zero means "unknown / not tracked" — file will always be re-parsed.
+    #[serde(default)]
+    pub(crate) mtime_ns: i64,
     #[serde(default)]
     pub(crate) imports: Vec<String>,
     /// "user" for project files, "stdlib" for toolchain stdlib files.
@@ -276,6 +280,10 @@ pub(crate) struct BakeSummary {
     pub(crate) bake_path: PathBuf,
     pub(crate) files_indexed: usize,
     pub(crate) languages: Vec<String>,
+    /// Number of files skipped because mtime+size matched the cached index.
+    /// Omitted when zero (first bake or full rebuild).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) files_skipped: Option<usize>,
 }
 
 #[derive(Serialize)]

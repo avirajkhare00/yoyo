@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0] - 2026-03-11
+
+### Added
+
+- Incremental bake (#154): `bake` now skips files where `mtime_ns + bytes` match the cached index. Sub-second re-bakes on large repos when only a handful of files changed. First bake (or `bake.db` absent) is still a full parse; subsequent bakes skip unchanged files.
+- Streaming incremental write (#155): `write_bake_incremental` updates only changed/new files in the existing DB — no full-index accumulation, no DB recreation. Unchanged file rows are left in place; removed file rows are purged.
+- `BakeFile.mtime_ns`: modification time (nanoseconds since UNIX epoch) stored in `files` table. Zero means "unknown" — file will be re-parsed on next bake.
+- `BakeSummary.files_skipped`: optional field in `bake` output showing how many files were served from cache. Omitted when zero.
+- `load_file_fingerprints(db_path)`: reads `(mtime_ns, bytes)` per file from existing DB for fingerprint comparison.
+- Automatic schema migration: existing `bake.db` files gain the `mtime_ns` column on first incremental bake via `ALTER TABLE`.
+
+### Tests
+
+- 8 new tests: `mtime_ns` round-trip, fingerprint load (empty + populated), incremental add/remove/update, function scope isolation on incremental write.
+- Total: 141 tests.
+
 ## [1.6.0] - 2026-03-11
 
 ### Changed (breaking)
