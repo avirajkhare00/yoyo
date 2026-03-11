@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.2] - 2026-03-11
+
+### Added
+
+- `semantic_search` now surfaces a `note` field when the embeddings index is not yet ready: `"Embeddings index is building in the background — these are TF-IDF results. semantic_search will switch to vector search automatically once ready."` The field is omitted when vector search succeeds normally.
+- Stale-embeddings safety: `build_embeddings` deletes `embeddings.db` before rebuilding, so during any rebuild `vector_search` returns nothing → clean TF-IDF fallback with note. No stale results possible.
+
+### Tests
+
+- 5 new tests: `semantic_search_note_present_when_embeddings_missing`, `semantic_search_returns_results_even_without_embeddings`, `e2e_semantic_search_note_absent_when_embeddings_ready`, `e2e_semantic_search_note_present_when_embeddings_absent`, `e2e_semantic_search_tfidf_returns_ranked_results`.
+- Total: 146 tests.
+
 ## [1.7.1] - 2026-03-11
 
 ### Fixed

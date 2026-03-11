@@ -753,6 +753,10 @@ pub(crate) struct SemanticSearchPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) query: String,
     pub(crate) results: Vec<SemanticMatch>,
+    /// Present when the embeddings index is not yet ready. Results are TF-IDF
+    /// until the background build (started by bake) finishes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) note: Option<&'static str>,
 }
 
 #[derive(Serialize)]

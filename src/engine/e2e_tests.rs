@@ -1515,4 +1515,72 @@ fn get_registry() -> &'static Vec<ToolEntry> {
             serde_json::to_string(calls).unwrap()
         );
     }
+
+    // ── semantic_search ───────────────────────────────────────────────────────
+
+    #[test]
+    fn e2e_semantic_search_note_absent_when_embeddings_ready() {
+        let dir = setup();
+        // Write a fake embeddings.db so vector_search path is attempted.
+        // It will fail (wrong schema) and fall through, but what matters is
+        // the note is NOT set when the file exists.
+        let embed_path = dir.path().join("bakes/latest/embeddings.db");
+        // Create an empty-but-valid SQLite DB with the embeddings table.
+        {
+            let conn = rusqlite::Connection::open(&embed_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS embeddings \
+                 (name TEXT, file TEXT, start_line INTEGER, parent_type TEXT, embedding BLOB);",
+            ).unwrap();
+        }
+        let out = crate::engine::semantic_search(
+            root(&dir),
+            "add numbers".into(),
+            None,
+            None,
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        // note should be absent — embeddings.db exists, no need to warn
+        assert!(v["note"].is_null(), "note should be absent when embeddings.db exists: {:?}", v["note"]);
+    }
+
+    #[test]
+    fn e2e_semantic_search_note_present_when_embeddings_absent() {
+        let dir = setup();
+        // Ensure embeddings.db does not exist (bake spawns rebuild in background, may or may not exist)
+        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+
+        let out = crate::engine::semantic_search(
+            root(&dir),
+            "compute sum".into(),
+            None,
+            None,
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let note = v["note"].as_str().expect("note must be present when embeddings.db is absent");
+        assert!(note.contains("building"), "note should mention building: {note}");
+        assert!(note.contains("TF-IDF"), "note should mention TF-IDF: {note}");
+        // Results should still be returned (TF-IDF fallback works)
+        assert!(v["results"].is_array());
+    }
+
+    #[test]
+    fn e2e_semantic_search_tfidf_returns_ranked_results() {
+        let dir = setup();
+        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+
+        let out = crate::engine::semantic_search(
+            root(&dir),
+            "add".into(),
+            Some(5),
+            None,
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let results = v["results"].as_array().unwrap();
+        // Fixture has an `add` function — it should rank near the top
+        assert!(!results.is_empty(), "TF-IDF should return results for 'add'");
+        assert!(results.len() <= 5, "limit=5 respected");
+        let names: Vec<&str> = results.iter().map(|r| r["name"].as_str().unwrap_or("")).collect();
+        assert!(names.contains(&"add"), "add function should rank in results: {:?}", names);
+    }
 }

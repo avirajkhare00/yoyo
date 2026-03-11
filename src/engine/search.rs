@@ -674,6 +674,77 @@ mod tests {
     }
 }
 
+// ── semantic_search note field tests ─────────────────────────────────────────
+
+#[cfg(test)]
+mod semantic_note_tests {
+    use std::collections::BTreeSet;
+    use tempfile::TempDir;
+
+    use crate::engine::types::BakeIndex;
+    use crate::engine::types::BakeFile;
+
+    fn write_minimal_bake(dir: &TempDir) {
+        let bakes_dir = dir.path().join("bakes/latest");
+        std::fs::create_dir_all(&bakes_dir).unwrap();
+        let bake = BakeIndex {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            project_root: dir.path().to_path_buf(),
+            languages: BTreeSet::new(),
+            files: vec![BakeFile {
+                path: std::path::PathBuf::from("src/lib.rs"),
+                language: "rust".to_string(),
+                bytes: 10,
+                mtime_ns: 0,
+                origin: "user".to_string(),
+                imports: vec![],
+            }],
+            functions: vec![],
+            endpoints: vec![],
+            types: vec![],
+            impls: vec![],
+        };
+        crate::engine::db::write_bake_to_db(&bake, &bakes_dir.join("bake.db")).unwrap();
+    }
+
+    #[test]
+    fn semantic_search_note_present_when_embeddings_missing() {
+        let dir = TempDir::new().unwrap();
+        write_minimal_bake(&dir);
+        // No embeddings.db — simulates embeddings still building.
+        let out = crate::engine::semantic_search(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "add numbers".into(),
+            None,
+            None,
+        ).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let note = v["note"].as_str().expect("note field should be present when embeddings not ready");
+        assert!(note.contains("building"), "note should mention building: {note}");
+        assert!(note.contains("TF-IDF"), "note should mention TF-IDF: {note}");
+    }
+
+    #[test]
+    fn semantic_search_returns_results_even_without_embeddings() {
+        let dir = TempDir::new().unwrap();
+        // Write a real bake so there are functions to TF-IDF over.
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        // Delete embeddings.db if it exists (bake spawns it in background).
+        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+
+        let out = crate::engine::semantic_search(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "function".into(),
+            Some(5),
+            None,
+        );
+        // Should succeed (TF-IDF fallback), not error.
+        assert!(out.is_ok(), "semantic_search should not error without embeddings");
+        let v: serde_json::Value = serde_json::from_str(&out.unwrap()).unwrap();
+        assert_eq!(v["tool"], "semantic_search");
+    }
+}
+
 /// Public entrypoint for the `semantic_search` tool.
 /// Uses embedding-backed cosine similarity when `bakes/latest/embeddings.db` exists
 /// (built by `bake` via fastembed + SQLite). Falls back to TF-IDF otherwise.
@@ -688,35 +759,46 @@ pub fn semantic_search(
     let file_filter = file.as_deref().map(str::to_lowercase);
     let bake_dir = root.join("bakes").join("latest");
 
-    // Try vector search first
-    if let Ok(Some(matches)) = crate::engine::embed::vector_search(
-        &bake_dir,
-        &query,
-        limit,
-        file_filter.as_deref(),
-    ) {
-        let results: Vec<SemanticMatch> = matches
-            .into_iter()
-            .map(|m| SemanticMatch {
-                name: m.name,
-                file: m.file,
-                start_line: m.start_line,
-                score: m.score,
-                parent_type: m.parent_type,
-                kind: "function",
-            })
-            .collect();
-        let payload = SemanticSearchPayload {
-            tool: "semantic_search",
-            version: env!("CARGO_PKG_VERSION"),
-            project_root: root,
-            query,
-            results,
-        };
-        return Ok(serde_json::to_string_pretty(&payload)?);
+    // Try vector search first. embeddings.db is absent while the background
+    // build (started by bake) is still running — in that case we fall through
+    // to TF-IDF and surface a note so the caller knows why.
+    let embeddings_ready = bake_dir.join("embeddings.db").exists();
+    if embeddings_ready {
+        if let Ok(Some(matches)) = crate::engine::embed::vector_search(
+            &bake_dir,
+            &query,
+            limit,
+            file_filter.as_deref(),
+        ) {
+            let results: Vec<SemanticMatch> = matches
+                .into_iter()
+                .map(|m| SemanticMatch {
+                    name: m.name,
+                    file: m.file,
+                    start_line: m.start_line,
+                    score: m.score,
+                    parent_type: m.parent_type,
+                    kind: "function",
+                })
+                .collect();
+            let payload = SemanticSearchPayload {
+                tool: "semantic_search",
+                version: env!("CARGO_PKG_VERSION"),
+                project_root: root,
+                query,
+                results,
+                note: None,
+            };
+            return Ok(serde_json::to_string_pretty(&payload)?);
+        }
     }
 
     // Fallback: TF-IDF
+    let tfidf_note = if !embeddings_ready {
+        Some("Embeddings index is building in the background — these are TF-IDF results. semantic_search will switch to vector search automatically once ready.")
+    } else {
+        None
+    };
     let bake = require_bake_index(&root)?;
 
     let query_tokens = tokenize(&query);
@@ -775,6 +857,7 @@ pub fn semantic_search(
         project_root: root,
         query,
         results,
+        note: tfidf_note,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
