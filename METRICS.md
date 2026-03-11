@@ -45,7 +45,7 @@ JavaScript, Python, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash — `bake` 
 
 ## Token benchmark eval
 
-Eval harness at `evals/token_benchmark/` — 12 tasks, 5 dimensions, repo-agnostic (dynamic task generation).
+Eval harness at `evals/token_benchmark/` — 18 tasks (6 structural, 6 semantic, 6 mutation), 5 dimensions, repo-agnostic (dynamic task generation).
 
 | Repo | Language | Lines | Linux acc | yoyo+linux acc | Notes |
 |---|---|---|---|---|---|
