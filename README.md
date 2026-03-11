@@ -4,19 +4,27 @@
 
 # yoyo
 
-yoyo is a code intelligence MCP server. It gives your AI agent 30 tools to read and edit any codebase — grounded in the AST, not model memory.
+**Claude Code on steroids. Codex on steroids. Any AI coding agent — on steroids.**
 
-**Built for agents.** Drop it into Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode, or any MCP-compatible agent. The agent calls the tools. You get better answers.
+yoyo is an MCP server that gives your agent 30 AST-grounded tools to read, understand, and edit code. No hallucinated file paths. No guessing. Facts from the source.
 
-**99% eval accuracy** across 7 real codebases (120 tasks) vs 26% baseline (Claude Code without yoyo). No API keys. No SaaS. No telemetry.
+**99% eval accuracy** across 4 languages, 8 real codebases — vs 26% baseline (Claude Code alone).
+
+---
+
+## Why
+
+Your AI agent reads code like a human with no IDE: grep, cat, hope. It hallucinates function names. It misses callers. It patches the wrong file.
+
+yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `symbol` instead of `cat`. It calls `blast_radius` before deleting. It calls `flow` to trace a request end to end. It patches by function name, not line number.
+
+The eval gap is the proof: **99% vs 26%**. Same model. Same tasks. Different tools.
 
 ---
 
 ## Language focus
 
 > **Rust · Go · Zig · TypeScript — four languages, done deep.**
-
-yoyo is not trying to cover every language. It targets the four languages where systems-level code intelligence matters most: the languages AI agents struggle with most on large codebases.
 
 | Language | bake | symbol | trace_down | endpoints | write tools |
 |---|---|---|---|---|---|
@@ -25,17 +33,13 @@ yoyo is not trying to cover every language. It targets the four languages where 
 | Zig | ✅ | ✅ | — | — | ✅ |
 | TypeScript | ✅ | ✅ | — | ✅ express | ✅ |
 
-Other languages may parse but are not a priority. If you need Python or Java coverage, [Serena](https://github.com/oraios/serena) is worth a look.
+Not every language. The four where systems-level code intelligence matters most.
 
 ---
 
-## Philosophy
+## The combinations are the point
 
-The name comes from the [yo-yo problem](https://en.wikipedia.org/wiki/Yo-yo_problem) — a software antipattern where understanding a program forces you to bounce endlessly between files, classes, and definitions. The programmer's attention moves up and down like a yo-yo. yoyo exists to make that bounce unnecessary.
-
-In yoyo tournaments, a yoyo is just a spinning disk on a string. The magic is in the combinations — string wraps, body movements, timing layered together. A single trick is fine. Fifty moves chained in sequence is something else entirely.
-
-yoyo works the same way. Each tool does one thing. The combinations are what's deadly:
+One trick is fine. Fifty moves chained is transcendent.
 
 | Combination | What it does |
 |---|---|
@@ -43,20 +47,9 @@ yoyo works the same way. Each tool does one thing. The combinations are what's d
 | `blast_radius` → `health` → `graph_delete` | who calls this? is it dead? remove it safely |
 | `flow` → `multi_patch` | trace the full request path, fix it end-to-end in one shot |
 | `bake` → `semantic_search` → `suggest_placement` | where does this new function belong? |
-| `architecture_map` → `api_surface` → `graph_create` | understand the shape, find the gap, fill it |
+| `architecture_map` → `all_endpoints` → `graph_create` | understand the shape, find the gap, fill it |
 
 No single tool is the point. The orchestration is.
-
----
-
-## How it works for your agent
-
-```
-you run:   yoyo bake --path /your/project
-agent gets: 30 tools — search, read, write, rename, trace, analyze
-agent uses: supersearch / symbol / flow / patch — not grep, not cat
-result:     answers from facts, not memory. no hallucinated file paths.
-```
 
 ---
 
@@ -70,28 +63,21 @@ brew tap avirajkhare00/yoyo
 brew install yoyo
 ```
 
-Homebrew handles signing and PATH automatically. No `codesign`, no `sudo mv`.
-
 **Linux (x86_64)**
 ```bash
 curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz | tar xz
 sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 ```
 
-Verify:
 ```bash
 yoyo --version
 ```
-
-> **Why `/usr/local/bin`?** The MCP server must be on a path accessible to all tools and shells. Install here once — it works everywhere.
->
-> **No sudo?** Install to `~/.local/bin/yoyo` instead, but update the `command` path in the MCP config (step 2) to match.
 
 ---
 
 ### 2. Add to your agent's MCP config
 
-**Claude Code** — add the `yoyo` block inside `mcpServers` in `~/.claude/settings.json`:
+**Claude Code** — add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -104,70 +90,35 @@ yoyo --version
 }
 ```
 
-> If `~/.claude/settings.json` already has other MCP servers, just add the `"yoyo": { ... }` block alongside them. Don't replace the whole file.
-
-> If you installed without `sudo` and the binary is at `~/.local/bin/yoyo`, use that path instead.
-
-**Cursor** — add the same block to your Cursor MCP config file.
-
-**Codex CLI** — add yoyo as an MCP server from your terminal:
+**Codex CLI**
 ```bash
 codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
 ```
-Verify:
-```bash
-codex mcp list
-```
-If you installed to `~/.local/bin/yoyo`, use that path in the command. If you're dogfooding a local build, point Codex at the full path to your compiled binary, for example `.../target/release/yoyo`.
 
-**Gemini CLI** — add yoyo as an MCP server from your terminal:
+**Gemini CLI**
 ```bash
 gemini mcp add yoyo /usr/local/bin/yoyo --mcp-server
 ```
-If you installed to `~/.local/bin/yoyo`, use that path in the command.
 
-**OpenCode** — add yoyo as an MCP server from your terminal:
-```bash
-opencode mcp add
-```
-Then follow the prompts: `Local (stdio)` → name `yoyo` → command `/usr/local/bin/yoyo` → args `--mcp-server`.
+**OpenCode** — run `opencode mcp add` → Local (stdio) → name `yoyo` → command `/usr/local/bin/yoyo` → args `--mcp-server`.
 
-Then reconnect your agent client so it picks up the new server (for Claude Code, run `/mcp`; for Codex, restart the session if the server list was already loaded).
+**Cursor** — same JSON block as Claude Code, in your Cursor MCP config.
 
 ---
 
 ### 3. Index your project
 
-Run this once per project, and again after large changes:
 ```bash
 yoyo bake --path /path/to/your/project
 ```
 
+Run once per project, again after large changes.
+
 ---
 
-### 4. Teach the agent to prefer yoyo (strongly recommended)
+### 4. Teach your agent to prefer yoyo
 
-**Codex** — add this to your project's `AGENTS.md`:
-
-```md
-## yoyo
-Load `mcp__yoyo__llm_instructions` first.
-
-Prefer:
-- `mcp__yoyo__supersearch` over grep/rg
-- `mcp__yoyo__symbol` with `include_source=true` over full-file reads
-- `mcp__yoyo__slice` for exact line ranges
-- `mcp__yoyo__patch` for function edits
-
-If a yoyo write tool fits the task, use it instead of manual file edits.
-```
-
-This is the Codex equivalent of the Claude hook: it nudges the agent to bootstrap with `llm_instructions` and use yoyo's read/write tools before falling back to shell reads or manual edits.
-
-**Claude Code** — add this hook to your project's `.claude/settings.local.json`:
-
-Without this, Claude sees yoyo but won't prefer it over grep/cat.
-
+**Claude Code** — add to `.claude/settings.local.json`:
 ```json
 {
   "hooks": {
@@ -185,11 +136,14 @@ Without this, Claude sees yoyo but won't prefer it over grep/cat.
 }
 ```
 
-This injects a reminder on every prompt so Claude actively uses yoyo tools instead of falling back to file reads and grep.
+**Codex** — add to `AGENTS.md`:
+```md
+## yoyo
+Load `mcp__yoyo__llm_instructions` first.
+Prefer `supersearch` over grep, `symbol` over file reads, `patch` for edits.
+```
 
----
-
-You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start a session, and ask about your code. The agent calls `llm_instructions` automatically on first contact and picks up all 30 tools.
+Without this, your agent sees yoyo but won't reach for it first.
 
 ---
 
@@ -201,7 +155,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `bake` | Parse the project, write the AST index. Run first. |
 | `shake` | Language breakdown, file count, top-complexity functions. |
 | `llm_instructions` | Lean bootstrap: tool catalog, prime directives, concurrency rules. |
-| `llm_workflows` | On-demand reference: combination workflows, decision map, antipatterns, metapatterns. |
+| `llm_workflows` | On-demand reference: combination workflows, decision map, antipatterns. |
 
 ### Read
 | Tool | What it does |
@@ -231,7 +185,7 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 ### Write
 | Tool | What it does |
 |---|---|
-| `patch` | Write by symbol name, line range, or string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
+| `patch` | Write by symbol name, line range, or string match. Compiles after write — rolls back on error. Auto-reindexes. |
 | `patch_bytes` | Write at exact byte offsets. |
 | `multi_patch` | N edits across M files in one call. |
 | `graph_rename` | Rename a symbol at definition + every call site, atomically. |
@@ -240,26 +194,23 @@ You're set. Open Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode, start 
 | `graph_move` | Move a function between files. |
 | `graph_delete` | Remove a function by name. Checks blast radius first. |
 
-**Languages:** Rust · Go · Zig · TypeScript — deep support, not wide. Four systems languages done right.
-
 ---
 
-## Why not just use LSP?
+## Why not just LSP?
 
-LSP is for humans navigating code in an editor. yoyo is for AI agents understanding code. Different consumer, different job.
+LSP is for humans in an editor. yoyo is for AI agents understanding codebases.
 
 | | LSP | yoyo |
 |---|---|---|
-| Consumer | Editor (VS Code, Neovim…) | AI assistant (Claude, Cursor…) |
-| Protocol | JSON-RPC to editor buffers | MCP stdio — AI calls tools directly |
+| Consumer | Editor (VS Code, Neovim…) | AI agent (Claude, Codex, Cursor…) |
+| Protocol | JSON-RPC to editor buffers | MCP stdio — agent calls tools directly |
 | Scope | Per-file, cursor-aware | Whole codebase in one call |
-| Setup | One server per language (gopls, rust-analyzer, pyright…) | One binary for all languages |
+| Setup | One server per language | One binary for all languages |
 | "Where should new code go?" | No equivalent | `suggest_placement` |
-| Project-wide complexity overview | No equivalent | `shake` |
-| Edit by symbol name | No equivalent | `patch` |
+| Edit by function name | No equivalent | `patch` |
 
-LSP tells you what exists at your cursor. yoyo tells an AI what the codebase looks like and lets it act on it. Use both — LSP while writing, yoyo when asking Claude to understand or modify a codebase it has never seen.
+Use both. LSP while you write. yoyo when your agent needs to understand or change code it has never seen.
 
 ---
 
-Full documentation: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · Apache 2.0
+Full docs: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · Apache 2.0
