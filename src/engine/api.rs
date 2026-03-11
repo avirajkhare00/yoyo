@@ -82,8 +82,19 @@ pub fn flow(
                 .and_then(|src| {
                     let lines: Vec<&str> = src.lines().collect();
                     let s = start_fn.start_line.saturating_sub(1) as usize;
-                    let e = (start_fn.end_line as usize).min(lines.len());
-                    if s < lines.len() { Some(lines[s..e].join("\n")) } else { None }
+                    let e = (start_fn.end_line as usize).saturating_sub(1).min(lines.len().saturating_sub(1));
+                    const CAP: usize = 500;
+                    if s >= lines.len() || s > e { return None; }
+                    let total = e - s + 1;
+                    if total > CAP {
+                        let truncated = lines[s..s + CAP].join("\n");
+                        Some(format!(
+                            "{}\n... [truncated: {} lines total, showing first {}. Use slice(\"{}\", {}, {}) for the full body]",
+                            truncated, total, CAP, start_fn.file, start_fn.start_line, start_fn.end_line,
+                        ))
+                    } else {
+                        Some(lines[s..=e].join("\n"))
+                    }
                 })
         } else {
             None

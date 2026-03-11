@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3] - 2026-03-11
+
+### Fixed
+
+- `symbol --include-source` now caps output at 500 lines for monster functions (closes #149, #151). Functions exceeding the cap get the first 500 lines + a `slice(file, start, end)` hint pointing at the rest. Prevents context overflow on large Zig generics (ReplicaType, 136K tokens) and large TypeScript functions (createTypeChecker, 1.35M tokens).
+- Same cap applied to `flow --include-source` handler output and stdlib symbol lookups.
+- 3 new unit tests for `cap_source` helper.
+
 ## [1.5.2] - 2026-03-11
 
 ### Fixed
