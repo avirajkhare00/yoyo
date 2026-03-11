@@ -4,8 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
+
+var fnNameRe = regexp.MustCompile(`(?:function|pub fn|func)\s+([a-zA-Z_][a-zA-Z0-9_]+)`)
+
+// extractFnName pulls the function name out of a grep match line.
+func extractFnName(line string) string {
+	m := fnNameRe.FindStringSubmatch(line)
+	if len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
 
 // RepoProfile holds real names discovered from the target repo at runtime.
 type RepoProfile struct {
@@ -90,6 +102,41 @@ func discoverRepo(yoyoBin, repoPath string) (RepoProfile, error) {
 					}
 				}
 			}
+		}
+	}
+
+	// ── grep fallback: when bake/shake fails on very large repos ─────────────
+	// bake can stack-overflow on repos with 80K+ files. Fall back to grep to
+	// extract real function names so the harness can still run.
+	if profile.TopFn == "" {
+		grepOut, gerr := exec.Command("sh", "-c",
+			fmt.Sprintf(
+				"grep -rh --include='*.ts' --include='*.rs' --include='*.go' --include='*.zig' "+
+					"-E '^export (async )?function [a-zA-Z_][a-zA-Z0-9_]+|^pub fn [a-zA-Z_][a-zA-Z0-9_]+|^func [a-zA-Z_][a-zA-Z0-9_]+' "+
+					"%s 2>/dev/null | grep -v '//' | head -20",
+				repoPath,
+			),
+		).Output()
+		if gerr == nil {
+			for _, line := range strings.Split(string(grepOut), "\n") {
+				name := extractFnName(line)
+				if name == "" || len(name) < 4 {
+					continue
+				}
+				if profile.TopFn == "" {
+					profile.TopFn = name
+				} else if profile.SecondFn == "" {
+					profile.SecondFn = name
+					break
+				}
+			}
+		}
+		// find a large file as fallback
+		if profile.LargeFile == "" {
+			findOut, _ := exec.Command("sh", "-c",
+				fmt.Sprintf("find %s/src %s/lib -name '*.ts' -o -name '*.rs' -o -name '*.go' 2>/dev/null | head -1", repoPath, repoPath),
+			).Output()
+			profile.LargeFile = strings.TrimSpace(strings.TrimPrefix(string(findOut), repoPath+"/"))
 		}
 	}
 
