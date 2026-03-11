@@ -19,8 +19,8 @@ Be concise and precise. If the context does not contain enough information, say 
 
 const judgePrompt = `You are an eval judge scoring two answers to the same coding question.
 Score each answer from 0-10 on:
-- accuracy: is the answer factually correct given the question?
-- completeness: does it fully answer all parts of the question?
+- accuracy: is the answer factually correct given the question? For code answers: does the code correctly implement the requested change without hallucinated APIs?
+- completeness: does it fully answer all parts of the question? For code answers: is the implementation complete and usable?
 
 Return ONLY valid JSON in this exact shape:
 {"linux_accuracy":0,"linux_completeness":0,"yoyo_accuracy":0,"yoyo_completeness":0}`

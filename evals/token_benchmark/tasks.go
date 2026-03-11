@@ -174,5 +174,76 @@ func buildTasks(yoyoBin string, p RepoProfile) []Task {
 			},
 			GoldKeywords: []string{"src"},
 		},
+
+		// ── mutation ──────────────────────────────────────────────────────────────
+		{
+			ID:       "add-parameter",
+			Question: fmt.Sprintf("Add a new `timeout` parameter to the `%s` function. Show the updated function signature and body.", fn),
+			LinuxCmds: []string{
+				fmt.Sprintf("grep -n 'fn %s\\|func %s' {{REPO}}/%s", fn, fn, file),
+				fmt.Sprintf("cat {{REPO}}/%s", file),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s symbol --path {{REPO}} --name %s --include-source", yoyoBin, fn),
+			},
+			GoldKeywords: []string{fn, "timeout"},
+		},
+		{
+			ID:       "add-error-handling",
+			Question: fmt.Sprintf("Add proper error handling to the `%s` function. Show the updated implementation.", fn),
+			LinuxCmds: []string{
+				fmt.Sprintf("cat {{REPO}}/%s", file),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s symbol --path {{REPO}} --name %s --include-source", yoyoBin, fn),
+			},
+			GoldKeywords: []string{fn, "error"},
+		},
+		{
+			ID:       "rename-impact",
+			Question: fmt.Sprintf("If you rename `%s` to `%s_v2`, which files and call sites need to be updated?", fn, fn),
+			LinuxCmds: []string{
+				fmt.Sprintf("grep -rn %s {{REPO}} --include='*.rs' --include='*.go' --include='*.zig' --include='*.ts'", fn),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s blast-radius --path {{REPO}} --symbol %s", yoyoBin, fn),
+			},
+			GoldKeywords: []string{fn},
+		},
+		{
+			ID:       "add-test",
+			Question: fmt.Sprintf("Write a unit test for the `%s` function. Show the complete test function.", fn2),
+			LinuxCmds: []string{
+				fmt.Sprintf("grep -n 'fn %s\\|func %s' {{REPO}}/%s", fn2, fn2, file),
+				fmt.Sprintf("cat {{REPO}}/%s", file),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s symbol --path {{REPO}} --name %s --include-source", yoyoBin, fn2),
+			},
+			GoldKeywords: []string{fn2, "test"},
+		},
+		{
+			ID:       "extract-helper",
+			Question: fmt.Sprintf("Extract the core logic of `%s` into a smaller helper function. Show both the refactored `%s` and the new helper.", fn, fn),
+			LinuxCmds: []string{
+				fmt.Sprintf("cat {{REPO}}/%s", file),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s symbol --path {{REPO}} --name %s --include-source", yoyoBin, fn),
+			},
+			GoldKeywords: []string{fn},
+		},
+		{
+			ID:       "safe-delete",
+			Question: fmt.Sprintf("Is it safe to delete the `%s` function? List every caller that would break and in which files.", fn2),
+			LinuxCmds: []string{
+				fmt.Sprintf("grep -rn %s {{REPO}} --include='*.rs' --include='*.go' --include='*.zig' --include='*.ts'", fn2),
+			},
+			YoyoPlusCmds: []string{
+				fmt.Sprintf("%s blast-radius --path {{REPO}} --symbol %s", yoyoBin, fn2),
+				fmt.Sprintf("%s health --path {{REPO}}", yoyoBin),
+			},
+			GoldKeywords: []string{fn2},
+		},
 	}
 }
