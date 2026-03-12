@@ -554,6 +554,7 @@ pub fn patch_by_symbol(
 // ── Byte-level patch ─────────────────────────────────────────────────────────
 
 /// Public entrypoint for `patch_bytes`: splice at exact byte offsets.
+#[allow(dead_code)]
 pub fn patch_bytes(
     path: Option<String>,
     file: String,

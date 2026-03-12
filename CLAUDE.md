@@ -46,6 +46,12 @@ yoyo has two layers:
 - **Presentation** (`src/mcp.rs`, `src/cli.rs`) — adapters over the engine. MCP tool schemas, CLI commands, output formatting. These can and should evolve freely. Changing how a tool presents its output never requires touching the engine.
 
 Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
+
+### MCP vs CLI — intelligent vs dumb layer
+
+MCP is the intelligent layer. Every tool exposed costs context window tokens. Curate aggressively — only expose tools that earn their slot. Remove tools that are redundant with other tools or with the host environment (grep, glob, etc.). When in doubt, leave it out.
+
+CLI is the dumb layer. It exposes every engine capability directly to humans. Never remove a CLI command just because the MCP tool was removed — humans pick their own tools, context cost is zero. CLI is the complete surface; MCP is the curated surface.
 When in doubt about system structure or where a change belongs, read [`docs/architecture.md`](./docs/architecture.md).
 
 ## DRY for markdown — single source of truth

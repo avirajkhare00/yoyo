@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::types::{
     build_compact_section, parse_section_cursor, BakeSummary, DecisionEntry, EndpointSummary,
-    FunctionSummary, LlmInstructionsPayload, LlmWorkflowsCompactPayload, LlmWorkflowsPayload,
+    FunctionSummary, LlmWorkflowsCompactPayload, LlmWorkflowsPayload,
     LlmWorkflowsQueryPayload, Metapattern, MetapatternStep, ResponseView, ShakePayload,
     ToolDescription, Workflow, WorkflowQueryMatch, WorkflowStep, DEFAULT_COMPACT_LIMIT,
 };
@@ -15,31 +15,28 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let snapshot = project_snapshot(&root)?;
 
-    let payload = LlmInstructionsPayload {
-        tool: "llm_instructions",
-        version: env!("CARGO_PKG_VERSION"),
-        project_root: root,
-        languages: snapshot.languages.into_iter().collect(),
-        files_indexed: snapshot.files_indexed,
-        tools: tool_catalog(),
-        prime_directives: vec![
-            "yoyo is a structural layer on top of linux tools — use both together. Linux tools (grep, cat, find) are fast for raw text. yoyo tools answer structural questions linux tools cannot.",
-            "Use yoyo for: callers, call chains, complexity, dead code, placement, visibility, module paths, safe rename/delete. Use linux tools for: pattern matching, line confirmation, file listing.",
-            "grep finds strings. symbol finds definitions. blast_radius finds callers. health finds dead code. Pick the right tool for the question.",
-            "Before adding any new function or tool, search the codebase first — it may already exist. Duplication is the first form of rot.",
-            "Before writing, read. Use symbol or supersearch to understand existing code before proposing changes.",
-            "Write tools are destructive and irreversible. Always confirm safety with blast_radius or health before deleting.",
+    let catalog = tool_catalog();
+    let mut groups: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for t in &catalog {
+        groups.entry(t.category).or_default().push(t.name);
+    }
+
+    let payload = serde_json::json!({
+        "tool": "boot",
+        "version": env!("CARGO_PKG_VERSION"),
+        "project_root": root,
+        "languages": snapshot.languages.into_iter().collect::<Vec<_>>(),
+        "files_indexed": snapshot.files_indexed,
+        "tools": groups,
+        "rules": [
+            "Call index first and wait before any read-indexed tool.",
+            "boot can be called in parallel with index on first contact.",
+            "Read tools parallelise freely. Write tools are sequential.",
+            "After any write, wait for completion before reading the same file.",
+            "Call help(name) to get params, output shape, and examples for any tool.",
         ],
-        concurrency_rules: vec![
-            "Always call bake first and wait for completion before any read-indexed tool.",
-            "llm_instructions can be called in parallel with bake on first contact.",
-            "read + read: always parallelise freely (category=read or read-indexed).",
-            "read-indexed tools are safe to parallelise with each other after bake completes.",
-            "write tools are always sequential — wait for each to complete before the next.",
-            "After any write, do not call read-indexed tools on the same file until the write response is received.",
-        ],
-        update_available: super::update::check_update(),
-    };
+        "update_available": super::update::check_update(),
+    });
 
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
@@ -388,38 +385,205 @@ fn decision_map() -> Vec<DecisionEntry> {
 
 pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
-        ToolDescription { name: "llm_instructions", description: "Bootstrap: lean tool catalog, prime directives, and concurrency rules. Call in parallel with bake on first contact — do not skip.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "llm_workflows",   description: "Full reference catalog: combination workflows, decision map, antipatterns, metapatterns. Pass query= to search by intent (e.g. query='rename symbol') and get top-ranked matches instead of the full catalog. Call on demand — not required at bootstrap.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "bake",             description: "Build the AST index all read-indexed tools depend on. Call in parallel with llm_instructions on first contact. Re-run after large external changes.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "shake",            description: "Language breakdown, file count, top-complexity functions.", requires_bake: false, category: "read", parallelisable: true,
-            output_shape: Some(r#"{"files_indexed":0,"languages":[],"top_functions":[{"name":"","file":"","start_line":0,"complexity":0}],"express_endpoints":[]}"#) },
-        ToolDescription { name: "slice",            description: "Read any line range from any file. Use start_line/end_line from symbol output directly.", requires_bake: false, category: "read", parallelisable: true, output_shape: None },
-        ToolDescription { name: "find_docs",        description: "Locate README, .env, Dockerfile, and config files.", requires_bake: false, category: "read", parallelisable: true, output_shape: None },
-        ToolDescription { name: "architecture_map", description: "Directory tree with inferred roles (routes, services, models, utils).", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "symbol",           description: "Find a function by name — file, line range, visibility, calls, optionally full source. Pass include_source=true to read the body. Use file to scope when names collide.", requires_bake: true, category: "read-indexed", parallelisable: true,
+        ToolDescription { name: "boot", description: "Bootstrap: tool names, categories, and concurrency rules. Call in parallel with index on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "index", description: "Build the AST index all read-indexed tools depend on. Call in parallel with boot on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
+        ToolDescription { name: "read", description: "Read any line range from any file.", requires_bake: false, category: "read", parallelisable: true, output_shape: None },
+        ToolDescription { name: "map", description: "Directory tree with inferred roles.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "symbol", description: "Find a function by name.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"matches":[{"name":"","file":"","start_line":0,"end_line":0,"visibility":"public|module|private","complexity":0,"calls":[],"source":"(if include_source=true)"}]}"#) },
-        ToolDescription { name: "file_functions",   description: "Every function in a file with line ranges and cyclomatic complexity.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "supersearch",      description: "AST-aware search — replaces grep/rg entirely. Use context=identifiers+pattern=call for call-site search.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "semantic_search",  description: "Find functions by intent using local ONNX embeddings. No API key. Use when supersearch finds nothing.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "all_endpoints",    description: "All detected HTTP routes. Frameworks: Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Use when flow returns no match.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "flow",             description: "One-call vertical slice: endpoint → handler → call chain to db/http/queue boundary. Call chain: Rust + Go only.", requires_bake: true, category: "read-indexed", parallelisable: true,
+        ToolDescription { name: "outline", description: "Every function in a file with line ranges and complexity.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "search", description: "AST-aware search. Replaces grep/rg.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "ask", description: "Find functions by intent using embeddings.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "routes", description: "All detected HTTP routes.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "flow", description: "Endpoint to handler to call chain in one call.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"endpoint":{"method":"","path":""},"handler":{"name":"","file":"","start_line":0,"source":"(if include_source=true)"},"call_chain":[{"name":"","file":"","depth":0}],"boundaries":[],"summary":""}"#) },
-        ToolDescription { name: "suggest_placement",description: "Ranked file suggestions for where to add a new function, based on related symbols.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "package_summary",  description: "All functions, endpoints, and complexity for a module path substring.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "blast_radius",     description: "All transitive callers of a symbol + affected files. Always run before graph_delete or graph_rename.", requires_bake: true, category: "read-indexed", parallelisable: true,
+        ToolDescription { name: "callers", description: "All transitive callers of a symbol.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"symbol":"","callers":[{"caller":"","file":"","depth":1,"complexity":0}],"affected_files":[],"total_callers":0}"#) },
-        ToolDescription { name: "trace_down",       description: "BFS call chain from a function to db/http/queue boundaries. Rust + Go only. Prefer flow for endpoint tracing.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "patch",            description: "Replaces Edit/Write for all function-level changes. Modes: name (name+new_content), content-match (file+old_string+new_string), line-range (file+start+end+new_content). Auto-reindexes and syntax-checks after every write.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "patch_bytes",      description: "Splice at exact byte offsets from the bake index. Prefer patch for function-level edits.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "multi_patch",      description: "Apply N edits across M files in one call — bottom-up ordering is automatic. Use after flow to fix an entire call chain end-to-end.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "graph_rename",     description: "Rename a symbol at its definition and every call site atomically. Always prefer over str.replace or multi_patch for renames.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "graph_create",     description: "Create a new file with an initial function scaffold. Errors if file exists or parent dir is missing.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "graph_add",        description: "Insert a function scaffold into an existing file, optionally after a named symbol. Pair with patch to fill in the body immediately after.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "graph_move",       description: "Move a function between files atomically — removes from source, appends to destination, reindexes both.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "graph_delete",     description: "Remove a function by name. Blocks if callers exist. Always run health→blast_radius first to confirm the function is dead.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "health",           description: "Dead code, large functions, and duplicate name hints. Router-registered handlers may appear dead — cross-check with blast_radius before deleting.", requires_bake: true, category: "read-indexed", parallelisable: true,
+        ToolDescription { name: "health", description: "Dead code, large functions, and duplicate hints.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"large_functions":[{"name":"","file":"","start_line":0,"score":0,"complexity":0,"fan_out":0}],"dead_code":[{"name":"","file":"","start_line":0,"lines":0}],"duplicate_code":[{"stem":"","functions":[{"name":"","file":""}]}],"long_methods":[{"name":"","file":"","start_line":0,"lines":0}],"feature_envy":[{"name":"","file":"","envies":"","cross_file_calls":0}],"shotgun_surgery":[{"name":"","file":"","caller_files":0}]}"#) },
-        ToolDescription { name: "script", description: "Use when you need to loop, filter, or cross-reference multiple tool outputs — things no single tool can do. Runs a Rhai script with all read tools available as functions. When to reach for it: (1) cross-reference health categories (large AND dead), (2) batch blast_radius across N functions, (3) filter/classify arrays from health/file_functions, (4) aggregate across multiple files in one call. Read: symbol(name) [always returns source], blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write: graph_delete(name). Tip: fn is a reserved keyword in Rhai — use f or item as loop variable names.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
+        ToolDescription { name: "edit", description: "Edit code by symbol name, content match, or line range. Auto-reindexes.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "bulk_edit", description: "Apply N edits across M files in one call.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "rename", description: "Rename a symbol at definition and every call site.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "create", description: "Create a new file with a function scaffold.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "add", description: "Insert a function scaffold into an existing file.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "move", description: "Move a function between files atomically.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "delete", description: "Remove a function by name. Blocks if callers exist.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "script", description: "Run a Rhai script with yoyo tools as functions.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
+        ToolDescription { name: "help", description: "Get params, output shape, example, and limitations for any tool.", requires_bake: false, category: "discovery", parallelisable: true, output_shape: None },
+    ]
+}
+
+pub fn tool_help(name: String) -> Result<String> {
+    let help_entries = tool_help_catalog();
+    let entry = help_entries.iter().find(|e| e.name == name);
+    match entry {
+        Some(e) => Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "tool": "help",
+            "version": env!("CARGO_PKG_VERSION"),
+            "name": e.name,
+            "params": e.params,
+            "output_shape": e.output_shape,
+            "example": e.example,
+            "limitations": e.limitations,
+        }))?),
+        None => {
+            let available: Vec<&str> = help_entries.iter().map(|e| e.name).collect();
+            Err(anyhow::anyhow!("Unknown tool '{}'. Available: {}", name, available.join(", ")))
+        }
+    }
+}
+
+struct ToolHelp {
+    name: &'static str,
+    params: serde_json::Value,
+    output_shape: Option<&'static str>,
+    example: serde_json::Value,
+    limitations: &'static str,
+}
+
+fn tool_help_catalog() -> Vec<ToolHelp> {
+    use serde_json::json;
+    vec![
+        ToolHelp {
+            name: "boot",
+            params: json!({"path": "Optional project directory"}),
+            output_shape: None,
+            example: json!({"call": "boot()", "returns": "tool names, categories, concurrency rules"}),
+            limitations: "Call once per session. Pair with index.",
+        },
+        ToolHelp {
+            name: "index",
+            params: json!({"path": "Optional project directory"}),
+            output_shape: None,
+            example: json!({"call": "index()", "returns": "files_indexed, languages"}),
+            limitations: "Must complete before any read-indexed tool. Re-run after large external changes.",
+        },
+        ToolHelp {
+            name: "read",
+            params: json!({"file": "required - file path relative to project root", "start_line": "required - 1-based start line", "end_line": "required - 1-based end line", "path": "optional"}),
+            output_shape: Some(r#"{"file":"","start":0,"end":0,"total_lines":0,"lines":[""]}"#),
+            example: json!({"call": {"file": "src/main.rs", "start_line": 1, "end_line": 20}}),
+            limitations: "No bake required. Use symbol output's start_line/end_line directly.",
+        },
+        ToolHelp {
+            name: "map",
+            params: json!({"intent": "optional - e.g. 'user handler'", "limit": "optional - max dirs (default 100)", "path": "optional"}),
+            output_shape: Some(r#"{"directories":[{"path":"","role":"","file_count":0}],"total_dirs":0}"#),
+            example: json!({"call": {"intent": "auth service"}}),
+            limitations: "Requires index. Sorts by file count descending.",
+        },
+        ToolHelp {
+            name: "symbol",
+            params: json!({"name": "required - function name", "include_source": "optional bool - include body", "file": "optional - path substring filter", "limit": "optional - max matches (default 20)", "stdlib": "optional bool - search stdlibs", "path": "optional"}),
+            output_shape: Some(r#"{"matches":[{"name":"","file":"","start_line":0,"end_line":0,"visibility":"","complexity":0,"calls":[],"source":""}]}"#),
+            example: json!({"call": {"name": "handle_request", "include_source": true}}),
+            limitations: "Requires index. Case-insensitive match. Prefers exact name over substring.",
+        },
+        ToolHelp {
+            name: "outline",
+            params: json!({"file": "required - file path", "include_summaries": "optional bool", "path": "optional"}),
+            output_shape: Some(r#"{"file":"","functions":[{"name":"","start_line":0,"end_line":0,"complexity":0,"parent_type":""}]}"#),
+            example: json!({"call": {"file": "src/engine/index.rs"}}),
+            limitations: "Requires index. One file at a time.",
+        },
+        ToolHelp {
+            name: "search",
+            params: json!({"query": "required - search text", "context": "optional - all|strings|comments|identifiers", "pattern": "optional - all|call|assign|return", "exclude_tests": "optional bool", "file": "optional - path substring", "limit": "optional - max matches (default 200)", "path": "optional"}),
+            output_shape: Some(r#"{"query":"","matches":[{"file":"","line":0,"snippet":"","kind":""}],"total":0}"#),
+            example: json!({"call": {"query": "handle_request", "context": "identifiers", "pattern": "call"}}),
+            limitations: "Requires index. Use context=identifiers+pattern=call for call-site search.",
+        },
+        ToolHelp {
+            name: "ask",
+            params: json!({"query": "required - natural language description", "limit": "optional - max results (default 10)", "file": "optional - path substring", "path": "optional"}),
+            output_shape: Some(r#"{"results":[{"name":"","file":"","start_line":0,"score":0.0}]}"#),
+            example: json!({"call": {"query": "validate user token"}}),
+            limitations: "Requires index. Uses ONNX embeddings when available, falls back to TF-IDF.",
+        },
+        ToolHelp {
+            name: "routes",
+            params: json!({"path": "optional"}),
+            output_shape: Some(r#"{"endpoints":[{"method":"","path":"","handler":"","file":"","line":0}]}"#),
+            example: json!({"call": {}}),
+            limitations: "Requires index. Supports Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http.",
+        },
+        ToolHelp {
+            name: "flow",
+            params: json!({"endpoint": "required - URL path substring", "method": "optional - GET/POST/etc", "depth": "optional - max call depth (default 5)", "include_source": "optional bool", "path": "optional"}),
+            output_shape: Some(r#"{"endpoint":{"method":"","path":""},"handler":{"name":"","file":""},"call_chain":[{"name":"","file":"","depth":0}],"boundaries":[],"summary":""}"#),
+            example: json!({"call": {"endpoint": "/users", "include_source": true}}),
+            limitations: "Requires index. Call chain tracing: Rust + Go only.",
+        },
+        ToolHelp {
+            name: "callers",
+            params: json!({"symbol": "required - function name", "depth": "optional - max depth (default 2)", "path": "optional"}),
+            output_shape: Some(r#"{"symbol":"","callers":[{"caller":"","file":"","depth":1}],"affected_files":[],"total_callers":0}"#),
+            example: json!({"call": {"symbol": "handle_request", "depth": 3}}),
+            limitations: "Requires index. Always run before delete or rename.",
+        },
+        ToolHelp {
+            name: "health",
+            params: json!({"top": "optional - max per category (default 10)", "view": "optional - compact|full|raw", "limit": "optional - items per section in compact", "cursor": "optional - pagination cursor", "path": "optional"}),
+            output_shape: Some(r#"{"dead_code":[],"large_functions":[],"duplicate_code":[],"long_methods":[],"feature_envy":[],"shotgun_surgery":[]}"#),
+            example: json!({"call": {"top": 5}}),
+            limitations: "Requires index. Router-registered handlers may appear dead -- cross-check with callers.",
+        },
+        ToolHelp {
+            name: "edit",
+            params: json!({"name": "optional - symbol name (resolves from index)", "file": "optional - file path", "start": "optional - start line", "end": "optional - end line", "new_content": "optional - replacement content", "old_string": "optional - exact string to find", "new_string": "optional - replacement for old_string", "match_index": "optional - disambiguate symbol matches", "path": "optional"}),
+            output_shape: Some(r#"{"file":"","patched_source":"..."}"#),
+            example: json!({"call": {"name": "handle_request", "new_content": "fn handle_request() { todo!() }"}}),
+            limitations: "Three modes: name (symbol), old_string+new_string (content-match), file+start+end+new_content (range). Auto-reindexes. Syntax-checks Rust and Zig.",
+        },
+        ToolHelp {
+            name: "bulk_edit",
+            params: json!({"edits": "required - array of {file, byte_start, byte_end, new_content}", "path": "optional"}),
+            output_shape: Some(r#"{"files_patched":0,"edits_applied":0}"#),
+            example: json!({"call": {"edits": [{"file": "src/main.rs", "byte_start": 0, "byte_end": 10, "new_content": "// fixed"}]}}),
+            limitations: "Requires index for byte offsets. Bottom-up ordering is automatic.",
+        },
+        ToolHelp {
+            name: "rename",
+            params: json!({"name": "required - current identifier", "new_name": "required - new identifier", "path": "optional"}),
+            output_shape: Some(r#"{"old_name":"","new_name":"","occurrences_renamed":0,"files_modified":[]}"#),
+            example: json!({"call": {"name": "get_user", "new_name": "fetch_user"}}),
+            limitations: "Renames at definition and all call sites. Prefer over search-and-replace.",
+        },
+        ToolHelp {
+            name: "create",
+            params: json!({"file": "required - file path", "function_name": "required - initial function name", "language": "optional", "params": "optional - typed params JSON", "returns": "optional - return type", "path": "optional"}),
+            output_shape: Some(r#"{"file":"","function":"","language":""}"#),
+            example: json!({"call": {"file": "src/handlers.rs", "function_name": "get_user"}}),
+            limitations: "Errors if file exists or parent dir missing.",
+        },
+        ToolHelp {
+            name: "add",
+            params: json!({"entity_type": "required - fn|function|def|func|test", "name": "required", "file": "required", "after_symbol": "optional", "language": "optional", "params": "optional", "returns": "optional", "on": "optional - struct/class name", "path": "optional"}),
+            output_shape: Some(r#"{"file":"","function":"","inserted_after":""}"#),
+            example: json!({"call": {"entity_type": "fn", "name": "validate", "file": "src/auth.rs", "after_symbol": "authenticate"}}),
+            limitations: "Inserts scaffold only. Use edit to fill in the body.",
+        },
+        ToolHelp {
+            name: "move",
+            params: json!({"name": "required - function name", "to_file": "required - destination file", "path": "optional"}),
+            output_shape: Some(r#"{"tool":"graph_move","from_file":"","to_file":"","function":""}"#),
+            example: json!({"call": {"name": "validate_token", "to_file": "src/auth.rs"}}),
+            limitations: "Requires index. Injects needed imports into destination.",
+        },
+        ToolHelp {
+            name: "delete",
+            params: json!({"name": "required - function name", "file": "optional - disambiguate", "force": "optional bool - delete even with callers", "path": "optional"}),
+            output_shape: Some(r#"{"name":"","file":"","bytes_removed":0}"#),
+            example: json!({"call": {"name": "deprecated_handler"}}),
+            limitations: "Blocks if callers exist unless force=true. Always run callers first.",
+        },
+        ToolHelp {
+            name: "script",
+            params: json!({"code": "required - Rhai script", "path": "optional"}),
+            output_shape: Some(r#"{"tool":"script","result":"(last expression value)"}"#),
+            example: json!({"call": {"code": "let h = health(); h[\"dead_code\"].len()"}}),
+            limitations: "Available functions: symbol, blast_radius, health, supersearch, file_functions, flow, slice, graph_delete. fn is reserved in Rhai -- use f or item.",
+        },
     ]
 }
 

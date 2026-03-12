@@ -31,6 +31,8 @@ yoyo has two layers:
 - Engine: [`src/engine/`](./src/engine), [`src/lang/`](./src/lang). The stable core: AST parsing, indexing, analysis, graph operations. Changes here are high-cost because they affect every presentation layer and every tool built on top.
 - Presentation: [`src/mcp.rs`](./src/mcp.rs), [`src/cli.rs`](./src/cli.rs). Adapters over the engine: MCP tool schemas, CLI commands, output formatting. These can evolve more freely once the engine is correct.
 
+MCP is the intelligent layer — every tool costs context tokens. Curate aggressively. CLI is the dumb layer — exposes everything to humans. Never remove a CLI command just because the MCP tool was removed.
+
 Work bottom-up. Do not paper over engine bugs with presentation-layer workarounds.
 When in doubt about system structure or where a change belongs, read [`docs/architecture.md`](./docs/architecture.md).
 

@@ -150,21 +150,6 @@ pub(crate) fn build_compact_section(
 // ── Per-tool payload structs ──────────────────────────────────────────────────
 
 #[derive(Serialize)]
-pub(crate) struct LlmInstructionsPayload {
-    pub(crate) tool: &'static str,
-    pub(crate) version: &'static str,
-    pub(crate) project_root: PathBuf,
-    pub(crate) languages: Vec<String>,
-    pub(crate) files_indexed: usize,
-    pub(crate) tools: Vec<ToolDescription>,
-    pub(crate) prime_directives: Vec<&'static str>,
-    pub(crate) concurrency_rules: Vec<&'static str>,
-    /// Present when a newer yoyo release is available. Surface this to the user.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) update_available: Option<String>,
-}
-
-#[derive(Serialize)]
 pub(crate) struct LlmWorkflowsPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,
@@ -468,6 +453,7 @@ pub(crate) struct PatchPayload {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub(crate) struct PatchBytesPayload {
     pub(crate) tool: &'static str,
     pub(crate) version: &'static str,

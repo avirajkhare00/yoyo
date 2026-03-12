@@ -4,54 +4,54 @@ use clap::{Args, Subcommand, ValueEnum};
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Prime directive and usage instructions for yoyo.
-    LlmInstructions(LlmInstructionsArgs),
+    Boot(BootArgs),
     /// Full reference catalog: workflows, decision map, antipatterns, metapatterns.
-    LlmWorkflows(LlmWorkflowsArgs),
+    Recipes(RecipesArgs),
     /// Repository overview similar to Shake.readme.
-    Shake(ShakeArgs),
-    /// Build and persist a bake index under the project root.
-    Bake(BakeArgs),
+    Stats(StatsArgs),
+    /// Build and persist an index under the project root.
+    Index(IndexArgs),
     /// Detailed lookup of a function symbol from the bake index.
     Symbol(SymbolArgs),
     /// List all detected API endpoints from the bake index.
-    AllEndpoints(AllEndpointsArgs),
+    Routes(RoutesArgs),
     /// Vertical slice: endpoint → handler → call chain in one call.
     Flow(FlowArgs),
     /// Read a specific line range of a file.
-    Slice(SliceArgs),
+    Read(ReadArgs),
     /// Per-file function overview from the bake index.
-    FileFunctions(FileFunctionsArgs),
+    Outline(OutlineArgs),
     /// Text-based search over TS/JS source files.
-    Supersearch(SupersearchArgs),
+    Search(SearchArgs),
     /// Deep-dive summary of a package/module directory.
-    PackageSummary(PackageSummaryArgs),
+    Module(ModuleArgs),
     /// Project structure map and placement hints.
-    ArchitectureMap(ArchitectureMapArgs),
+    Map(MapArgs),
     /// Suggest where to place a new function.
-    SuggestPlacement(SuggestPlacementArgs),
+    Where(WhereArgs),
     /// Find documentation/config files.
-    FindDocs(FindDocsArgs),
+    Docs(DocsArgs),
     /// Apply a patch by symbol name or by file/line range.
-    Patch(PatchArgs),
+    Edit(EditArgs),
     /// Analyse the blast radius of a symbol (transitive callers + affected files).
-    BlastRadius(BlastRadiusArgs),
+    Callers(CallersArgs),
     /// Rename a symbol everywhere (definition + all call sites) atomically.
-    GraphRename(GraphRenameArgs),
+    Rename(RenameArgs),
     /// Create a new file with an initial function scaffold.
-    GraphCreate(GraphCreateArgs),
+    Create(CreateArgs),
     /// Insert a new function scaffold into a file.
-    GraphAdd(GraphAddArgs),
+    Add(AddArgs),
     /// Move a function from one file to another.
     /// Move a function from one file to another.
-    GraphMove(GraphMoveArgs),
+    Move(MoveArgs),
     /// Trace a function's call chain downward to external boundaries.
-    TraceDown(TraceDownArgs),
+    Calls(CallsArgs),
     /// Audit dead code, large functions, and duplicate hints.
     Health(HealthArgs),
     /// Remove a function from a file by name.
-    GraphDelete(GraphDeleteArgs),
+    Delete(DeleteArgs),
     /// Search for functions by natural-language intent (local TF-IDF, no external deps).
-    SemanticSearch(SemanticSearchArgs),
+    Ask(AskArgs),
     /// Execute a Rhai script with yoyo tools available as functions.
     Script(ScriptArgs),
     /// Update yoyo to the latest release.
@@ -76,14 +76,14 @@ impl OutputView {
 }
 
 #[derive(Args, Debug)]
-pub struct LlmInstructionsArgs {
+pub struct BootArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
 }
 
 #[derive(Args, Debug)]
-pub struct LlmWorkflowsArgs {
+pub struct RecipesArgs {
     /// Optional path to the project directory (unused; kept for API symmetry).
     #[arg(long)]
     pub path: Option<String>,
@@ -106,14 +106,14 @@ pub struct LlmWorkflowsArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct ShakeArgs {
+pub struct StatsArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
 }
 
 #[derive(Args, Debug)]
-pub struct BakeArgs {
+pub struct IndexArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -148,7 +148,7 @@ pub struct SymbolArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct AllEndpointsArgs {
+pub struct RoutesArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -178,7 +178,7 @@ pub struct FlowArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct SliceArgs {
+pub struct ReadArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -197,7 +197,7 @@ pub struct SliceArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct FileFunctionsArgs {
+pub struct OutlineArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -212,7 +212,7 @@ pub struct FileFunctionsArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct SupersearchArgs {
+pub struct SearchArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -243,7 +243,7 @@ pub struct SupersearchArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct PackageSummaryArgs {
+pub struct ModuleArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -254,7 +254,7 @@ pub struct PackageSummaryArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct ArchitectureMapArgs {
+pub struct MapArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -269,7 +269,7 @@ pub struct ArchitectureMapArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct SuggestPlacementArgs {
+pub struct WhereArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -288,7 +288,7 @@ pub struct SuggestPlacementArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct FindDocsArgs {
+pub struct DocsArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -303,7 +303,7 @@ pub struct FindDocsArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct PatchArgs {
+pub struct EditArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -334,7 +334,7 @@ pub struct PatchArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct BlastRadiusArgs {
+pub struct CallersArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -349,7 +349,7 @@ pub struct BlastRadiusArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct GraphRenameArgs {
+pub struct RenameArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -364,7 +364,7 @@ pub struct GraphRenameArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct GraphAddArgs {
+pub struct AddArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -391,7 +391,7 @@ pub struct GraphAddArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct GraphCreateArgs {
+pub struct CreateArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -410,7 +410,7 @@ pub struct GraphCreateArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct GraphMoveArgs {
+pub struct MoveArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -425,7 +425,7 @@ pub struct GraphMoveArgs {
 }
 
 #[derive(Args, Debug)]
-pub struct SemanticSearchArgs {
+pub struct AskArgs {
     /// Optional path to the project directory.
     #[arg(long)]
     pub path: Option<String>,
@@ -445,30 +445,30 @@ pub struct SemanticSearchArgs {
 
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
-        Some(Command::LlmInstructions(args)) => run_llm_instructions(args).await?,
-        Some(Command::LlmWorkflows(args)) => run_llm_workflows(args).await?,
-        Some(Command::Shake(args)) => run_shake(args).await?,
-        Some(Command::Bake(args)) => run_bake(args).await?,
+        Some(Command::Boot(args)) => run_boot(args).await?,
+        Some(Command::Recipes(args)) => run_recipes(args).await?,
+        Some(Command::Stats(args)) => run_stats(args).await?,
+        Some(Command::Index(args)) => run_index(args).await?,
         Some(Command::Symbol(args)) => run_symbol(args).await?,
-        Some(Command::AllEndpoints(args)) => run_all_endpoints(args).await?,
+        Some(Command::Routes(args)) => run_routes(args).await?,
         Some(Command::Flow(args)) => run_flow(args).await?,
-        Some(Command::Slice(args)) => run_slice(args).await?,
-        Some(Command::FileFunctions(args)) => run_file_functions(args).await?,
-        Some(Command::Supersearch(args)) => run_supersearch(args).await?,
-        Some(Command::PackageSummary(args)) => run_package_summary(args).await?,
-        Some(Command::ArchitectureMap(args)) => run_architecture_map(args).await?,
-        Some(Command::SuggestPlacement(args)) => run_suggest_placement(args).await?,
-        Some(Command::FindDocs(args)) => run_find_docs(args).await?,
-        Some(Command::Patch(args)) => run_patch(args).await?,
-        Some(Command::BlastRadius(args)) => run_blast_radius(args).await?,
-        Some(Command::GraphRename(args)) => run_graph_rename(args).await?,
-        Some(Command::GraphCreate(args)) => run_graph_create(args).await?,
-        Some(Command::GraphAdd(args)) => run_graph_add(args).await?,
-        Some(Command::GraphMove(args)) => run_graph_move(args).await?,
-        Some(Command::TraceDown(args)) => run_trace_down(args).await?,
+        Some(Command::Read(args)) => run_read(args).await?,
+        Some(Command::Outline(args)) => run_outline(args).await?,
+        Some(Command::Search(args)) => run_search(args).await?,
+        Some(Command::Module(args)) => run_module(args).await?,
+        Some(Command::Map(args)) => run_map(args).await?,
+        Some(Command::Where(args)) => run_where(args).await?,
+        Some(Command::Docs(args)) => run_docs(args).await?,
+        Some(Command::Edit(args)) => run_edit(args).await?,
+        Some(Command::Callers(args)) => run_callers(args).await?,
+        Some(Command::Rename(args)) => run_rename(args).await?,
+        Some(Command::Create(args)) => run_create(args).await?,
+        Some(Command::Add(args)) => run_add(args).await?,
+        Some(Command::Move(args)) => run_move(args).await?,
+        Some(Command::Calls(args)) => run_calls(args).await?,
         Some(Command::Health(args)) => run_health(args).await?,
-        Some(Command::GraphDelete(args)) => run_graph_delete(args).await?,
-        Some(Command::SemanticSearch(args)) => run_semantic_search(args).await?,
+        Some(Command::Delete(args)) => run_delete(args).await?,
+        Some(Command::Ask(args)) => run_ask(args).await?,
         Some(Command::Script(args)) => run_script(args).await?,
         Some(Command::Update(args)) => run_update(args).await?,
         None => {
@@ -480,7 +480,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             println!("Getting started:");
             println!();
             println!("  1. Index your project");
-            println!("     yoyo bake --path /path/to/your/project");
+            println!("     yoyo index --path /path/to/your/project");
             println!();
             println!("  2. Connect to Claude Code");
             println!("     Add to ~/.claude/settings.json:");
@@ -516,20 +516,20 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             println!("  yoyo update          self-update binary");
             println!("  brew upgrade yoyo    if installed via Homebrew");
             println!();
-            println!("All 29 tools: yoyo --help");
+            println!("All commands:  yoyo --help");
             println!("Full docs:    https://github.com/avirajkhare00/yoyo");
         }
     }
     Ok(())
 }
 
-async fn run_llm_instructions(args: LlmInstructionsArgs) -> anyhow::Result<()> {
+async fn run_boot(args: BootArgs) -> anyhow::Result<()> {
     let json = crate::engine::llm_instructions(args.path)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_llm_workflows(args: LlmWorkflowsArgs) -> anyhow::Result<()> {
+async fn run_recipes(args: RecipesArgs) -> anyhow::Result<()> {
     let json = crate::engine::llm_workflows(
         args.path,
         Some(args.view.as_str().to_string()),
@@ -541,13 +541,13 @@ async fn run_llm_workflows(args: LlmWorkflowsArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_shake(args: ShakeArgs) -> anyhow::Result<()> {
+async fn run_stats(args: StatsArgs) -> anyhow::Result<()> {
     let json = crate::engine::shake(args.path)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_bake(args: BakeArgs) -> anyhow::Result<()> {
+async fn run_index(args: IndexArgs) -> anyhow::Result<()> {
     let json = crate::engine::bake(args.path)?;
     println!("{json}");
     Ok(())
@@ -559,7 +559,7 @@ async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_all_endpoints(args: AllEndpointsArgs) -> anyhow::Result<()> {
+async fn run_routes(args: RoutesArgs) -> anyhow::Result<()> {
     let json = crate::engine::all_endpoints(args.path)?;
     println!("{json}");
     Ok(())
@@ -571,20 +571,20 @@ async fn run_flow(args: FlowArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_slice(args: SliceArgs) -> anyhow::Result<()> {
+async fn run_read(args: ReadArgs) -> anyhow::Result<()> {
     let json = crate::engine::slice(args.path, args.file, args.start, args.end)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_file_functions(args: FileFunctionsArgs) -> anyhow::Result<()> {
+async fn run_outline(args: OutlineArgs) -> anyhow::Result<()> {
     let json =
         crate::engine::file_functions(args.path, args.file, Some(args.include_summaries))?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_supersearch(args: SupersearchArgs) -> anyhow::Result<()> {
+async fn run_search(args: SearchArgs) -> anyhow::Result<()> {
     let json = crate::engine::supersearch(
         args.path,
         args.query,
@@ -598,19 +598,19 @@ async fn run_supersearch(args: SupersearchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_package_summary(args: PackageSummaryArgs) -> anyhow::Result<()> {
+async fn run_module(args: ModuleArgs) -> anyhow::Result<()> {
     let json = crate::engine::package_summary(args.path, args.package)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_architecture_map(args: ArchitectureMapArgs) -> anyhow::Result<()> {
+async fn run_map(args: MapArgs) -> anyhow::Result<()> {
     let json = crate::engine::architecture_map(args.path, args.intent, args.limit)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_suggest_placement(args: SuggestPlacementArgs) -> anyhow::Result<()> {
+async fn run_where(args: WhereArgs) -> anyhow::Result<()> {
     let json = crate::engine::suggest_placement(
         args.path,
         args.function_name,
@@ -621,13 +621,13 @@ async fn run_suggest_placement(args: SuggestPlacementArgs) -> anyhow::Result<()>
     Ok(())
 }
 
-async fn run_find_docs(args: FindDocsArgs) -> anyhow::Result<()> {
+async fn run_docs(args: DocsArgs) -> anyhow::Result<()> {
     let json = crate::engine::find_docs(args.path, args.doc_type, Some(args.limit))?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_patch(args: PatchArgs) -> anyhow::Result<()> {
+async fn run_edit(args: EditArgs) -> anyhow::Result<()> {
     let json = if let Some(name) = args.symbol {
         crate::engine::patch_by_symbol(args.path, name, args.new_content, args.match_index)?
     } else if let (Some(file), Some(start), Some(end)) = (args.file, args.start, args.end) {
@@ -641,25 +641,25 @@ async fn run_patch(args: PatchArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_blast_radius(args: BlastRadiusArgs) -> anyhow::Result<()> {
+async fn run_callers(args: CallersArgs) -> anyhow::Result<()> {
     let json = crate::engine::blast_radius(args.path, args.symbol, args.depth)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_graph_rename(args: GraphRenameArgs) -> anyhow::Result<()> {
+async fn run_rename(args: RenameArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_rename(args.path, args.name, args.new_name)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_graph_create(args: GraphCreateArgs) -> anyhow::Result<()> {
+async fn run_create(args: CreateArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_create(args.path, args.file, args.function_name, args.language, None, None)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_graph_add(args: GraphAddArgs) -> anyhow::Result<()> {
+async fn run_add(args: AddArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_add(
         args.path,
         args.entity_type,
@@ -673,14 +673,14 @@ async fn run_graph_add(args: GraphAddArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_graph_move(args: GraphMoveArgs) -> anyhow::Result<()> {
+async fn run_move(args: MoveArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_move(args.path, args.name, args.to_file)?;
     println!("{json}");
     Ok(())
 }
 
 #[derive(Args, Debug)]
-pub struct TraceDownArgs {
+pub struct CallsArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -698,7 +698,7 @@ pub struct TraceDownArgs {
     pub file: Option<String>,
 }
 
-async fn run_trace_down(args: TraceDownArgs) -> anyhow::Result<()> {
+async fn run_calls(args: CallsArgs) -> anyhow::Result<()> {
     let json = crate::engine::trace_down(args.path, args.name, args.depth, args.file)?;
     println!("{json}");
     Ok(())
@@ -740,7 +740,7 @@ async fn run_health(args: HealthArgs) -> anyhow::Result<()> {
 }
 
 #[derive(Args, Debug)]
-pub struct GraphDeleteArgs {
+pub struct DeleteArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
@@ -758,13 +758,13 @@ pub struct GraphDeleteArgs {
     pub force: bool,
 }
 
-async fn run_graph_delete(args: GraphDeleteArgs) -> anyhow::Result<()> {
+async fn run_delete(args: DeleteArgs) -> anyhow::Result<()> {
     let json = crate::engine::graph_delete(args.path, args.name, args.file, args.force)?;
     println!("{json}");
     Ok(())
 }
 
-async fn run_semantic_search(args: SemanticSearchArgs) -> anyhow::Result<()> {
+async fn run_ask(args: AskArgs) -> anyhow::Result<()> {
     let json = crate::engine::semantic_search(args.path, args.query, args.limit, args.file)?;
     println!("{json}");
     Ok(())
