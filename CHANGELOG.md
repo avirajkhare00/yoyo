@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.8.2] - 2026-03-12
+
+### Fixed
+
+- Tests no longer spawn the detached embeddings worker during `bake()`, which avoids tempdir cleanup and shutdown races seen in macOS CI for short-lived engine tests.
+
 ## [1.8.1] - 2026-03-12
 
 ### Fixed

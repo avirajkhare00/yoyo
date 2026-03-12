@@ -979,9 +979,10 @@ pub fn bake(path: Option<String>) -> Result<String> {
     // Build embeddings DB for semantic_search in a detached thread — best-effort,
     // never blocks the bake response. semantic_search reads from a separate file
     // so there is no read/write race with the bake.db we just wrote.
-    // YOYO_SKIP_EMBED=1 disables the background build (used in tests that pre-seed embeddings.db).
+    // YOYO_SKIP_EMBED=1 disables the background build. Tests also skip it to avoid
+    // detached worker races during short-lived tempdir-based runs.
     let bakes_dir_for_embed = bakes_dir.clone();
-    if std::env::var("YOYO_SKIP_EMBED").as_deref() != Ok("1") {
+    if !cfg!(test) && std::env::var("YOYO_SKIP_EMBED").as_deref() != Ok("1") {
         std::thread::spawn(move || {
             if let Err(e) = crate::engine::embed::build_embeddings(&bakes_dir_for_embed) {
                 eprintln!("[yoyo] Embeddings skipped: {e}");
