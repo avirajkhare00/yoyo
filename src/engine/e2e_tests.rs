@@ -180,6 +180,10 @@ mod tests {
             "expected 'square' in blast_radius of 'multiply', got: {:?}",
             callers
         );
+        assert_eq!(
+            v["next_hint"],
+            "Use change(action=rename|move|delete) once the caller set is acceptable, or inspect(name=...) to review one caller."
+        );
     }
 
     #[test]
@@ -323,6 +327,10 @@ pub fn fetch_user(id: u32) -> String {
         assert!(v["endpoint"]["path"].as_str().unwrap().contains("/users"));
         assert_eq!(v["handler"]["name"], "get_user");
         assert!(v["handler"]["file"].as_str().unwrap().contains("handlers.rs"));
+        assert_eq!(
+            v["next_hint"],
+            "Use inspect(name=...) on the handler or a downstream callee to read the code behind this route."
+        );
     }
 
     #[test]
@@ -367,6 +375,48 @@ pub fn fetch_user(id: u32) -> String {
         assert!(err.to_string().contains("No endpoint matching"), "unexpected error: {}", err);
     }
 
+    #[test]
+    fn e2e_impact_symbol_mode_wraps_blast_radius() {
+        let dir = setup();
+        let out = crate::engine::impact(root(&dir), Some("multiply".into()), None, None, Some(1), None)
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        assert_eq!(v["tool"], "impact");
+        assert_eq!(v["mode"], "symbol");
+        assert_eq!(v["target"]["symbol"], "multiply");
+        assert!(v["callers"].as_array().unwrap().iter().any(|c| c["caller"] == "square"));
+        assert_eq!(
+            v["next_hint"],
+            "Use inspect(name=...) to read one affected caller, or change(action=rename|move|delete) when the impact is acceptable."
+        );
+    }
+
+    #[test]
+    fn e2e_impact_endpoint_mode_wraps_flow() {
+        let dir = setup_with_endpoint();
+        let out = crate::engine::impact(
+            root(&dir),
+            None,
+            Some("/users".into()),
+            None,
+            Some(3),
+            Some(true),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        assert_eq!(v["tool"], "impact");
+        assert_eq!(v["mode"], "endpoint");
+        assert_eq!(v["target"]["endpoint"], "/users");
+        assert_eq!(v["handler"]["name"], "get_user");
+        assert!(v["call_chain"].as_array().unwrap().iter().any(|n| n["name"] == "get_user"));
+        assert_eq!(
+            v["next_hint"],
+            "Use inspect(name=...) on the handler or downstream callee, or change(action=edit|rename|move) once you know where the request path lands."
+        );
+    }
+
     // ── graph_delete ──────────────────────────────────────────────────────────
 
     #[test]
@@ -385,30 +435,30 @@ pub fn fetch_user(id: u32) -> String {
     // ── script ────────────────────────────────────────────────────────────────
 
     #[test]
-    fn e2e_script_symbol_call() {
+    fn e2e_script_inspect_call() {
         let dir = setup();
         let out = crate::engine::run_script(
             root(&dir),
-            r#"symbol("add")"#.to_string(),
+            r#"inspect(#{name: "add", include_source: true})"#.to_string(),
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["tool"], "script");
-        let matches = v["result"]["matches"].as_array().unwrap();
-        assert!(!matches.is_empty(), "symbol('add') should find a match");
-        assert_eq!(matches[0]["name"], "add");
+        assert_eq!(v["result"]["tool"], "inspect");
+        assert_eq!(v["result"]["mode"], "symbol");
+        assert_eq!(v["result"]["matches"][0]["name"], "add");
     }
 
     #[test]
-    fn e2e_script_chain_symbol_then_blast_radius() {
+    fn e2e_script_chain_inspect_then_impact() {
         let dir = setup();
-        // Rhai equivalent of the old two-step pipeline: symbol → blast_radius using result
+        // Rhai equivalent of chaining task-shaped tools: inspect → impact using the resolved symbol
         let out = crate::engine::run_script(
             root(&dir),
             r#"
-                let s = symbol("add");
+                let s = inspect(#{name: "add"});
                 let name = s["matches"][0]["name"];
-                blast_radius(name)
+                impact(#{symbol: name})
             "#
             .to_string(),
         )
@@ -421,13 +471,13 @@ pub fn fetch_user(id: u32) -> String {
     #[test]
     fn e2e_script_conditional_on_caller_count() {
         let dir = setup();
-        // clamp has no callers — condition should branch to symbol("add")
+        // clamp has no callers — condition should branch to inspect(add)
         let out = crate::engine::run_script(
             root(&dir),
             r#"
-                let br = blast_radius("clamp");
+                let br = impact(#{symbol: "clamp"});
                 if br["callers"].len() == 0 {
-                    symbol("add")
+                    inspect(#{name: "add"})
                 } else {
                     br
                 }
@@ -437,19 +487,20 @@ pub fn fetch_user(id: u32) -> String {
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["tool"], "script");
-        // clamp has no callers → took the true branch → returned symbol("add") result
-        assert!(v["result"]["matches"].is_array(), "expected symbol result for 'add'");
+        // clamp has no callers → took the true branch → returned inspect(add) result
+        assert_eq!(v["result"]["tool"], "inspect");
+        assert_eq!(v["result"]["matches"][0]["name"], "add");
     }
 
     #[test]
     fn e2e_script_map_over_array() {
         let dir = setup();
-        // collect all function names from file_functions, filter for those containing 'add'
+        // collect all outlined functions from inspect(file=...), filter for those containing 'add'
         let out = crate::engine::run_script(
             root(&dir),
             r#"
-                let ff = file_functions("src/math.rs");
-                ff["functions"].filter(|f| f["name"].contains("add"))
+                let outline = inspect(#{file: "src/math.rs"});
+                outline["functions"].filter(|f| f["name"].contains("add"))
             "#
             .to_string(),
         )
@@ -465,7 +516,7 @@ pub fn fetch_user(id: u32) -> String {
         let dir = setup();
         let out = crate::engine::run_script(
             root(&dir),
-            r#"supersearch("add")"#.to_string(),
+            r#"search("add")"#.to_string(),
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -691,18 +742,17 @@ pub fn fetch_user(id: u32) -> String {
     // ── script integration ────────────────────────────────────────────────────
 
     #[test]
-    fn script_symbol_returns_function_matches() {
+    fn script_inspect_returns_function_metadata() {
         let dir = setup();
         let root = dir.path().to_string_lossy().into_owned();
         let result = crate::engine::run_script(
             Some(root),
-            r#"let s = symbol("add"); s"#.to_string(),
+            r#"let s = inspect(#{name: "add"}); s"#.to_string(),
         ).unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
-        let matches = v["result"]["matches"].as_array().expect("matches array");
-        assert!(!matches.is_empty(), "symbol('add') should return at least one match");
-        assert_eq!(matches[0]["name"], "add");
+        assert_eq!(v["result"]["tool"], "inspect");
+        assert_eq!(v["result"]["matches"][0]["name"], "add");
     }
 
     #[test]
@@ -718,6 +768,7 @@ pub fn fetch_user(id: u32) -> String {
             .iter().filter_map(|k| k.as_str()).collect();
         assert!(keys.contains(&"dead_code"), "health() must have dead_code key");
         assert!(keys.contains(&"large_functions"), "health() must have large_functions key");
+        assert!(keys.contains(&"next_hint"), "health() must expose next_hint");
     }
 
     #[test]
@@ -745,18 +796,18 @@ for d in h["dead_code"] {
     }
 
     #[test]
-    fn script_file_functions_aggregation() {
+    fn script_inspect_file_aggregation() {
         let dir = setup();
         let root = dir.path().to_string_lossy().into_owned();
-        // Aggregate fn count from two fixture files in one script call.
+        // Aggregate outlined function counts from two fixture files in one script call.
         let result = crate::engine::run_script(
             Some(root),
             r#"
 let files = ["src/main.rs", "src/utils.rs"];
 let report = [];
 for f in files {
-    let ff = file_functions(f);
-    let fns = ff["functions"];
+    let outline = inspect(#{file: f});
+    let fns = outline["functions"];
     report += [#{ file: f, fn_count: fns.len() }];
 }
 report

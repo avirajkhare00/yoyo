@@ -15,11 +15,11 @@ mod util;
 mod e2e_tests;
 
 pub use analysis::{blast_radius, find_docs, graph_delete, health};
-pub use api::{all_endpoints, flow};
-pub use edit::{multi_patch, patch, patch_by_symbol, patch_string, slice, PatchEdit};
+pub use api::{all_endpoints, flow, impact};
+pub use edit::{change, multi_patch, patch, patch_by_symbol, patch_string, slice, PatchEdit};
 pub use graph::{graph_add, graph_create, graph_move, graph_rename, trace_down, Param};
 pub use index::{bake, llm_instructions, llm_workflows, shake, tool_catalog, tool_help};
 pub use nav::{architecture_map, package_summary, suggest_placement};
 pub use script::run_script;
-pub use search::{file_functions, semantic_search, supersearch, symbol};
+pub use search::{file_functions, inspect, semantic_search, supersearch, symbol};
 pub use update::self_update;

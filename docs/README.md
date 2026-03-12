@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 21 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST - not model memory. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
 
@@ -29,11 +29,11 @@ yoyo (the tool) works the same way. Each tool does one thing cleanly. The power 
 
 | Combination | What it does |
 |---|---|
-| `search` → `symbol` → `edit` | Find it, read it, change it |
-| `callers` → `health` → `delete` | Who calls this? Is it dead? Remove it safely. |
-| `flow` → `bulk_edit` | Trace the full request path, fix it end-to-end in one shot. |
+| `search` → `inspect` → `change` | Find it, read it, change it |
+| `impact` → `health` → `change` | What breaks if I touch this? Is it dead? Change it safely. |
+| `impact` → `change` | Trace the full request path, fix it end-to-end in one shot. |
 | `index` → `ask` → `map` | Where does this new function belong? |
-| `map` → `routes` → `create` | Understand the shape, find the gap, fill it. |
+| `map` → `routes` → `change` | Understand the shape, find the gap, fill it. |
 
 No single tool is the point. The orchestration is.
 
@@ -42,9 +42,9 @@ No single tool is the point. The orchestration is.
 ## How it works
 
 ```
-index →  parse source files with tree-sitter  →  write bake.db
-read  →  symbol / search / read / …           →  query bake.db
-write →  edit / rename / …                     →  write file + reindex
+index   → parse source files with tree-sitter → write bake.db
+inspect/search/ask/impact/...                → query bake.db
+change  → route write intent                  → write file + reindex
 ```
 
 **Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically so the next read is always fresh.
@@ -57,10 +57,10 @@ The index is a SQLite database (`bakes/latest/bake.db`) in your project root. No
 
 Each session follows this sequence:
 
-1. **Bootstrap** — Claude calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category and concurrency rules. `index` builds the AST index.
-2. **Read** — `search`, `symbol`, `read` replace grep and cat. Structured data from the AST index, not line matches.
-3. **Understand** — `callers`, `flow`, `health` answer structural questions no text tool can: who calls this? what does this touch? is this dead?
-4. **Write** — `edit`, `rename`, `create`, `add`, `move`, `delete` mutate code and auto-reindex. Claude does not edit files directly when a yoyo write tool applies.
+1. **Bootstrap** — Claude calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. `index` builds the AST index.
+2. **Read** — `inspect`, `search`, `ask` replace grep and ad hoc file reads. Structured data from the AST index, not line matches.
+3. **Understand** — `impact`, `health`, `routes` answer structural questions no text tool can: what touches this? what route lands here? is this dead?
+4. **Write** — `change` is the MCP write verb. It routes to the underlying write mechanisms and auto-reindexes. Claude does not edit files directly when a yoyo write tool applies.
 5. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
 
 Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.
@@ -92,8 +92,8 @@ sudo cp target/release/yoyo /usr/local/bin/yoyo
 **Quick start:**
 ```bash
 yoyo bake --path /path/to/your/project
-yoyo shake --path /path/to/your/project
-yoyo symbol --path /path/to/your/project --name myFunction
+yoyo inspect --path /path/to/your/project --name myFunction
+yoyo impact --path /path/to/your/project --symbol myFunction
 ```
 
 ---
@@ -142,7 +142,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
         "hooks": [
           {
             "type": "command",
-            "command": "echo '[yoyo] Use mcp__yoyo__search instead of Grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__read for line ranges.'"
+            "command": "echo '[yoyo] Use mcp__yoyo__search instead of Grep. Use mcp__yoyo__inspect for code reads. Use mcp__yoyo__impact for caller and route tracing. Use mcp__yoyo__change for code changes.'"
           }
         ]
       }
@@ -153,33 +153,30 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 ---
 
-## Tools reference (21 MCP tools)
+## Tools reference (12 MCP tools)
 
 ### Bootstrap
 
 | Tool | requires index | What it does |
 |---|---|---|
-| `boot` | No | Lean bootstrap: tool names grouped by category, concurrency rules (~500 tokens). Call first. |
+| `boot` | No | Lean bootstrap: tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules (~500 tokens). Call first. |
 | `index` | No | Parse the project, write the AST index (`bake.db`). Run before any read-indexed tool. |
 | `help` | No | Progressive discovery: params, output shape, example, and limitations for any tool on demand. |
 
-### Read
+### Locate
 
 | Tool | requires index | What it does |
 |---|---|---|
-| `read` | No | Read any line range from any file. Use `start_line`/`end_line` from `symbol` output. |
-| `symbol` | Yes | Find a function by name. Returns file, line range, visibility, calls, optionally full body. |
-| `outline` | Yes | Every function in a file with line ranges and cyclomatic complexity. |
+| `inspect` | No* | Inspect a symbol, file outline, or line range from one entrypoint. `file`+`start_line`/`end_line` works without index; symbol/file-outline modes use the index. |
 | `search` | Yes | AST-aware search. Finds call sites, assignments, identifiers. Replaces grep. |
 | `ask` | Yes | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 
-### Understand
+### Relate
 
 | Tool | requires index | What it does |
 |---|---|---|
 | `map` | Yes | Directory tree with inferred roles (routes, services, models, etc.). |
-| `callers` | Yes | All functions that transitively call a symbol. Affected file list included. |
-| `flow` | Yes | Endpoint → handler → call chain to boundary in one call. |
+| `impact` | Yes | Task-shaped impact analysis for a symbol or endpoint. Symbol mode wraps callers; endpoint mode wraps flow. |
 | `routes` | Yes | All detected HTTP routes (Express, Actix, Rocket, gin, echo, net/http). |
 | `health` | Yes | Dead code, large functions (high complexity + fan-out), duplicate name hints. |
 
@@ -187,25 +184,19 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 | Tool | What it does |
 |---|---|
-| `edit` | Write changes by symbol name, line range, or exact string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
-| `bulk_edit` | Apply N edits across M files in one call, bottom-up so offsets stay valid. |
-| `rename` | Rename a symbol at its definition and every call site, atomically. |
-| `create` | Create a new file with an initial function scaffold. Errors if file exists or parent dir missing. |
-| `add` | Insert a function scaffold into an existing file, optionally after a named symbol. |
-| `move` | Move a function from one file to another. Removes from source, appends to destination. |
-| `delete` | Remove a function by name. Checks blast radius before deleting. |
+| `change` | Task-shaped write entrypoint over `edit`, `bulk_edit`, `rename`, `move`, `delete`, `create`, and `add`. |
 
 ### Orchestration
 
 | Tool | What it does |
 |---|---|
-| `script` | Run a Rhai script with yoyo tools as functions. |
+| `script` | Run a Rhai script over the same task-shaped yoyo functions exposed in MCP. |
 
 ### CLI-only tools (not exposed via MCP)
 
 These are available via `yoyo <command>` but removed from MCP to keep context cost low:
 
-`shake`, `find_docs`, `suggest_placement`, `package_summary`, `trace_down`, `patch_bytes`, `llm_workflows`, `api_surface`, `api_trace`, `crud_operations`.
+`read`, `symbol`, `outline`, `flow`, `callers`, `edit`, `bulk_edit`, `rename`, `create`, `add`, `move`, `delete`, `shake`, `find_docs`, `suggest_placement`, `package_summary`, `trace_down`, `patch_bytes`, `llm_workflows`, `api_surface`, `api_trace`, `crud_operations`.
 
 ---
 
@@ -229,9 +220,9 @@ These are available via `yoyo <command>` but removed from MCP to keep context co
 | Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | Zig | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 
-**Endpoints** — route detection via `routes`, `flow` (MCP) and `api_trace`, `crud_operations` (CLI).
-**Import graph** — `callers` uses imports to expand affected files.
-**flow** — BFS call chain to db/http/queue boundaries (Rust + Go today).
+**Endpoints** — route detection via `routes`, `impact` (MCP) and `api_trace`, `crud_operations` (CLI).
+**Import graph** — `impact(symbol=...)` uses caller/import expansion to widen affected files.
+**Endpoint chain tracing** — `impact(endpoint=...)` wraps the underlying flow analysis to db/http/queue boundaries (Rust + Go today).
 
 ---
 
@@ -239,8 +230,8 @@ These are available via `yoyo <command>` but removed from MCP to keep context co
 
 - **Route detection is partial** — works for Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Axum, NestJS, Fastify, Django, and dynamic routers not yet supported.
 - **`health` false positives for HTTP handlers** — functions registered via router (not direct calls) may be flagged as dead code. The static call graph can't see router registration.
-- **`flow` call chain** — Rust + Go only. TypeScript and Python not yet supported.
-- **Call graph is name-based** — `callers` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
+- **`flow` call chain** — Rust + Go only. TypeScript and Python not yet supported. In MCP, this limitation surfaces through `impact(endpoint=...)`.
+- **Call graph is name-based** — `impact(symbol=...)` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
 - **C++ namespace false positives** — `namespace` blocks may appear as top-complexity entries.
 - **`index` performance on large C codebases** — can time out on repos with 700+ files (tracked in [#65](https://github.com/avirajkhare00/yoyo/issues/65)).
 
@@ -254,16 +245,16 @@ Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkha
 src/
   main.rs        binary entrypoint — CLI vs MCP switch
   cli.rs         CLI (clap) — exposes all engine capabilities
-  mcp.rs         MCP JSON-RPC server over stdio — curated 21-tool surface
+  mcp.rs         MCP JSON-RPC server over stdio — curated 12-tool surface
   engine/
     index.rs     boot (llm_instructions), index (bake), shake, help
-    search.rs    symbol, search (supersearch), outline (file_functions), ask (semantic_search)
-    edit.rs      edit (patch), bulk_edit (multi_patch), read (slice) + compiler guard
+    search.rs    inspect, symbol, search (supersearch), outline (file_functions), ask (semantic_search)
+    edit.rs      change, edit (patch), bulk_edit (multi_patch), read (slice) + compiler guard
     graph.rs     rename, create, add, move, trace_chain
     analysis.rs  callers (blast_radius), health, delete (graph_delete), find_docs
     embed.rs     fastembed ONNX embeddings + SQLite store
     db.rs        SQLite bake index (bake.db) — read/write
-    api.rs       routes (all_endpoints), flow, api_surface, api_trace, crud_operations
+    api.rs       routes (all_endpoints), impact endpoint tracing, flow, api_surface, api_trace, crud_operations
     nav.rs       map (architecture_map), package_summary, suggest_placement
     types.rs     shared payload structs
     util.rs      resolve_project_root, load_bake_index, reindex_files

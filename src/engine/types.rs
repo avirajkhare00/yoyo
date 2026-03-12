@@ -278,6 +278,8 @@ pub(crate) struct SymbolPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) name: String,
     pub(crate) matches: Vec<SymbolMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -341,6 +343,8 @@ pub(crate) struct SupersearchPayload {
     pub(crate) pattern: String,
     pub(crate) exclude_tests: bool,
     pub(crate) matches: Vec<SupersearchMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -604,6 +608,8 @@ pub(crate) struct FlowPayload {
     pub(crate) summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chain_warning: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
 }
 
 // ── health ────────────────────────────────────────────────────────────────────
@@ -627,6 +633,8 @@ pub(crate) struct HealthPayload {
     pub(crate) insider_trading: Vec<InsiderTrading>,
     /// Fowler: Duplicate Code — same-stem functions spread across multiple files.
     pub(crate) duplicate_code: Vec<DuplicateGroup>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -638,6 +646,8 @@ pub(crate) struct HealthCompactPayload {
     pub(crate) summary: String,
     pub(crate) sections: Vec<CompactSection>,
     pub(crate) detail_hints: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
 }
 
 #[derive(Serialize)]

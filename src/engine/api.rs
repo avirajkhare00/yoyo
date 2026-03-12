@@ -160,6 +160,70 @@ pub fn flow(
         unresolved,
         summary,
         chain_warning,
+        next_hint: Some("Use inspect(name=...) on the handler or a downstream callee to read the code behind this route."),
     };
     Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+/// Public entrypoint for the `impact` tool: understand symbol or endpoint impact
+/// from one task-shaped surface.
+pub fn impact(
+    path: Option<String>,
+    symbol: Option<String>,
+    endpoint: Option<String>,
+    method: Option<String>,
+    depth: Option<usize>,
+    include_source: Option<bool>,
+) -> Result<String> {
+    let root = resolve_project_root(path.clone())?;
+
+    let (mode, target, delegated, next_hint) = if let Some(symbol) = symbol {
+        if endpoint.is_some() {
+            return Err(anyhow!(
+                "impact accepts either symbol or endpoint, not both"
+            ));
+        }
+        (
+            "symbol",
+            serde_json::json!({
+                "symbol": symbol,
+            }),
+            crate::engine::blast_radius(path, symbol, depth)?,
+            "Use inspect(name=...) to read one affected caller, or change(action=rename|move|delete) when the impact is acceptable.",
+        )
+    } else if let Some(endpoint) = endpoint {
+        (
+            "endpoint",
+            serde_json::json!({
+                "endpoint": endpoint,
+                "method": method,
+            }),
+            crate::engine::flow(path, endpoint, method, depth, include_source.unwrap_or(false))?,
+            "Use inspect(name=...) on the handler or downstream callee, or change(action=edit|rename|move) once you know where the request path lands.",
+        )
+    } else {
+        return Err(anyhow!(
+            "impact requires either symbol=<name> or endpoint=<path substring>"
+        ));
+    };
+
+    let mut parsed = serde_json::from_str::<serde_json::Value>(&delegated)?
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("impact expected object payload from delegated relation tool"))?;
+    parsed.remove("tool");
+    parsed.remove("version");
+    parsed.remove("project_root");
+    parsed.remove("next_hint");
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("tool".to_string(), serde_json::json!("impact"));
+    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert("project_root".to_string(), serde_json::json!(root));
+    payload.insert("mode".to_string(), serde_json::json!(mode));
+    payload.insert("target".to_string(), target);
+    payload.extend(parsed);
+    payload.insert("next_hint".to_string(), serde_json::json!(next_hint));
+
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
 }

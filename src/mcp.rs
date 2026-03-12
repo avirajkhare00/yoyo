@@ -146,15 +146,9 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
             let n_tools = crate::engine::tool_catalog().len();
             let instructions = format!(
                 "yoyo: {n_tools} AST-grounded code intelligence tools. \
-                    ALWAYS use yoyo tools INSTEAD OF built-ins: \
-                    search INSTEAD OF Grep/rg. \
-                    symbol(include_source=true) INSTEAD OF Read for code. \
-                    read INSTEAD OF Read for line ranges. \
-                    edit INSTEAD OF StrReplace. \
-                    bulk_edit INSTEAD OF multiple StrReplace calls. \
-                    map INSTEAD OF Glob for finding files. \
-                    UNIQUE tools (no built-in equivalent): callers, flow, health, rename, move, delete, add, routes, ask, outline, script. \
-                    ON FIRST CONTACT: call boot and index in parallel. Call help(name) for any tool's params and examples."
+                    Think in tasks, not raw primitives: orient with boot/index/map/routes/health; locate with inspect/search/ask; relate with impact/routes/health; change with change. \
+                    ALWAYS use yoyo tools INSTEAD OF built-ins when they fit: inspect INSTEAD OF jumping between file reads and symbol lookup. search INSTEAD OF Grep/rg. impact INSTEAD OF stitching together callers and flow manually. change INSTEAD OF raw StrReplace when the intent is edit, rename, move, delete, create, or add. map INSTEAD OF Glob for finding files. \
+                    ON FIRST CONTACT: call boot and index in parallel. Use help(name) for tool docs and help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact') for task routing."
             );
             let result = json!({
                 "protocolVersion": protocol_version,
@@ -240,19 +234,28 @@ fn build_registry() -> Vec<ToolEntry> {
             schema: schema("index", d("index"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::bake(path)),
         },
-        // ── read ─────────────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema("read", d("read"), json!({
+            schema: schema("inspect", d("inspect"), json!({
                 "path": p(),
-                "file": s("File path relative to the project root"),
-                "start_line": i("1-based start line (inclusive)."),
-                "end_line": i("1-based end line (inclusive).")
+                "name": s("Function name for symbol mode."),
+                "file": s("File path for file or line-range mode."),
+                "start_line": i("1-based start line for line-range mode."),
+                "end_line": i("1-based end line for line-range mode."),
+                "include_source": b("Include function body in symbol mode."),
+                "include_summaries": b("Include summaries in file mode."),
+                "limit": i("Maximum number of symbol matches."),
+                "stdlib": b("Include stdlib matches in symbol mode.")
             })),
-            handler: Box::new(|a, path| crate::engine::slice(
+            handler: Box::new(|a, path| crate::engine::inspect(
                 path,
-                a.str_req("file", "read")?,
-                a.uint_req("start_line", "read")? as u32,
-                a.uint_req("end_line", "read")? as u32,
+                a.str_opt("name"),
+                a.str_opt("file"),
+                a.uint_opt("start_line").map(|v| v as u32),
+                a.uint_opt("end_line").map(|v| v as u32),
+                a.bool_opt("include_source"),
+                a.bool_opt("include_summaries"),
+                a.uint_opt("limit"),
+                a.bool_opt("stdlib"),
             )),
         },
         // ── read-indexed ─────────────────────────────────────────────────────
@@ -263,36 +266,6 @@ fn build_registry() -> Vec<ToolEntry> {
                 "limit": {"type": "integer", "description": "Max directories to return (default 100)."}
             })),
             handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"), a.uint_opt("limit"))),
-        },
-        ToolEntry {
-            schema: schema("symbol", d("symbol"), json!({
-                "path": p(),
-                "name": s("Symbol (function) name to look up"),
-                "include_source": b("If true, include the function body in each match"),
-                "file": s("Optional file path substring to narrow results"),
-                "limit": i("Max matches to return (default 20)."),
-                "stdlib": b("If true, also search installed toolchain stdlibs")
-            })),
-            handler: Box::new(|a, path| crate::engine::symbol(
-                path,
-                a.str_req("name", "symbol")?,
-                a.bool_opt("include_source").unwrap_or(false),
-                a.str_opt("file"),
-                a.uint_opt("limit"),
-                a.bool_opt("stdlib").unwrap_or(false),
-            )),
-        },
-        ToolEntry {
-            schema: schema("outline", d("outline"), json!({
-                "path": p(),
-                "file": s("File path relative to the project root"),
-                "include_summaries": b("Whether to include summaries (currently a no-op placeholder)")
-            })),
-            handler: Box::new(|a, path| crate::engine::file_functions(
-                path,
-                a.str_req("file", "outline")?,
-                a.bool_opt("include_summaries"),
-            )),
         },
         ToolEntry {
             schema: schema("search", d("search"), json!({
@@ -351,31 +324,21 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
         },
         ToolEntry {
-            schema: schema_req("flow", d("flow"), &["endpoint"], json!({
+            schema: schema("impact", d("impact"), json!({
                 "path": p(),
-                "endpoint": s("URL path substring to match (e.g. '/users')"),
-                "method": s("Optional HTTP method filter (GET, POST, PUT, DELETE, PATCH)"),
-                "depth": i("Max call chain depth (default 5)"),
-                "include_source": b("If true, include the handler function source inline")
+                "symbol": s("Function name for symbol-impact mode."),
+                "endpoint": s("URL path substring for endpoint-impact mode."),
+                "method": s("Optional HTTP method filter for endpoint mode."),
+                "depth": i("Max caller/call-chain depth."),
+                "include_source": b("Include handler source inline in endpoint mode.")
             })),
-            handler: Box::new(|a, path| crate::engine::flow(
+            handler: Box::new(|a, path| crate::engine::impact(
                 path,
-                a.str_req("endpoint", "flow")?,
+                a.str_opt("symbol"),
+                a.str_opt("endpoint"),
                 a.str_opt("method"),
                 a.uint_opt("depth"),
-                a.bool_opt("include_source").unwrap_or(false),
-            )),
-        },
-        ToolEntry {
-            schema: schema_req("callers", d("callers"), &["symbol"], json!({
-                "path": p(),
-                "symbol": s("Function name to analyse"),
-                "depth": i("Maximum call-graph depth to traverse (default 2)")
-            })),
-            handler: Box::new(|a, path| crate::engine::blast_radius(
-                path,
-                a.str_req("symbol", "callers")?,
-                a.uint_opt("depth"),
+                a.bool_opt("include_source"),
             )),
         },
         ToolEntry {
@@ -396,43 +359,20 @@ fn build_registry() -> Vec<ToolEntry> {
         },
         // ── write ────────────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema("edit", d("edit"), json!({
+            schema: schema_req("change", d("change"), &["action"], json!({
                 "path": p(),
-                "name": s("Symbol name to edit (resolves location from index)."),
-                "match_index": i("0-based index when multiple symbols match name (default 0)"),
-                "file": s("File path relative to project root (for range-based or content-match edit)"),
-                "start": i("1-based start line (inclusive), for range-based edit"),
-                "end": i("1-based end line (inclusive), for range-based edit"),
-                "new_content": s("Replacement content for range-based edit"),
-                "old_string": s("Exact string to find and replace (content-match mode)"),
-                "new_string": s("Replacement string for content-match mode")
-            })),
-            handler: Box::new(|a, path| {
-                if let Some(old_string) = a.str_opt("old_string") {
-                    let new_string = a.str_req("new_string", "edit")?;
-                    crate::engine::patch_string(path, a.str_req("file", "edit")?, old_string, new_string)
-                } else {
-                    let new_content = a.str_req("new_content", "edit")?;
-                    if let Some(name) = a.str_opt("name") {
-                        crate::engine::patch_by_symbol(path, name, new_content, a.uint_opt("match_index"))
-                    } else {
-                        crate::engine::patch(
-                            path,
-                            a.str_req("file", "edit")?,
-                            a.uint_req("start", "edit")? as u32,
-                            a.uint_req("end", "edit")? as u32,
-                            new_content,
-                        )
-                    }
-                }
-            }),
-        },
-        ToolEntry {
-            schema: schema_req("bulk_edit", d("bulk_edit"), &["edits"], json!({
-                "path": p(),
+                "action": s("Write action: edit | bulk_edit | rename | move | delete | create | add."),
+                "name": s("Symbol name for edit/rename/move/delete/add."),
+                "file": s("File path for edit/create/add."),
+                "start_line": i("1-based start line for line-range edit."),
+                "end_line": i("1-based end line for line-range edit."),
+                "new_content": s("Replacement content for edit."),
+                "old_string": s("Exact content-match source for edit."),
+                "new_string": s("Content-match replacement for edit."),
+                "match_index": i("0-based symbol disambiguation for edit."),
                 "edits": json!({
                     "type": "array",
-                    "description": "Array of edit operations",
+                    "description": "Edit list for bulk_edit action.",
                     "items": {
                         "type": "object",
                         "required": ["file", "byte_start", "byte_end", "new_content"],
@@ -443,117 +383,67 @@ fn build_registry() -> Vec<ToolEntry> {
                             "new_content": {"type": "string"}
                         }
                     }
-                })
+                }),
+                "new_name": s("Rename target."),
+                "to_file": s("Destination file for move."),
+                "force": b("Allow delete even with callers."),
+                "function_name": s("Function name for create."),
+                "entity_type": s("Scaffold type for add."),
+                "after_symbol": s("Insert add scaffold after an existing symbol."),
+                "language": s("Optional language override for create/add."),
+                "params": s("Optional typed params JSON for create/add."),
+                "returns": s("Optional return type for create/add."),
+                "on": s("Optional receiver/owner type for add.")
             })),
             handler: Box::new(|a, path| {
-                let edits_val = a.0.get("edits").and_then(|v| v.as_array())
-                    .ok_or_else(|| anyhow::anyhow!("Missing required 'edits' argument for bulk_edit"))?;
-                let mut edits = Vec::new();
-                for item in edits_val {
-                    let file = item.get("file").and_then(|v| v.as_str())
-                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'file' field"))?.to_string();
-                    let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
-                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_start' field"))? as usize;
-                    let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
-                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'byte_end' field"))? as usize;
-                    let new_content = item.get("new_content").and_then(|v| v.as_str())
-                        .ok_or_else(|| anyhow::anyhow!("Each edit must have a 'new_content' field"))?.to_string();
-                    edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
-                }
-                crate::engine::multi_patch(path, edits)
-            }),
-        },
-        ToolEntry {
-            schema: schema_req("rename", d("rename"), &["name", "new_name"], json!({
-                "path": p(),
-                "name": s("Current identifier name to rename"),
-                "new_name": s("New identifier name")
-            })),
-            handler: Box::new(|a, path| crate::engine::graph_rename(
-                path,
-                a.str_req("name", "rename")?,
-                a.str_req("new_name", "rename")?,
-            )),
-        },
-        ToolEntry {
-            schema: schema_req("create", d("create"), &["file", "function_name"], json!({
-                "path": p(),
-                "file": s("File path relative to project root"),
-                "function_name": s("Name for the initial scaffolded function"),
-                "language": s("Optional: override language detection"),
-                "params": s("Optional: typed parameters as [{\"name\":\"x\",\"type\":\"i32\"},...]"),
-                "returns": s("Optional: return type string")
-            })),
-            handler: Box::new(|a, path| {
-                let params = parse_params(a.0.get("params"));
-                crate::engine::graph_create(
+                let edits = match a.0.get("edits").and_then(|v| v.as_array()) {
+                    Some(items) => {
+                        let mut edits = Vec::new();
+                        for item in items {
+                            let file = item.get("file").and_then(|v| v.as_str())
+                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'file' field"))?.to_string();
+                            let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
+                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'byte_start' field"))? as usize;
+                            let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
+                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'byte_end' field"))? as usize;
+                            let new_content = item.get("new_content").and_then(|v| v.as_str())
+                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'new_content' field"))?.to_string();
+                            edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
+                        }
+                        Some(edits)
+                    }
+                    None => None,
+                };
+                crate::engine::change(
                     path,
-                    a.str_req("file", "create")?,
-                    a.str_req("function_name", "create")?,
-                    a.str_opt("language"),
-                    params,
-                    a.str_opt("returns"),
-                )
-            }),
-        },
-        ToolEntry {
-            schema: schema_req("add", d("add"), &["entity_type", "name", "file"], json!({
-                "path": p(),
-                "entity_type": s("Scaffold type: fn (Rust) | function (TS/JS) | def (Python) | func (Go) | test"),
-                "name": s("Name for the new function/entity"),
-                "file": s("File path relative to project root"),
-                "after_symbol": s("Optional: insert after this existing symbol"),
-                "language": s("Optional: override language detection"),
-                "params": s("Optional: typed parameters as [{\"name\":\"x\",\"type\":\"i32\"},...]"),
-                "returns": s("Optional: return type string"),
-                "on": s("Optional: struct/class name for impl/class block")
-            })),
-            handler: Box::new(|a, path| {
-                let params = parse_params(a.0.get("params"));
-                crate::engine::graph_add(
-                    path,
-                    a.str_req("entity_type", "add")?,
-                    a.str_req("name", "add")?,
-                    a.str_req("file", "add")?,
+                    a.str_req("action", "change")?,
+                    a.str_opt("name"),
+                    a.str_opt("file"),
+                    a.uint_opt("start_line").map(|v| v as u32),
+                    a.uint_opt("end_line").map(|v| v as u32),
+                    a.str_opt("new_content"),
+                    a.str_opt("old_string"),
+                    a.str_opt("new_string"),
+                    a.uint_opt("match_index"),
+                    edits,
+                    a.str_opt("new_name"),
+                    a.str_opt("to_file"),
+                    a.bool_opt("force"),
+                    a.str_opt("function_name"),
+                    a.str_opt("entity_type"),
                     a.str_opt("after_symbol"),
                     a.str_opt("language"),
-                    params,
+                    parse_params(a.0.get("params")),
                     a.str_opt("returns"),
                     a.str_opt("on"),
                 )
             }),
         },
-        ToolEntry {
-            schema: schema_req("move", d("move"), &["name", "to_file"], json!({
-                "path": p(),
-                "name": s("Exact function name to move"),
-                "to_file": s("Destination file path relative to project root")
-            })),
-            handler: Box::new(|a, path| crate::engine::graph_move(
-                path,
-                a.str_req("name", "move")?,
-                a.str_req("to_file", "move")?,
-            )),
-        },
-        ToolEntry {
-            schema: schema_req("delete", d("delete"), &["name"], json!({
-                "path": p(),
-                "name": s("Exact function name to delete"),
-                "file": s("Optional file path substring to disambiguate"),
-                "force": b("Delete even if active callers exist (default false)")
-            })),
-            handler: Box::new(|a, path| crate::engine::graph_delete(
-                path,
-                a.str_req("name", "delete")?,
-                a.str_opt("file"),
-                a.bool_opt("force").unwrap_or(false),
-            )),
-        },
         // ── orchestration ────────────────────────────────────────────────────
         ToolEntry {
             schema: schema_req("script", d("script"), &["code"], json!({
                 "path": p(),
-                "code": s("Rhai script to execute. Read tools: symbol(name), blast_radius(name), health(), supersearch(query), file_functions(file), flow(endpoint, method), slice(file, start, end). Write tools: graph_delete(name).")
+                "code": s("Rhai script to execute. Task-shaped functions: boot(), index(), inspect(#{...}), search(\"...\") or search(#{...}), ask(\"...\") or ask(#{...}), map(\"...\") or map(#{...}), routes(), impact(#{...}), health() or health(#{...}), change(#{...}), help(\"...\").")
             })),
             handler: Box::new(|a, path| {
                 crate::engine::run_script(path, a.str_req("code", "script")?)
@@ -606,11 +496,6 @@ impl Args {
         self.0.get(key).and_then(|v| {
             v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
         }).map(|n| n as usize)
-    }
-    fn uint_req(&self, key: &str, tool: &str) -> Result<u64> {
-        self.0.get(key).and_then(|v| {
-            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
-        }).ok_or_else(|| anyhow::anyhow!("Missing required '{}' argument for {}", key, tool))
     }
 }
 
@@ -731,5 +616,23 @@ mod tests {
             "In tool_catalog() but not build_registry(): {:?}", only_in_catalog);
         assert!(only_in_registry.is_empty(),
             "In build_registry() but not tool_catalog(): {:?}", only_in_registry);
+    }
+
+    #[test]
+    fn initialize_instructions_include_task_routing_guidance() {
+        let response = rt().block_on(handle_request(JsonRpcRequest {
+            jsonrpc: Some("2.0".to_string()),
+            id: Some(json!(1)),
+            method: "initialize".to_string(),
+            params: json!({"protocolVersion": "2025-11-25"}),
+        }));
+
+        let instructions = response.result.unwrap()["instructions"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        assert!(instructions.contains("Think in tasks, not raw primitives"));
+        assert!(instructions.contains("help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact')"));
     }
 }

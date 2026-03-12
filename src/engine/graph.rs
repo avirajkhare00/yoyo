@@ -69,6 +69,7 @@ fn collect_source_files(root: &PathBuf) -> Vec<PathBuf> {
 }
 
 /// A typed parameter for scaffold generation.
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct Param {
     pub name: String,
     pub type_str: String,

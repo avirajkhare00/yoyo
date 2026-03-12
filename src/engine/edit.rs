@@ -551,6 +551,122 @@ pub fn patch_by_symbol(
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
 }
+
+/// Public entrypoint for the `change` tool: one write surface that routes to existing
+/// structural write primitives.
+#[allow(clippy::too_many_arguments)]
+pub fn change(
+    path: Option<String>,
+    action: String,
+    name: Option<String>,
+    file: Option<String>,
+    start_line: Option<u32>,
+    end_line: Option<u32>,
+    new_content: Option<String>,
+    old_string: Option<String>,
+    new_string: Option<String>,
+    match_index: Option<usize>,
+    edits: Option<Vec<PatchEdit>>,
+    new_name: Option<String>,
+    to_file: Option<String>,
+    force: Option<bool>,
+    function_name: Option<String>,
+    entity_type: Option<String>,
+    after_symbol: Option<String>,
+    language: Option<String>,
+    params: Option<Vec<crate::engine::Param>>,
+    returns: Option<String>,
+    on: Option<String>,
+) -> Result<String> {
+    let action = action.trim().to_ascii_lowercase();
+    let result = match action.as_str() {
+        "edit" => {
+            if let (Some(name), Some(new_content)) = (name.clone(), new_content.clone()) {
+                crate::engine::patch_by_symbol(path, name, new_content, match_index)?
+            } else if let (Some(file), Some(old_string), Some(new_string)) =
+                (file.clone(), old_string, new_string)
+            {
+                crate::engine::patch_string(path, file, old_string, new_string)?
+            } else if let (Some(file), Some(start_line), Some(end_line), Some(new_content)) =
+                (file.clone(), start_line, end_line, new_content.clone())
+            {
+                crate::engine::patch(path, file, start_line, end_line, new_content)?
+            } else {
+                return Err(anyhow!(
+                    "change action=edit requires either name+new_content, file+old_string+new_string, or file+start_line+end_line+new_content"
+                ));
+            }
+        }
+        "bulk_edit" => {
+            let edits = edits.ok_or_else(|| anyhow!("change action=bulk_edit requires edits"))?;
+            crate::engine::multi_patch(path, edits)?
+        }
+        "rename" => {
+            let name = name.ok_or_else(|| anyhow!("change action=rename requires name"))?;
+            let new_name =
+                new_name.ok_or_else(|| anyhow!("change action=rename requires new_name"))?;
+            crate::engine::graph_rename(path, name, new_name)?
+        }
+        "move" => {
+            let name = name.ok_or_else(|| anyhow!("change action=move requires name"))?;
+            let to_file =
+                to_file.ok_or_else(|| anyhow!("change action=move requires to_file"))?;
+            crate::engine::graph_move(path, name, to_file)?
+        }
+        "delete" => {
+            let name = name.ok_or_else(|| anyhow!("change action=delete requires name"))?;
+            crate::engine::graph_delete(path, name, file, force.unwrap_or(false))?
+        }
+        "create" => {
+            let file = file.ok_or_else(|| anyhow!("change action=create requires file"))?;
+            let function_name = function_name
+                .ok_or_else(|| anyhow!("change action=create requires function_name"))?;
+            crate::engine::graph_create(path, file, function_name, language, params, returns)?
+        }
+        "add" => {
+            let entity_type =
+                entity_type.ok_or_else(|| anyhow!("change action=add requires entity_type"))?;
+            let name = name.ok_or_else(|| anyhow!("change action=add requires name"))?;
+            let file = file.ok_or_else(|| anyhow!("change action=add requires file"))?;
+            crate::engine::graph_add(path, entity_type, name, file, after_symbol, language, params, returns, on)?
+        }
+        _ => {
+            return Err(anyhow!(
+                "Unknown change action '{}'. Available: edit, bulk_edit, rename, move, delete, create, add",
+                action
+            ))
+        }
+    };
+
+    let next_hint = match action.as_str() {
+        "edit" | "bulk_edit" => {
+            "Use inspect(file=...) or inspect(file,start_line,end_line) to verify the written code."
+        }
+        "rename" | "move" => {
+            "Use impact(symbol=...) or inspect(name=...) to verify the updated call sites and destination."
+        }
+        "delete" => "Use impact(symbol=...) before forced deletion, or inspect(name=...) to review the target again.",
+        "create" | "add" => "Use inspect(name=...) to review the new scaffold and change(action=edit) to refine it.",
+        _ => "Use inspect(...) to verify the result of this change.",
+    };
+
+    let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("change expected object payload from delegated write tool"))?;
+    parsed.remove("tool");
+    parsed.remove("version");
+    parsed.remove("project_root");
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("tool".to_string(), serde_json::json!("change"));
+    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert("action".to_string(), serde_json::json!(action));
+    payload.insert("next_hint".to_string(), serde_json::json!(next_hint));
+    payload.extend(parsed);
+
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
+}
 // ── Byte-level patch ─────────────────────────────────────────────────────────
 
 /// Public entrypoint for `patch_bytes`: splice at exact byte offsets.
@@ -621,6 +737,7 @@ pub fn patch_bytes(
 }
 // ── Multi-patch ───────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct PatchEdit {
     pub file: String,
     pub byte_start: usize,
@@ -909,5 +1026,289 @@ mod tests {
         ).unwrap();
 
         assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), "fn bar() {}\n");
+    }
+
+    #[test]
+    fn change_edit_by_symbol_wraps_patch_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn greet() {\n    println!(\"hi\");\n}\n");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "edit".into(),
+            Some("greet".into()),
+            None,
+            None,
+            None,
+            Some("fn greet() {\n    println!(\"bye\");\n}".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "change");
+        assert_eq!(v["action"], "edit");
+        assert_eq!(
+            v["next_hint"],
+            "Use inspect(file=...) or inspect(file,start_line,end_line) to verify the written code."
+        );
+        assert_eq!(v["file"], "src/lib.rs");
+        assert_eq!(v["patched_source"], "fn greet() {\n    println!(\"bye\");\n}");
+    }
+
+    #[test]
+    fn change_rename_wraps_graph_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "pub fn greet() {}\nfn call() { greet(); }\n");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "rename".into(),
+            Some("greet".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("salute".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "change");
+        assert_eq!(v["action"], "rename");
+        assert_eq!(
+            v["next_hint"],
+            "Use impact(symbol=...) or inspect(name=...) to verify the updated call sites and destination."
+        );
+        assert_eq!(v["old_name"], "greet");
+        assert_eq!(v["new_name"], "salute");
+        assert!(std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap().contains("salute"));
+    }
+
+    #[test]
+    fn change_bulk_edit_wraps_multi_patch_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn alpha() {}\nfn beta() {}\n");
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "bulk_edit".into(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec![
+                PatchEdit {
+                    file: "src/lib.rs".into(),
+                    byte_start: 3,
+                    byte_end: 8,
+                    new_content: "omega".into(),
+                },
+                PatchEdit {
+                    file: "src/lib.rs".into(),
+                    byte_start: 17,
+                    byte_end: 21,
+                    new_content: "zeta".into(),
+                },
+            ]),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "change");
+        assert_eq!(v["action"], "bulk_edit");
+        assert_eq!(v["edits_applied"], 2);
+        assert_eq!(v["files_written"], 1);
+        let content = std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("fn omega() {}"));
+        assert!(content.contains("fn zeta() {}"));
+    }
+
+    #[test]
+    fn change_move_wraps_graph_move_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/from.rs", "pub fn greet() {}\n");
+        write_file(&dir, "src/to.rs", "pub fn keep() {}\n");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "move".into(),
+            Some("greet".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("src/to.rs".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "change");
+        assert_eq!(v["action"], "move");
+        assert_eq!(v["from_file"], "src/from.rs");
+        assert_eq!(v["to_file"], "src/to.rs");
+        assert!(!std::fs::read_to_string(dir.path().join("src/from.rs")).unwrap().contains("greet"));
+        assert!(std::fs::read_to_string(dir.path().join("src/to.rs")).unwrap().contains("greet"));
+    }
+
+    #[test]
+    fn change_delete_wraps_graph_delete_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "fn target() {}\nfn caller() { target(); }\n");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "delete".into(),
+            Some("target".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "change");
+        assert_eq!(v["action"], "delete");
+        assert_eq!(v["name"], "target");
+        assert!(!std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap().contains("fn target"));
+    }
+
+    #[test]
+    fn change_create_preserves_typed_params_and_return() {
+        let dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(dir.path().join("src")).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "create".into(),
+            None,
+            Some("src/new.rs".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("compute".into()),
+            None,
+            None,
+            Some("rust".into()),
+            Some(vec![crate::engine::Param { name: "value".into(), type_str: "i32".into() }]),
+            Some("i32".into()),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["action"], "create");
+        let content = std::fs::read_to_string(dir.path().join("src/new.rs")).unwrap();
+        assert!(content.contains("fn compute(value: i32) -> i32"));
+    }
+
+    #[test]
+    fn change_add_preserves_typed_params_return_and_receiver() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/lib.rs", "struct Greeter;\n");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "add".into(),
+            Some("wave".into()),
+            Some("src/lib.rs".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("fn".into()),
+            None,
+            Some("rust".into()),
+            Some(vec![crate::engine::Param { name: "value".into(), type_str: "i32".into() }]),
+            Some("i32".into()),
+            Some("Greeter".into()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["action"], "add");
+        let content = std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
+        assert!(content.contains("impl Greeter"));
+        assert!(content.contains("fn wave(value: i32) -> i32"));
     }
 }

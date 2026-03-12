@@ -5,6 +5,8 @@ use clap::{Args, Subcommand, ValueEnum};
 pub enum Command {
     /// Prime directive and usage instructions for yoyo.
     Boot(BootArgs),
+    /// Task-oriented guidance for choosing the right yoyo tools.
+    Guide(GuideArgs),
     /// Full reference catalog: workflows, decision map, antipatterns, metapatterns.
     Recipes(RecipesArgs),
     /// Repository overview similar to Shake.readme.
@@ -13,8 +15,12 @@ pub enum Command {
     Index(IndexArgs),
     /// Detailed lookup of a function symbol from the bake index.
     Symbol(SymbolArgs),
+    /// Inspect a symbol, file outline, or line range from one entrypoint.
+    Inspect(InspectArgs),
     /// List all detected API endpoints from the bake index.
     Routes(RoutesArgs),
+    /// Understand symbol or endpoint impact from one entrypoint.
+    Impact(ImpactArgs),
     /// Vertical slice: endpoint → handler → call chain in one call.
     Flow(FlowArgs),
     /// Read a specific line range of a file.
@@ -31,6 +37,8 @@ pub enum Command {
     Where(WhereArgs),
     /// Find documentation/config files.
     Docs(DocsArgs),
+    /// Task-shaped write entrypoint over edit, rename, move, delete, create, add, and bulk-edit.
+    Change(ChangeArgs),
     /// Apply a patch by symbol name or by file/line range.
     Edit(EditArgs),
     /// Analyse the blast radius of a symbol (transitive callers + affected files).
@@ -80,6 +88,13 @@ pub struct BootArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct GuideArgs {
+    /// Tool or task topic, e.g. inspect, safe delete, trace request.
+    #[arg(long)]
+    pub topic: String,
 }
 
 #[derive(Args, Debug)]
@@ -148,10 +163,167 @@ pub struct SymbolArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct InspectArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Function name for symbol mode.
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// File path for file mode or line-range mode.
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// 1-based start line for line-range mode.
+    #[arg(long)]
+    pub start_line: Option<u32>,
+
+    /// 1-based end line for line-range mode.
+    #[arg(long)]
+    pub end_line: Option<u32>,
+
+    /// Include function body in symbol mode.
+    #[arg(long, default_value_t = false)]
+    pub include_source: bool,
+
+    /// Include summaries in file mode.
+    #[arg(long, default_value_t = true)]
+    pub include_summaries: bool,
+
+    /// Maximum number of symbol matches.
+    #[arg(long)]
+    pub limit: Option<usize>,
+
+    /// Include stdlib matches in symbol mode.
+    #[arg(long, default_value_t = false)]
+    pub stdlib: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct ChangeArgs {
+    /// Optional path to the project directory to analyze.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Write action: edit | bulk_edit | rename | move | delete | create | add.
+    #[arg(long)]
+    pub action: String,
+
+    /// Symbol name for edit/rename/move/delete/add.
+    #[arg(long)]
+    pub name: Option<String>,
+
+    /// File path for edit/create/add.
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// 1-based start line for line-range edit.
+    #[arg(long)]
+    pub start_line: Option<u32>,
+
+    /// 1-based end line for line-range edit.
+    #[arg(long)]
+    pub end_line: Option<u32>,
+
+    /// Replacement content for edit.
+    #[arg(long)]
+    pub new_content: Option<String>,
+
+    /// Exact content-match source for edit.
+    #[arg(long)]
+    pub old_string: Option<String>,
+
+    /// Content-match replacement for edit or rename target.
+    #[arg(long)]
+    pub new_string: Option<String>,
+
+    /// Rename target.
+    #[arg(long)]
+    pub new_name: Option<String>,
+
+    /// Destination file for move.
+    #[arg(long)]
+    pub to_file: Option<String>,
+
+    /// Allow delete even with callers.
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
+
+    /// Function name for create.
+    #[arg(long)]
+    pub function_name: Option<String>,
+
+    /// Scaffold type for add.
+    #[arg(long)]
+    pub entity_type: Option<String>,
+
+    /// Insert add scaffold after an existing symbol.
+    #[arg(long)]
+    pub after_symbol: Option<String>,
+
+    /// Optional language override for create/add.
+    #[arg(long)]
+    pub language: Option<String>,
+
+    /// 0-based symbol disambiguation for edit by name.
+    #[arg(long)]
+    pub match_index: Option<usize>,
+
+    /// JSON array of edits for bulk_edit action.
+    #[arg(long)]
+    pub edits_json: Option<String>,
+
+    /// Path to a JSON file containing bulk_edit edits.
+    #[arg(long)]
+    pub edits_file: Option<String>,
+
+    /// JSON array of typed params for create/add, e.g. [{"name":"x","type_str":"i32"}].
+    #[arg(long)]
+    pub params_json: Option<String>,
+
+    /// Optional return type for create/add.
+    #[arg(long)]
+    pub returns: Option<String>,
+
+    /// Optional receiver/owner type for add.
+    #[arg(long)]
+    pub on: Option<String>,
+}
+
+#[derive(Args, Debug)]
 pub struct RoutesArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct ImpactArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Function name for symbol-impact mode.
+    #[arg(long)]
+    pub symbol: Option<String>,
+
+    /// URL path substring for endpoint-impact mode.
+    #[arg(long)]
+    pub endpoint: Option<String>,
+
+    /// Optional HTTP method filter for endpoint mode.
+    #[arg(long)]
+    pub method: Option<String>,
+
+    /// Max caller/call-chain depth.
+    #[arg(long)]
+    pub depth: Option<usize>,
+
+    /// Include handler source inline in endpoint mode.
+    #[arg(long, default_value_t = false)]
+    pub include_source: bool,
 }
 
 #[derive(Args, Debug)]
@@ -446,11 +618,14 @@ pub struct AskArgs {
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
     match command {
         Some(Command::Boot(args)) => run_boot(args).await?,
+        Some(Command::Guide(args)) => run_guide(args).await?,
         Some(Command::Recipes(args)) => run_recipes(args).await?,
         Some(Command::Stats(args)) => run_stats(args).await?,
         Some(Command::Index(args)) => run_index(args).await?,
         Some(Command::Symbol(args)) => run_symbol(args).await?,
+        Some(Command::Inspect(args)) => run_inspect(args).await?,
         Some(Command::Routes(args)) => run_routes(args).await?,
+        Some(Command::Impact(args)) => run_impact(args).await?,
         Some(Command::Flow(args)) => run_flow(args).await?,
         Some(Command::Read(args)) => run_read(args).await?,
         Some(Command::Outline(args)) => run_outline(args).await?,
@@ -459,6 +634,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Map(args)) => run_map(args).await?,
         Some(Command::Where(args)) => run_where(args).await?,
         Some(Command::Docs(args)) => run_docs(args).await?,
+        Some(Command::Change(args)) => run_change(args).await?,
         Some(Command::Edit(args)) => run_edit(args).await?,
         Some(Command::Callers(args)) => run_callers(args).await?,
         Some(Command::Rename(args)) => run_rename(args).await?,
@@ -529,6 +705,12 @@ async fn run_boot(args: BootArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn run_guide(args: GuideArgs) -> anyhow::Result<()> {
+    let json = crate::engine::tool_help(args.topic)?;
+    println!("{json}");
+    Ok(())
+}
+
 async fn run_recipes(args: RecipesArgs) -> anyhow::Result<()> {
     let json = crate::engine::llm_workflows(
         args.path,
@@ -559,8 +741,37 @@ async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn run_inspect(args: InspectArgs) -> anyhow::Result<()> {
+    let json = crate::engine::inspect(
+        args.path,
+        args.name,
+        args.file,
+        args.start_line,
+        args.end_line,
+        Some(args.include_source),
+        Some(args.include_summaries),
+        args.limit,
+        Some(args.stdlib),
+    )?;
+    println!("{json}");
+    Ok(())
+}
+
 async fn run_routes(args: RoutesArgs) -> anyhow::Result<()> {
     let json = crate::engine::all_endpoints(args.path)?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_impact(args: ImpactArgs) -> anyhow::Result<()> {
+    let json = crate::engine::impact(
+        args.path,
+        args.symbol,
+        args.endpoint,
+        args.method,
+        args.depth,
+        Some(args.include_source),
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -623,6 +834,51 @@ async fn run_where(args: WhereArgs) -> anyhow::Result<()> {
 
 async fn run_docs(args: DocsArgs) -> anyhow::Result<()> {
     let json = crate::engine::find_docs(args.path, args.doc_type, Some(args.limit))?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_change(args: ChangeArgs) -> anyhow::Result<()> {
+    let edits = match (args.edits_json, args.edits_file) {
+        (Some(_), Some(_)) => anyhow::bail!("Use either --edits-json or --edits-file, not both"),
+        (Some(raw), None) => Some(serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw)
+            .map_err(|e| anyhow::anyhow!("Failed to parse --edits-json: {}", e))?),
+        (None, Some(path)) => {
+            let raw = std::fs::read_to_string(&path)
+                .map_err(|e| anyhow::anyhow!("Failed to read --edits-file '{}': {}", path, e))?;
+            Some(serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw)
+                .map_err(|e| anyhow::anyhow!("Failed to parse --edits-file '{}': {}", path, e))?)
+        }
+        (None, None) => None,
+    };
+    let params = match args.params_json {
+        Some(raw) => Some(serde_json::from_str::<Vec<crate::engine::Param>>(&raw)
+            .map_err(|e| anyhow::anyhow!("Failed to parse --params-json: {}", e))?),
+        None => None,
+    };
+    let json = crate::engine::change(
+        args.path,
+        args.action,
+        args.name,
+        args.file,
+        args.start_line,
+        args.end_line,
+        args.new_content,
+        args.old_string,
+        args.new_string.clone(),
+        args.match_index,
+        edits,
+        args.new_name.or(args.new_string),
+        args.to_file,
+        Some(args.force),
+        args.function_name,
+        args.entity_type,
+        args.after_symbol,
+        args.language,
+        params,
+        args.returns,
+        args.on,
+    )?;
     println!("{json}");
     Ok(())
 }

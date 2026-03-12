@@ -273,7 +273,7 @@
   <div class="container">
     <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo parses your codebase into a searchable index and gives Claude or Cursor 27 tools to read and edit it.
+      yoyo parses your codebase into a searchable index and gives Claude or Cursor a curated task-shaped MCP surface to read and edit it.
       No more guessing at file paths, function names, or module structure.
     </p>
     <div class="cta-group">
@@ -328,7 +328,7 @@
           <li><strong>Exact file paths and line numbers</strong>Every answer comes from the AST. File, line, and byte offset are exact.</li>
           <li><strong>Current function names</strong>yoyo reads your files on disk. The index is always in sync after every edit.</li>
           <li><strong>30-second onboarding</strong>8 parallel tool calls replace 15–20 minutes of directory browsing and grepping.</li>
-          <li><strong>Full call graph</strong><code>blast_radius</code> finds every function that calls yours, transitively.</li>
+          <li><strong>Structural impact in one step</strong><code>impact</code> shows who calls yours, what breaks, and how a request path lands.</li>
         </ul>
       </div>
     </div>
@@ -350,22 +350,22 @@
 
       <div class="card">
         <h3>Gives Claude exact answers</h3>
-        <p><code>symbol</code> returns the file, line number, and optionally the full function body. <code>supersearch</code> finds every call site across hundreds of files. No guessing.</p>
+        <p><code>inspect</code> returns the exact symbol, file outline, or line range you need. <code>search</code> finds call sites and identifiers across hundreds of files. No guessing.</p>
       </div>
 
       <div class="card">
         <h3>Traces call chains</h3>
-        <p><code>blast_radius</code> finds everything that calls a function, transitively. <code>trace_down</code> follows a function to its database, HTTP, or queue boundary (Rust + Go).</p>
+        <p><code>impact</code> finds everything that touches a symbol or traces an endpoint into its downstream call chain (Rust + Go today for deep endpoint chains).</p>
       </div>
 
       <div class="card">
         <h3>Vertical slice in one call</h3>
-        <p><code>flow</code> resolves an HTTP endpoint to its handler, then traces the call chain to db/http/queue boundaries — replacing three sequential tool calls with one. Handler source optional.</p>
+        <p><code>impact(endpoint=...)</code> resolves an HTTP endpoint to its handler, then traces the call chain to db/http/queue boundaries — replacing several sequential tool calls with one. Handler source optional.</p>
       </div>
 
       <div class="card">
         <h3>Edits code safely</h3>
-        <p><code>patch</code> writes changes by symbol name, line range, or exact string match. Compiles after every write — rolls back to the original if the compiler rejects it. Reindexes automatically so the next read is always fresh.</p>
+        <p><code>change</code> routes edits, renames, moves, deletes, creates, and adds through one task-shaped write verb. Reindexes automatically so the next read is always fresh.</p>
       </div>
 
       <div class="card">
@@ -375,7 +375,7 @@
 
       <div class="card">
         <h3>Semantic search — no API key</h3>
-        <p><code>semantic_search</code> finds functions by intent: "semaphore acquisition", "spawn blocking task", "async runtime builder". Powered by local ONNX embeddings (fastembed AllMiniLML6V2). No network, no key.</p>
+        <p><code>ask</code> finds functions by intent: "semaphore acquisition", "spawn blocking task", "async runtime builder". Powered by local ONNX embeddings (fastembed AllMiniLML6V2). No network, no key.</p>
       </div>
 
       <div class="card">
@@ -396,19 +396,19 @@
     <div class="grid">
       <div class="card">
         <h3>1. Bootstrap</h3>
-        <p>Claude loads <code>llm_instructions</code> on first contact — lean catalog, prime directives, concurrency rules. Calls <code>llm_workflows</code> on demand for the full reference (combination workflows, decision map, antipatterns). No file reading, no grepping.</p>
+        <p>Claude calls <code>boot</code> and <code>index</code> on first contact — lean catalog, task routing, and concurrency rules up front. Calls deeper guidance only on demand. No file reading, no grepping.</p>
       </div>
       <div class="card">
         <h3>2. Read</h3>
-        <p><code>supersearch</code>, <code>symbol</code>, and <code>slice</code> replace grep and cat. Structured data from the AST index — not line matches from raw source.</p>
+        <p><code>inspect</code>, <code>search</code>, and <code>ask</code> replace grep and ad hoc file reads. Structured data from the AST index — not line matches from raw source.</p>
       </div>
       <div class="card">
         <h3>3. Understand</h3>
-        <p><code>blast_radius</code>, <code>flow</code>, <code>trace_down</code>, and <code>health</code> answer structural questions no text tool can: who calls this? what does this touch? is this dead?</p>
+        <p><code>impact</code>, <code>routes</code>, and <code>health</code> answer structural questions no text tool can: who calls this? what does this touch? is this dead?</p>
       </div>
       <div class="card">
         <h3>4. Write</h3>
-        <p><code>patch</code>, <code>graph_rename</code>, <code>graph_create</code>, <code>graph_add</code>, <code>graph_move</code>, <code>graph_delete</code> mutate code and auto-reindex. No direct file edits.</p>
+        <p><code>change</code> mutates code and auto-reindexes. One write verb, many actions. No direct file edits.</p>
       </div>
     </div>
     <p style="margin-top:24px; font-size:0.9rem; color:var(--muted);">Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.</p>
@@ -426,33 +426,18 @@
         <tr><th>Tool</th><th>Status</th><th>What it returns</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>bake</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
-        <tr><td><code>shake</code></td><td><span class="pill pill-green">Stable</span></td><td>Language breakdown, file count, and the top-complexity functions.</td></tr>
-        <tr><td><code>llm_instructions</code></td><td><span class="pill pill-green">Stable</span></td><td>Lean bootstrap: tool catalog, prime directives, concurrency rules. Claude calls this on first contact.</td></tr>
-        <tr><td><code>llm_workflows</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand reference: combination workflows, decision map, antipatterns, metapatterns.</td></tr>
-        <tr><td><code>symbol</code></td><td><span class="pill pill-green">Stable</span></td><td>Function lookup by name. Returns file, line range, and optionally the full body.</td></tr>
-        <tr><td><code>slice</code></td><td><span class="pill pill-green">Stable</span></td><td>Reads any line range from any file.</td></tr>
-        <tr><td><code>file_functions</code></td><td><span class="pill pill-green">Stable</span></td><td>Every function in a file with line ranges and complexity scores.</td></tr>
-        <tr><td><code>supersearch</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, identifiers across all files.</td></tr>
-        <tr><td><code>blast_radius</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions that transitively call a given symbol. Affected file list included.</td></tr>
-        <tr><td><code>trace_down</code></td><td><span class="pill pill-green">Stable</span></td><td>BFS call chain from a function to db/http/queue boundaries. Rust + Go only.</td></tr>
+        <tr><td><code>boot</code></td><td><span class="pill pill-green">Stable</span></td><td>Lean bootstrap: task-shaped capability families, common-task routing, and concurrency rules.</td></tr>
+        <tr><td><code>index</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
+        <tr><td><code>help</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand tool and task guidance: params, output shape, examples, and limitations.</td></tr>
+        <tr><td><code>inspect</code></td><td><span class="pill pill-green">Stable</span></td><td>One read surface for symbol lookup, file outlines, and exact line ranges.</td></tr>
+        <tr><td><code>search</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, and identifiers across all files.</td></tr>
+        <tr><td><code>ask</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
+        <tr><td><code>map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles such as routes, services, and models.</td></tr>
+        <tr><td><code>routes</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo, net/http).</td></tr>
+        <tr><td><code>impact</code></td><td><span class="pill pill-green">Stable</span></td><td>Task-shaped impact analysis for a symbol or endpoint. Wraps caller and route-chain analysis.</td></tr>
         <tr><td><code>health</code></td><td><span class="pill pill-green">Stable</span></td><td>Dead code, high-complexity large functions, and duplicate function name hints.</td></tr>
-        <tr><td><code>package_summary</code></td><td><span class="pill pill-green">Stable</span></td><td>All functions, endpoints, and complexity in a module path.</td></tr>
-        <tr><td><code>architecture_map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles (routes, services, models, etc.).</td></tr>
-        <tr><td><code>suggest_placement</code></td><td><span class="pill pill-green">Stable</span></td><td>Ranked list of files to add a new function to.</td></tr>
-        <tr><td><code>find_docs</code></td><td><span class="pill pill-green">Stable</span></td><td>Locate README, .env, Dockerfile, and config files.</td></tr>
-        <tr><td><code>all_endpoints</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo).</td></tr>
-        <tr><td><code>patch</code></td><td><span class="pill pill-green">Stable</span></td><td>Write changes by symbol name, line range, or exact string match. Auto-reindexes.</td></tr>
-        <tr><td><code>patch_bytes</code></td><td><span class="pill pill-green">Stable</span></td><td>Write at exact byte offsets from the index.</td></tr>
-        <tr><td><code>multi_patch</code></td><td><span class="pill pill-green">Stable</span></td><td>Apply N edits across M files in one call, bottom-up so offsets stay valid.</td></tr>
-        <tr><td><code>graph_rename</code></td><td><span class="pill pill-green">Stable</span></td><td>Rename a symbol at its definition and every call site atomically.</td></tr>
-        <tr><td><code>flow</code></td><td><span class="pill pill-green">Stable</span></td><td>Endpoint → handler → call chain to db/http/queue in one call. Replaces <code>api_trace</code> + <code>trace_down</code> + <code>symbol</code>.</td></tr>
-        <tr><td><code>graph_create</code></td><td><span class="pill pill-green">Stable</span></td><td>Create a new file with an initial function scaffold. Errors if file exists or parent dir missing.</td></tr>
-        <tr><td><code>graph_add</code></td><td><span class="pill pill-green">Stable</span></td><td>Insert a new function scaffold into an existing file.</td></tr>
-        <tr><td><code>graph_move</code></td><td><span class="pill pill-green">Stable</span></td><td>Move a function from one file to another.</td></tr>
-        <tr><td><code>graph_delete</code></td><td><span class="pill pill-green">Stable</span></td><td>Remove a function by name. Confirms safety first with <code>blast_radius</code>.</td></tr>
-        <tr><td><code>semantic_search</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
-        <tr><td><code>script</code></td><td><span class="pill pill-green">Stable</span></td><td>Execute a Rhai script with read tools available as functions. Supports loops, map/filter, arbitrary conditionals.</td></tr>
+        <tr><td><code>change</code></td><td><span class="pill pill-green">Stable</span></td><td>Task-shaped write verb for edit, bulk_edit, rename, move, delete, create, and add.</td></tr>
+        <tr><td><code>script</code></td><td><span class="pill pill-green">Stable</span></td><td>Execute a Rhai script over the same task-shaped yoyo functions exposed in MCP.</td></tr>
       </tbody>
     </table>
   </div>
@@ -469,11 +454,11 @@
     <table class="tools-table" style="margin-top:24px;">
       <thead><tr><th>Combination</th><th>What it does</th></tr></thead>
       <tbody>
-        <tr><td><code>supersearch</code> → <code>symbol</code> → <code>patch</code></td><td>Find it, read it, change it ⚡</td></tr>
-        <tr><td><code>blast_radius</code> → <code>health</code> → <code>graph_delete</code></td><td>Who calls this? Is it dead? Remove it safely.</td></tr>
-        <tr><td><code>flow</code> → <code>multi_patch</code></td><td>Trace the full request path, fix it end-to-end in one shot.</td></tr>
-        <tr><td><code>bake</code> → <code>semantic_search</code> → <code>suggest_placement</code></td><td>Where does this new function belong?</td></tr>
-        <tr><td><code>architecture_map</code> → <code>suggest_placement</code> → <code>graph_create</code></td><td>Understand the shape, find the gap, fill it.</td></tr>
+        <tr><td><code>search</code> → <code>inspect</code> → <code>change</code></td><td>Find it, read it, change it ⚡</td></tr>
+        <tr><td><code>impact</code> → <code>health</code> → <code>change</code></td><td>Who calls this? Is it dead? Remove it safely.</td></tr>
+        <tr><td><code>impact</code> → <code>change</code></td><td>Trace the full request path, fix it end-to-end in one shot.</td></tr>
+        <tr><td><code>index</code> → <code>ask</code> → <code>map</code></td><td>Where does this new function belong?</td></tr>
+        <tr><td><code>map</code> → <code>routes</code> → <code>change</code></td><td>Understand the shape, find the gap, fill it.</td></tr>
       </tbody>
     </table>
     <p style="margin-top:24px;">No single tool is the point. The orchestration is.</p>
@@ -511,14 +496,11 @@
     <pre><span class="comment"># index your project</span>
 <span class="cmd">yoyo bake</span> --path /path/to/your/project
 
-<span class="comment"># overview: languages, file counts, most complex functions</span>
-<span class="cmd">yoyo shake</span> --path /path/to/your/project
-
 <span class="comment"># find a function by name</span>
-<span class="cmd">yoyo symbol</span> --path /path/to/your/project --name myFunction
+<span class="cmd">yoyo inspect</span> --path /path/to/your/project --name myFunction
 
 <span class="comment"># search across all files</span>
-<span class="cmd">yoyo supersearch</span> --path /path/to/your/project --query myFunction</pre>
+<span class="cmd">yoyo search</span> --path /path/to/your/project --query myFunction</pre>
   </div>
 </section>
 
@@ -534,7 +516,7 @@
         <p>Add to <code>~/.claude/settings.json</code>:</p>
         <h3 style="margin-top:20px;">Cursor</h3>
         <p>Add to your Cursor MCP settings file using the same JSON block.</p>
-        <p>Once added, restart the editor. Claude will call <code>llm_instructions</code> on first contact, then pick tools as needed.</p>
+        <p>Once added, restart the editor. Claude will call <code>boot</code> and <code>index</code> on first contact, then pick tools as needed.</p>
       </div>
       <div class="mcp-code">
         <pre>{
@@ -567,7 +549,7 @@
           <th>Endpoints</th>
           <th>Import graph</th>
           <th>AST search</th>
-          <th>trace_down</th>
+          <th>deep chain</th>
         </tr>
       </thead>
       <tbody>
@@ -590,10 +572,10 @@
     </table>
 
     <p style="font-size:0.85rem; color:var(--muted); margin-top:16px;">
-      <strong>Endpoints</strong> — HTTP route detection for <code>all_endpoints</code> and <code>flow</code>.<br>
-      <strong>Import graph</strong> — <code>blast_radius</code> uses imports to expand affected files.<br>
-      <strong>trace_down</strong> — BFS call chain to db/http/queue boundaries (Rust + Go only).<br>
-      <strong>Compiler guard</strong> — <code>patch</code> compiles after every write and rolls back if rejected (Rust, Go, Zig).
+      <strong>Endpoints</strong> — HTTP route detection via <code>routes</code>; deep request tracing via <code>impact(endpoint=...)</code>.<br>
+      <strong>Import graph</strong> — <code>impact(symbol=...)</code> uses caller/import expansion to widen affected files.<br>
+      <strong>Deep chain</strong> — endpoint call-chain tracing to db/http/queue boundaries (Rust + Go only).<br>
+      <strong>Compiler guard</strong> — the underlying write path used by <code>change</code> compiles after supported writes and rolls back if rejected (Rust, Go, Zig).
     </p>
   </div>
 </section>
@@ -714,16 +696,16 @@
         <code>script</code> takes a different approach. Instead of a JSON spec, it accepts a
         <a href="https://rhai.rs">Rhai</a> script — a small, fast scripting language embedded directly in Rust.
         Rhai gives you real loops, real conditionals, closures, map and filter, early returns.
-        The read tools (<code>symbol</code>, <code>blast_radius</code>, <code>health</code>, <code>supersearch</code>,
-        <code>file_functions</code>, <code>flow</code>, <code>slice</code>) are exposed as plain functions.
-        The last expression in the script is the result.
+        The same task-shaped MCP tools (<code>inspect</code>, <code>search</code>, <code>ask</code>, <code>map</code>,
+        <code>routes</code>, <code>impact</code>, <code>health</code>, <code>change</code>, plus <code>boot</code>, <code>index</code>, and <code>help</code>)
+        are exposed as plain functions. The last expression in the script is the result.
       </p>
 
       <pre><span class="comment">// find all dead functions, return the ones with zero callers</span>
 <span class="kw">let</span> dead = health().dead_code;
 dead.filter(|f| {
-    <span class="kw">let</span> r = blast_radius(f.name);
-    r.total_callers == 0
+    <span class="kw">let</span> r = impact(#{symbol: f.name});
+    r.callers.len() == 0
 })</pre>
 
       <p>
@@ -731,26 +713,20 @@ dead.filter(|f| {
       </p>
 
       <p>
-        Scripts expose all seven read tools plus one write tool: <code>graph_delete</code>.
-        The other write tools — <code>patch</code>, <code>graph_rename</code>, <code>graph_create</code>,
-        <code>graph_add</code>, <code>graph_move</code> — are intentionally absent. Here is why.
+        Scripts no longer expose hidden mechanism tools. They compose the same task-shaped surface the model sees
+        everywhere else. That keeps MCP recall stable over long sessions instead of giving scripts a separate internal dialect.
       </p>
 
       <p>
-        Every mutation except deletion requires precise content: the new function body, the new name,
-        the target file, the exact string to replace. That content has to come from somewhere — usually
-        from the agent reading the code, understanding it, and deciding what to write. Automating that
-        decision inside a script removes the verification step. The agent can no longer see what it is
-        about to write before it writes it.
+        The important distinction is not "script vs no script". It is task verbs vs mechanism leakage.
+        A script should still say <code>impact</code>, <code>inspect</code>, and <code>change</code>, because that is the product surface
+        the agent is supposed to remember.
       </p>
 
       <p>
-        Deletion is different. <code>graph_delete</code> has one job: remove a named function.
-        It carries its own safety net — it blocks if any callers exist, and only proceeds if the
-        function is unreachable. A script can iterate over dead code candidates, confirm zero callers
-        with <code>blast_radius</code>, and call <code>graph_delete</code> on each. The safety
-        property is structural, not policy — the tool itself refuses the unsafe case.
-        That is why deletion is the one write operation that belongs in a script.
+        That still leaves room for orchestration. A script can iterate over dead code candidates,
+        confirm zero callers with <code>impact</code>, and then call <code>change(#{action: "delete", ...})</code>.
+        The safety property stays structural because the underlying delete path still blocks when callers exist.
       </p>
 
       <p>
@@ -761,11 +737,8 @@ dead.filter(|f| {
       </p>
 
       <p>
-        Net change: <strong style="color:var(--text)">-4 tools, +1 tool</strong>. Removed
-        <code>pipeline</code>, <code>api_surface</code>, <code>api_trace</code>, <code>crud_operations</code>.
-        Added <code>script</code>. The removed tools were either superseded by <code>flow</code> (which does
-        what <code>api_trace</code> did and more in one call) or covered by <code>script</code> iteration.
-        27 tools. Fewer is better when each one pulls its weight.
+        Net effect: fewer top-level MCP tools, more task completion per tool, and no special hidden mechanism dialect inside scripts.
+        Fewer is better when each tool pulls more weight.
       </p>
     </div>
   </div>

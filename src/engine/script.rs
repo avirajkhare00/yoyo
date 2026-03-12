@@ -1,5 +1,6 @@
-use anyhow::Result;
-use rhai::{Dynamic, Engine};
+use anyhow::{anyhow, Result};
+use rhai::{Dynamic, Engine, Map as RhaiMap};
+use serde_json::{Map as JsonMap, Value};
 
 use super::util::resolve_project_root;
 
@@ -23,34 +24,130 @@ fn err_dynamic(msg: &str) -> Dynamic {
     Dynamic::from(map)
 }
 
+fn json_args(args: RhaiMap) -> Result<JsonMap<String, Value>> {
+    let value: Value = rhai::serde::from_dynamic(&Dynamic::from(args))
+        .map_err(|e| anyhow!("Invalid script arguments: {}", e))?;
+    value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| anyhow!("Script arguments must be an object"))
+}
+
+fn str_opt(args: &JsonMap<String, Value>, key: &str) -> Option<String> {
+    args.get(key)?.as_str().map(|v| v.to_string())
+}
+
+fn bool_opt(args: &JsonMap<String, Value>, key: &str) -> Option<bool> {
+    args.get(key)?.as_bool()
+}
+
+fn uint_opt(args: &JsonMap<String, Value>, key: &str) -> Option<usize> {
+    args.get(key).and_then(|v| {
+        v.as_u64()
+            .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+    }).map(|n| n as usize)
+}
+
+fn parse_params(val: Option<&Value>) -> Option<Vec<crate::engine::Param>> {
+    let arr = val?.as_array()?;
+    let params: Vec<_> = arr
+        .iter()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?.to_string();
+            let type_str = item.get("type")?.as_str()?.to_string();
+            Some(crate::engine::Param { name, type_str })
+        })
+        .collect();
+    if params.is_empty() { None } else { Some(params) }
+}
+
+fn parse_edits(args: &JsonMap<String, Value>) -> Result<Option<Vec<crate::engine::PatchEdit>>> {
+    let Some(items) = args.get("edits").and_then(|v| v.as_array()) else {
+        return Ok(None);
+    };
+
+    let mut edits = Vec::with_capacity(items.len());
+    for item in items {
+        let file = item
+            .get("file")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Each change.edits item must have a 'file' field"))?
+            .to_string();
+        let byte_start = item
+            .get("byte_start")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("Each change.edits item must have a 'byte_start' field"))?
+            as usize;
+        let byte_end = item
+            .get("byte_end")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("Each change.edits item must have a 'byte_end' field"))?
+            as usize;
+        let new_content = item
+            .get("new_content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("Each change.edits item must have a 'new_content' field"))?
+            .to_string();
+        edits.push(crate::engine::PatchEdit {
+            file,
+            byte_start,
+            byte_end,
+            new_content,
+        });
+    }
+
+    Ok(Some(edits))
+}
+
 pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     let root = resolve_project_root(path)?;
     let r = root.to_string_lossy().into_owned();
 
     let mut engine = Engine::new();
 
-    // --- Read tools ---
+    // --- Bootstrap + discovery ---
     {
         let rc = r.clone();
-        engine.register_fn("symbol", move |name: String| -> Dynamic {
-            call_to_dynamic(crate::engine::symbol(Some(rc.clone()), name, true, None, None, false))
+        engine.register_fn("boot", move || -> Dynamic {
+            call_to_dynamic(crate::engine::llm_instructions(Some(rc.clone())))
         });
     }
     {
         let rc = r.clone();
-        engine.register_fn("blast_radius", move |name: String| -> Dynamic {
-            call_to_dynamic(crate::engine::blast_radius(Some(rc.clone()), name, None))
+        engine.register_fn("index", move || -> Dynamic {
+            call_to_dynamic(crate::engine::bake(Some(rc.clone())))
+        });
+    }
+    {
+        engine.register_fn("help", move |name: String| -> Dynamic {
+            call_to_dynamic(crate::engine::tool_help(name))
+        });
+    }
+
+    // --- Task-shaped read tools ---
+    {
+        let rc = r.clone();
+        engine.register_fn("inspect", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::inspect(
+                    Some(rc.clone()),
+                    str_opt(&args, "name"),
+                    str_opt(&args, "file"),
+                    uint_opt(&args, "start_line").map(|v| v as u32),
+                    uint_opt(&args, "end_line").map(|v| v as u32),
+                    bool_opt(&args, "include_source"),
+                    bool_opt(&args, "include_summaries"),
+                    uint_opt(&args, "limit"),
+                    bool_opt(&args, "stdlib"),
+                )
+            })();
+            call_to_dynamic(res)
         });
     }
     {
         let rc = r.clone();
-        engine.register_fn("health", move || -> Dynamic {
-            call_to_dynamic(crate::engine::health(Some(rc.clone()), None, None, None, None))
-        });
-    }
-    {
-        let rc = r.clone();
-        engine.register_fn("supersearch", move |query: String| -> Dynamic {
+        engine.register_fn("search", move |query: String| -> Dynamic {
             call_to_dynamic(crate::engine::supersearch(
                 Some(rc.clone()),
                 query,
@@ -64,47 +161,166 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     }
     {
         let rc = r.clone();
-        engine.register_fn("file_functions", move |file: String| -> Dynamic {
-            call_to_dynamic(crate::engine::file_functions(Some(rc.clone()), file, None))
+        engine.register_fn("search", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                const MODES: &[&str] = &["all", "call", "assign", "return"];
+                let args = json_args(args)?;
+                let raw_pattern = str_opt(&args, "pattern");
+                let query = if let Some(query) = str_opt(&args, "query") {
+                    query
+                } else if let Some(ref pattern) = raw_pattern {
+                    if MODES.contains(&pattern.as_str()) {
+                        return Err(anyhow!("Missing required 'query' argument for search"));
+                    }
+                    pattern.clone()
+                } else {
+                    return Err(anyhow!("Missing required 'query' argument for search"));
+                };
+                let pattern = raw_pattern
+                    .filter(|p| MODES.contains(&p.as_str()))
+                    .unwrap_or_else(|| "all".to_string());
+                crate::engine::supersearch(
+                    Some(rc.clone()),
+                    query,
+                    str_opt(&args, "context").unwrap_or_else(|| "all".to_string()),
+                    pattern,
+                    bool_opt(&args, "exclude_tests"),
+                    str_opt(&args, "file"),
+                    uint_opt(&args, "limit"),
+                )
+            })();
+            call_to_dynamic(res)
         });
     }
     {
         let rc = r.clone();
-        engine.register_fn("flow", move |endpoint: String, method: String| -> Dynamic {
-            call_to_dynamic(crate::engine::flow(
+        engine.register_fn("ask", move |query: String| -> Dynamic {
+            call_to_dynamic(crate::engine::semantic_search(
                 Some(rc.clone()),
-                endpoint,
-                Some(method),
+                query,
                 None,
-                false,
+                None,
             ))
         });
     }
     {
         let rc = r.clone();
-        engine.register_fn(
-            "slice",
-            move |file: String, start: i64, end: i64| -> Dynamic {
-                call_to_dynamic(crate::engine::slice(
+        engine.register_fn("ask", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::semantic_search(
                     Some(rc.clone()),
-                    file,
-                    start as u32,
-                    end as u32,
-                ))
-            },
-        );
+                    str_opt(&args, "query")
+                        .ok_or_else(|| anyhow!("Missing required 'query' argument for ask"))?,
+                    uint_opt(&args, "limit"),
+                    str_opt(&args, "file"),
+                )
+            })();
+            call_to_dynamic(res)
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("map", move |intent: String| -> Dynamic {
+            call_to_dynamic(crate::engine::architecture_map(
+                Some(rc.clone()),
+                Some(intent),
+                None,
+            ))
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("map", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::architecture_map(
+                    Some(rc.clone()),
+                    str_opt(&args, "intent"),
+                    uint_opt(&args, "limit"),
+                )
+            })();
+            call_to_dynamic(res)
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("routes", move || -> Dynamic {
+            call_to_dynamic(crate::engine::all_endpoints(Some(rc.clone())))
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("impact", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::impact(
+                    Some(rc.clone()),
+                    str_opt(&args, "symbol"),
+                    str_opt(&args, "endpoint"),
+                    str_opt(&args, "method"),
+                    uint_opt(&args, "depth"),
+                    bool_opt(&args, "include_source"),
+                )
+            })();
+            call_to_dynamic(res)
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("health", move || -> Dynamic {
+            call_to_dynamic(crate::engine::health(Some(rc.clone()), None, None, None, None))
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("health", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::health(
+                    Some(rc.clone()),
+                    uint_opt(&args, "top"),
+                    str_opt(&args, "view"),
+                    uint_opt(&args, "limit"),
+                    str_opt(&args, "cursor"),
+                )
+            })();
+            call_to_dynamic(res)
+        });
     }
 
-    // --- Write tools (deletion only) ---
+    // --- Task-shaped write tool ---
     {
         let rc = r.clone();
-        engine.register_fn("graph_delete", move |name: String| -> Dynamic {
-            call_to_dynamic(crate::engine::graph_delete(
-                Some(rc.clone()),
-                name,
-                None,
-                false,
-            ))
+        engine.register_fn("change", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::change(
+                    Some(rc.clone()),
+                    str_opt(&args, "action")
+                        .ok_or_else(|| anyhow!("Missing required 'action' argument for change"))?,
+                    str_opt(&args, "name"),
+                    str_opt(&args, "file"),
+                    uint_opt(&args, "start_line").map(|v| v as u32),
+                    uint_opt(&args, "end_line").map(|v| v as u32),
+                    str_opt(&args, "new_content"),
+                    str_opt(&args, "old_string"),
+                    str_opt(&args, "new_string"),
+                    uint_opt(&args, "match_index"),
+                    parse_edits(&args)?,
+                    str_opt(&args, "new_name"),
+                    str_opt(&args, "to_file"),
+                    bool_opt(&args, "force"),
+                    str_opt(&args, "function_name"),
+                    str_opt(&args, "entity_type"),
+                    str_opt(&args, "after_symbol"),
+                    str_opt(&args, "language"),
+                    parse_params(args.get("params")),
+                    str_opt(&args, "returns"),
+                    str_opt(&args, "on"),
+                )
+            })();
+            call_to_dynamic(res)
         });
     }
 
@@ -161,13 +377,38 @@ mod tests {
         // A function that returns an error map does not panic — result is still valid JSON.
         let result = run_script(
             None,
-            // blast_radius on a non-existent symbol: returns {"error": "..."} map
-            r#"blast_radius("__no_such_symbol__")"#.to_string(),
+            // impact on a non-existent symbol: returns {"error": "..."} map
+            r#"impact(#{symbol: "__no_such_symbol__"})"#.to_string(),
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
         // result should be an object (either a valid result or an error map)
         assert!(v["result"].is_object());
+    }
+
+    #[test]
+    fn test_run_script_uses_task_surface() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let result = run_script(
+            Some(dir.path().to_string_lossy().into_owned()),
+            r#"inspect(#{name: "main", include_source: true})"#.to_string(),
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(v["tool"], "script");
+        assert_eq!(v["result"]["tool"], "inspect");
+        assert_eq!(v["result"]["mode"], "symbol");
+    }
+
+    #[test]
+    fn test_run_script_hides_legacy_mechanism_functions() {
+        let err = run_script(None, r#"symbol("main")"#.to_string()).unwrap_err();
+        assert!(err.to_string().contains("Function not found"));
+        assert!(err.to_string().contains("symbol"));
     }
 }

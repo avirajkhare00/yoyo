@@ -28,18 +28,91 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         "languages": snapshot.languages.into_iter().collect::<Vec<_>>(),
         "files_indexed": snapshot.files_indexed,
         "tools": groups,
+        "capabilities": capability_catalog(),
+        "common_tasks": common_task_catalog(),
         "rules": [
             "Call index first and wait before any read-indexed tool.",
             "boot can be called in parallel with index on first contact.",
             "Read tools parallelise freely. Write tools are sequential.",
             "After any write, wait for completion before reading the same file.",
-            "Call help(name) to get params, output shape, and examples for any tool.",
+            "Call help(name) to get params, output shape, and examples for any tool or task topic.",
         ],
         "update_available": super::update::check_update(),
     });
 
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
+}
+
+fn capability_catalog() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![
+        json!({
+            "name": "orient",
+            "question": "What kind of codebase is this?",
+            "tools": ["boot", "index", "map", "routes", "health"],
+        }),
+        json!({
+            "name": "locate",
+            "question": "Where is the exact code object I need?",
+            "tools": ["inspect", "search", "ask"],
+        }),
+        json!({
+            "name": "relate",
+            "question": "What else touches this and what breaks if I change it?",
+            "tools": ["impact", "routes", "health"],
+        }),
+        json!({
+            "name": "change",
+            "question": "How do I make the change safely?",
+            "tools": ["change"],
+        }),
+        json!({
+            "name": "compose",
+            "question": "When should I chain multiple yoyo reads into one result?",
+            "tools": ["script"],
+        }),
+    ]
+}
+
+fn common_task_catalog() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![
+        json!({
+            "task": "Understand a new repo fast",
+            "use": ["boot", "index", "map", "routes", "health"],
+        }),
+        json!({
+            "task": "Find a function by name and read it",
+            "use": ["inspect"],
+        }),
+        json!({
+            "task": "Inspect a file or exact line range",
+            "use": ["inspect"],
+        }),
+        json!({
+            "task": "Find a function by intent",
+            "use": ["ask", "inspect"],
+        }),
+        json!({
+            "task": "Trace request path to business logic",
+            "use": ["impact", "inspect"],
+        }),
+        json!({
+            "task": "Check whether a function is safe to delete",
+            "use": ["impact", "health", "change"],
+        }),
+        json!({
+            "task": "Rename or move code safely",
+            "use": ["impact", "change"],
+        }),
+        json!({
+            "task": "Patch multiple files in one change",
+            "use": ["impact", "change"],
+        }),
+    ]
 }
 
 /// Public entrypoint for the `llm_workflows` CLI/MCP tool.
@@ -62,16 +135,16 @@ pub fn llm_workflows(
         workflows: workflow_catalog(),
         decision_map: decision_map(),
         antipatterns: vec![
-            "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use blast_radius.",
-            "grep to find a definition: returns all files containing the string, not the canonical definition. Use symbol.",
-            "reading raw source to determine visibility: pub/pub(crate)/nothing requires inference and is error-prone. Use symbol — visibility field is an exact enum.",
-            "inferring module path from file path: conventions vary by language and project. Use symbol — module_path field is authoritative.",
-            "str.replace to rename: corrupts partial matches (e.g. renaming is_match also renames is_match_candidate). Use graph_rename.",
-            "deleting a function without checking callers: leaves the codebase broken. Use graph_delete — it blocks if callers exist.",
-            "grep to list methods of a struct: returns all fn definitions in the file, not grouped by type. Use file_functions filtered by parent_type.",
-            "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use symbol — implementors field on trait matches.",
-            "reading struct source to get field types: works but is unstructured. Use symbol with include_source=true — fields array is parsed and typed.",
-            "using Edit or Write to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use patch — name mode resolves location from the index, returns patched_source for inline verification, and auto-reindexes.",
+            "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use impact(symbol=...).",
+            "grep to find a definition: returns all files containing the string, not the canonical definition. Use inspect(name=...).",
+            "reading raw source to determine visibility: pub/pub(crate)/nothing requires inference and is error-prone. Use inspect(name=...) — visibility is structured.",
+            "inferring module path from file path: conventions vary by language and project. Use inspect(name=...) — module_path is authoritative.",
+            "str.replace to rename: corrupts partial matches (e.g. renaming is_match also renames is_match_candidate). Use change(action=rename).",
+            "deleting a function without checking callers: leaves the codebase broken. Use impact(symbol=...) first, then change(action=delete).",
+            "grep to list methods of a struct: returns all fn definitions in the file, not grouped by type. Use inspect(file=...) and filter the outlined functions by parent_type.",
+            "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use inspect(name=...) — implementors are structured on trait matches.",
+            "reading struct source to get field types: works but is unstructured. Use inspect(name=..., include_source=true) — fields stay parsed and typed.",
+            "using raw editor-style writes to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use change(action=edit) so the write resolves through the index and auto-reindexes.",
             "calling multiple tools sequentially and combining their outputs manually: use script when you need to loop over tool output, filter arrays, cross-reference categories, or reduce across N items. One script call replaces N round-trips and returns a single structured result.",
         ],
         metapatterns: metapattern_catalog(),
@@ -279,63 +352,63 @@ fn decision_map() -> Vec<DecisionEntry> {
             question: "Where is function/struct/enum/trait X defined?",
             wrong_tool: "grep 'fn X' or 'struct X'",
             wrong_because: "Returns every file containing the string — comments, tests, re-exports, partials. 21 hits when answer is 1.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "file + start_line",
         },
         DecisionEntry {
             question: "Is X public, private, or crate-visible?",
             wrong_tool: "read raw source and infer from pub/pub(crate)/nothing",
             wrong_because: "Inference is error-prone and inconsistent across languages.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "visibility (exact enum: public | module | private)",
         },
         DecisionEntry {
             question: "What module or package does X belong to?",
             wrong_tool: "infer from file path",
             wrong_because: "Path conventions vary. For Rust, `src/` is stripped and crate name is inferred from workspace layout. mod re-exports break naive path inference entirely.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "module_path (e.g. tokio::sync, not tokio::src::sync)",
         },
         DecisionEntry {
             question: "What functions does X call?",
             wrong_tool: "grep for names inside the function body",
             wrong_because: "Cannot isolate calls *by* a specific function. Returns all occurrences in the file.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "calls[] (project-defined callees only, stdlib filtered)",
         },
         DecisionEntry {
             question: "Who calls X? How many callers?",
             wrong_tool: "grep for X and count lines",
             wrong_because: "Overcounts — hits comments, docs, string literals, partial names. 244 grep hits vs 29 real callers in tokio.",
-            right_tool: "blast_radius",
+            right_tool: "impact",
             right_field: "callers[] (deduplicated, non-self, no false positives)",
         },
         DecisionEntry {
             question: "What methods does struct X have?",
             wrong_tool: "grep 'fn' in the struct's file",
             wrong_because: "Returns all functions in the file with no grouping by impl block.",
-            right_tool: "file_functions",
+            right_tool: "inspect",
             right_field: "functions[] filtered by parent_type == X",
         },
         DecisionEntry {
             question: "What fields does struct X have?",
             wrong_tool: "read struct source body",
             wrong_because: "Works but returns unstructured text — field types not queryable.",
-            right_tool: "symbol with include_source=true",
+            right_tool: "inspect with include_source=true",
             right_field: "fields[{name, type_str, visibility}] (Rust only)",
         },
         DecisionEntry {
             question: "What traits does struct X implement?",
             wrong_tool: "grep 'impl.*X'",
             wrong_because: "Matches loosely — hits impl blocks for other types, misses generic impls.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "implements[] on struct/enum matches",
         },
         DecisionEntry {
             question: "Which types implement trait X?",
             wrong_tool: "grep 'impl X for'",
             wrong_because: "Misses blanket impls, generic impls, re-exports. Requires manual deduplication.",
-            right_tool: "symbol",
+            right_tool: "inspect",
             right_field: "implementors[] on trait matches (deduplicated)",
         },
         DecisionEntry {
@@ -387,27 +460,18 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
         ToolDescription { name: "boot", description: "Bootstrap: tool names, categories, and concurrency rules. Call in parallel with index on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "index", description: "Build the AST index all read-indexed tools depend on. Call in parallel with boot on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "read", description: "Read any line range from any file.", requires_bake: false, category: "read", parallelisable: true, output_shape: None },
+        ToolDescription { name: "inspect", description: "Inspect a symbol, file outline, or line range from one entrypoint.", requires_bake: true, category: "read-indexed", parallelisable: true,
+            output_shape: Some(r#"{"mode":"symbol|file|lines","target":{},"result":{}}"#) },
         ToolDescription { name: "map", description: "Directory tree with inferred roles.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "symbol", description: "Find a function by name.", requires_bake: true, category: "read-indexed", parallelisable: true,
-            output_shape: Some(r#"{"matches":[{"name":"","file":"","start_line":0,"end_line":0,"visibility":"public|module|private","complexity":0,"calls":[],"source":"(if include_source=true)"}]}"#) },
-        ToolDescription { name: "outline", description: "Every function in a file with line ranges and complexity.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "search", description: "AST-aware search. Replaces grep/rg.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "ask", description: "Find functions by intent using embeddings.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "routes", description: "All detected HTTP routes.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
-        ToolDescription { name: "flow", description: "Endpoint to handler to call chain in one call.", requires_bake: true, category: "read-indexed", parallelisable: true,
-            output_shape: Some(r#"{"endpoint":{"method":"","path":""},"handler":{"name":"","file":"","start_line":0,"source":"(if include_source=true)"},"call_chain":[{"name":"","file":"","depth":0}],"boundaries":[],"summary":""}"#) },
-        ToolDescription { name: "callers", description: "All transitive callers of a symbol.", requires_bake: true, category: "read-indexed", parallelisable: true,
-            output_shape: Some(r#"{"symbol":"","callers":[{"caller":"","file":"","depth":1,"complexity":0}],"affected_files":[],"total_callers":0}"#) },
+        ToolDescription { name: "impact", description: "Task-shaped impact analysis for a symbol or endpoint.", requires_bake: true, category: "read-indexed", parallelisable: true,
+            output_shape: Some(r#"{"mode":"symbol|endpoint","target":{},"summary":"(endpoint mode)","callers":[],"affected_files":[],"call_chain":[]}"#) },
         ToolDescription { name: "health", description: "Dead code, large functions, and duplicate hints.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"large_functions":[{"name":"","file":"","start_line":0,"score":0,"complexity":0,"fan_out":0}],"dead_code":[{"name":"","file":"","start_line":0,"lines":0}],"duplicate_code":[{"stem":"","functions":[{"name":"","file":""}]}],"long_methods":[{"name":"","file":"","start_line":0,"lines":0}],"feature_envy":[{"name":"","file":"","envies":"","cross_file_calls":0}],"shotgun_surgery":[{"name":"","file":"","caller_files":0}]}"#) },
-        ToolDescription { name: "edit", description: "Edit code by symbol name, content match, or line range. Auto-reindexes.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "bulk_edit", description: "Apply N edits across M files in one call.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "rename", description: "Rename a symbol at definition and every call site.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "create", description: "Create a new file with a function scaffold.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "add", description: "Insert a function scaffold into an existing file.", requires_bake: false, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "move", description: "Move a function between files atomically.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
-        ToolDescription { name: "delete", description: "Remove a function by name. Blocks if callers exist.", requires_bake: true, category: "write", parallelisable: false, output_shape: None },
+        ToolDescription { name: "change", description: "Task-shaped write entrypoint over edit, bulk_edit, rename, move, delete, create, and add.", requires_bake: false, category: "write", parallelisable: false,
+            output_shape: Some(r#"{"action":"edit|bulk_edit|rename|move|delete|create|add","result":{}}"#) },
         ToolDescription { name: "script", description: "Run a Rhai script with yoyo tools as functions.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
         ToolDescription { name: "help", description: "Get params, output shape, example, and limitations for any tool.", requires_bake: false, category: "discovery", parallelisable: true, output_shape: None },
     ]
@@ -415,7 +479,8 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
 
 pub fn tool_help(name: String) -> Result<String> {
     let help_entries = tool_help_catalog();
-    let entry = help_entries.iter().find(|e| e.name == name);
+    let normalized = name.trim().to_ascii_lowercase();
+    let entry = help_entries.iter().find(|e| e.name == normalized);
     match entry {
         Some(e) => Ok(serde_json::to_string_pretty(&serde_json::json!({
             "tool": "help",
@@ -427,8 +492,28 @@ pub fn tool_help(name: String) -> Result<String> {
             "limitations": e.limitations,
         }))?),
         None => {
+            let tasks = task_help_catalog();
+            if let Some(task) = tasks.iter().find(|t| {
+                t.name == normalized || t.aliases.iter().any(|alias| *alias == normalized)
+            }) {
+                return Ok(serde_json::to_string_pretty(&serde_json::json!({
+                    "tool": "help",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "task": task.name,
+                    "question": task.question,
+                    "use": task.use_tools,
+                    "why": task.why,
+                    "steps": task.steps,
+                }))?);
+            }
             let available: Vec<&str> = help_entries.iter().map(|e| e.name).collect();
-            Err(anyhow::anyhow!("Unknown tool '{}'. Available: {}", name, available.join(", ")))
+            let task_names: Vec<&str> = tasks.iter().map(|t| t.name).collect();
+            Err(anyhow::anyhow!(
+                "Unknown help topic '{}'. Tools: {}. Tasks: {}",
+                name,
+                available.join(", "),
+                task_names.join(", ")
+            ))
         }
     }
 }
@@ -439,6 +524,15 @@ struct ToolHelp {
     output_shape: Option<&'static str>,
     example: serde_json::Value,
     limitations: &'static str,
+}
+
+struct TaskHelp {
+    name: &'static str,
+    aliases: &'static [&'static str],
+    question: &'static str,
+    use_tools: &'static [&'static str],
+    why: &'static str,
+    steps: &'static [&'static str],
 }
 
 fn tool_help_catalog() -> Vec<ToolHelp> {
@@ -459,11 +553,11 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             limitations: "Must complete before any read-indexed tool. Re-run after large external changes.",
         },
         ToolHelp {
-            name: "read",
-            params: json!({"file": "required - file path relative to project root", "start_line": "required - 1-based start line", "end_line": "required - 1-based end line", "path": "optional"}),
-            output_shape: Some(r#"{"file":"","start":0,"end":0,"total_lines":0,"lines":[""]}"#),
-            example: json!({"call": {"file": "src/main.rs", "start_line": 1, "end_line": 20}}),
-            limitations: "No bake required. Use symbol output's start_line/end_line directly.",
+            name: "inspect",
+            params: json!({"name": "optional - function name for symbol mode", "file": "optional - file path for file or lines mode", "start_line": "optional - start line for lines mode", "end_line": "optional - end line for lines mode", "include_source": "optional bool - include body in symbol mode", "include_summaries": "optional bool - include summaries in file mode", "limit": "optional - max symbol matches", "stdlib": "optional bool - include stdlib in symbol mode", "path": "optional"}),
+            output_shape: Some(r#"{"mode":"symbol|file|lines","target":{},"result":{}}"#),
+            example: json!({"call": {"name": "handle_request", "include_source": true}}),
+            limitations: "Modes: name => symbol, file => outline, file+start_line+end_line => line range. Symbol and file modes require index; line-range mode does not.",
         },
         ToolHelp {
             name: "map",
@@ -471,20 +565,6 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             output_shape: Some(r#"{"directories":[{"path":"","role":"","file_count":0}],"total_dirs":0}"#),
             example: json!({"call": {"intent": "auth service"}}),
             limitations: "Requires index. Sorts by file count descending.",
-        },
-        ToolHelp {
-            name: "symbol",
-            params: json!({"name": "required - function name", "include_source": "optional bool - include body", "file": "optional - path substring filter", "limit": "optional - max matches (default 20)", "stdlib": "optional bool - search stdlibs", "path": "optional"}),
-            output_shape: Some(r#"{"matches":[{"name":"","file":"","start_line":0,"end_line":0,"visibility":"","complexity":0,"calls":[],"source":""}]}"#),
-            example: json!({"call": {"name": "handle_request", "include_source": true}}),
-            limitations: "Requires index. Case-insensitive match. Prefers exact name over substring.",
-        },
-        ToolHelp {
-            name: "outline",
-            params: json!({"file": "required - file path", "include_summaries": "optional bool", "path": "optional"}),
-            output_shape: Some(r#"{"file":"","functions":[{"name":"","start_line":0,"end_line":0,"complexity":0,"parent_type":""}]}"#),
-            example: json!({"call": {"file": "src/engine/index.rs"}}),
-            limitations: "Requires index. One file at a time.",
         },
         ToolHelp {
             name: "search",
@@ -508,81 +588,113 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             limitations: "Requires index. Supports Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http.",
         },
         ToolHelp {
-            name: "flow",
-            params: json!({"endpoint": "required - URL path substring", "method": "optional - GET/POST/etc", "depth": "optional - max call depth (default 5)", "include_source": "optional bool", "path": "optional"}),
-            output_shape: Some(r#"{"endpoint":{"method":"","path":""},"handler":{"name":"","file":""},"call_chain":[{"name":"","file":"","depth":0}],"boundaries":[],"summary":""}"#),
-            example: json!({"call": {"endpoint": "/users", "include_source": true}}),
-            limitations: "Requires index. Call chain tracing: Rust + Go only.",
-        },
-        ToolHelp {
-            name: "callers",
-            params: json!({"symbol": "required - function name", "depth": "optional - max depth (default 2)", "path": "optional"}),
-            output_shape: Some(r#"{"symbol":"","callers":[{"caller":"","file":"","depth":1}],"affected_files":[],"total_callers":0}"#),
+            name: "impact",
+            params: json!({"symbol": "optional - function name for symbol-impact mode", "endpoint": "optional - URL path substring for endpoint-impact mode", "method": "optional - HTTP method filter for endpoint mode", "depth": "optional - max caller/call-chain depth", "include_source": "optional bool - include handler source in endpoint mode", "path": "optional"}),
+            output_shape: Some(r#"{"mode":"symbol|endpoint","target":{},"callers":[],"affected_files":[],"handler":{},"call_chain":[]}"#),
             example: json!({"call": {"symbol": "handle_request", "depth": 3}}),
-            limitations: "Requires index. Always run before delete or rename.",
+            limitations: "Requires index. Exactly one of symbol or endpoint must be provided. Use symbol mode before rename/move/delete and endpoint mode before route-level edits.",
         },
         ToolHelp {
             name: "health",
             params: json!({"top": "optional - max per category (default 10)", "view": "optional - compact|full|raw", "limit": "optional - items per section in compact", "cursor": "optional - pagination cursor", "path": "optional"}),
             output_shape: Some(r#"{"dead_code":[],"large_functions":[],"duplicate_code":[],"long_methods":[],"feature_envy":[],"shotgun_surgery":[]}"#),
             example: json!({"call": {"top": 5}}),
-            limitations: "Requires index. Router-registered handlers may appear dead -- cross-check with callers.",
+            limitations: "Requires index. Router-registered handlers may appear dead; confirm with impact(symbol=...) before deleting API code.",
         },
         ToolHelp {
-            name: "edit",
-            params: json!({"name": "optional - symbol name (resolves from index)", "file": "optional - file path", "start": "optional - start line", "end": "optional - end line", "new_content": "optional - replacement content", "old_string": "optional - exact string to find", "new_string": "optional - replacement for old_string", "match_index": "optional - disambiguate symbol matches", "path": "optional"}),
-            output_shape: Some(r#"{"file":"","patched_source":"..."}"#),
-            example: json!({"call": {"name": "handle_request", "new_content": "fn handle_request() { todo!() }"}}),
-            limitations: "Three modes: name (symbol), old_string+new_string (content-match), file+start+end+new_content (range). Auto-reindexes. Syntax-checks Rust and Zig.",
-        },
-        ToolHelp {
-            name: "bulk_edit",
-            params: json!({"edits": "required - array of {file, byte_start, byte_end, new_content}", "path": "optional"}),
-            output_shape: Some(r#"{"files_patched":0,"edits_applied":0}"#),
-            example: json!({"call": {"edits": [{"file": "src/main.rs", "byte_start": 0, "byte_end": 10, "new_content": "// fixed"}]}}),
-            limitations: "Requires index for byte offsets. Bottom-up ordering is automatic.",
-        },
-        ToolHelp {
-            name: "rename",
-            params: json!({"name": "required - current identifier", "new_name": "required - new identifier", "path": "optional"}),
-            output_shape: Some(r#"{"old_name":"","new_name":"","occurrences_renamed":0,"files_modified":[]}"#),
-            example: json!({"call": {"name": "get_user", "new_name": "fetch_user"}}),
-            limitations: "Renames at definition and all call sites. Prefer over search-and-replace.",
-        },
-        ToolHelp {
-            name: "create",
-            params: json!({"file": "required - file path", "function_name": "required - initial function name", "language": "optional", "params": "optional - typed params JSON", "returns": "optional - return type", "path": "optional"}),
-            output_shape: Some(r#"{"file":"","function":"","language":""}"#),
-            example: json!({"call": {"file": "src/handlers.rs", "function_name": "get_user"}}),
-            limitations: "Errors if file exists or parent dir missing.",
-        },
-        ToolHelp {
-            name: "add",
-            params: json!({"entity_type": "required - fn|function|def|func|test", "name": "required", "file": "required", "after_symbol": "optional", "language": "optional", "params": "optional", "returns": "optional", "on": "optional - struct/class name", "path": "optional"}),
-            output_shape: Some(r#"{"file":"","function":"","inserted_after":""}"#),
-            example: json!({"call": {"entity_type": "fn", "name": "validate", "file": "src/auth.rs", "after_symbol": "authenticate"}}),
-            limitations: "Inserts scaffold only. Use edit to fill in the body.",
-        },
-        ToolHelp {
-            name: "move",
-            params: json!({"name": "required - function name", "to_file": "required - destination file", "path": "optional"}),
-            output_shape: Some(r#"{"tool":"graph_move","from_file":"","to_file":"","function":""}"#),
-            example: json!({"call": {"name": "validate_token", "to_file": "src/auth.rs"}}),
-            limitations: "Requires index. Injects needed imports into destination.",
-        },
-        ToolHelp {
-            name: "delete",
-            params: json!({"name": "required - function name", "file": "optional - disambiguate", "force": "optional bool - delete even with callers", "path": "optional"}),
-            output_shape: Some(r#"{"name":"","file":"","bytes_removed":0}"#),
-            example: json!({"call": {"name": "deprecated_handler"}}),
-            limitations: "Blocks if callers exist unless force=true. Always run callers first.",
+            name: "change",
+            params: json!({"action": "required - edit|bulk_edit|rename|move|delete|create|add", "name": "optional - symbol name for edit/rename/move/delete/add", "file": "optional - file path", "start_line": "optional - line-range edit start", "end_line": "optional - line-range edit end", "new_content": "optional - replacement for edit", "old_string": "optional - exact content-match source", "new_string": "optional - content-match replacement", "match_index": "optional - disambiguate symbol edit", "edits": "optional - array of {file, byte_start, byte_end, new_content} for bulk_edit", "new_name": "optional - rename target", "to_file": "optional - move destination", "force": "optional bool - allow delete with callers", "function_name": "optional - create scaffold name", "entity_type": "optional - add scaffold type", "after_symbol": "optional - add insertion anchor", "language": "optional - scaffold language", "params": "optional - typed params JSON for create/add", "returns": "optional - return type for create/add", "on": "optional - receiver/owner type for add", "path": "optional"}),
+            output_shape: Some(r#"{"action":"edit|bulk_edit|rename|move|delete|create|add","result":{}}"#),
+            example: json!({"call": {"action": "rename", "name": "get_user", "new_name": "fetch_user"}}),
+            limitations: "Task-shaped router over existing write primitives. Use when you know the change intent but do not want to choose between edit, rename, move, delete, create, add, or bulk_edit first.",
         },
         ToolHelp {
             name: "script",
             params: json!({"code": "required - Rhai script", "path": "optional"}),
             output_shape: Some(r#"{"tool":"script","result":"(last expression value)"}"#),
-            example: json!({"call": {"code": "let h = health(); h[\"dead_code\"].len()"}}),
-            limitations: "Available functions: symbol, blast_radius, health, supersearch, file_functions, flow, slice, graph_delete. fn is reserved in Rhai -- use f or item.",
+            example: json!({"call": {"code": "let h = health(); let risk = []; for d in h[\"dead_code\"] { let i = impact(#{symbol: d[\"name\"]}); if i[\"callers\"].len() == 0 { risk += [d[\"name\"]]; } } risk"}}),
+            limitations: "Task-shaped script surface only: boot, index, inspect, search, ask, map, routes, impact, health, change, help. Prefer script when you need loops, filtering, or aggregation across task-tool results.",
+        },
+        ToolHelp {
+            name: "help",
+            params: json!({"name": "required - tool or task topic"}),
+            output_shape: Some(r#"{"tool":"help","name":"","params":{},"example":{},"limitations":""}"#),
+            example: json!({"call": {"name": "safe delete"}}),
+            limitations: "Supports both tool names and task topics such as inspect code, safe delete, trace request, find by intent, assess impact, and multi-file patch.",
+        },
+    ]
+}
+
+fn task_help_catalog() -> Vec<TaskHelp> {
+    vec![
+        TaskHelp {
+            name: "inspect code",
+            aliases: &["inspect symbol", "inspect file", "inspect lines"],
+            question: "How do I read code without choosing between symbol, outline, and line-range tools first?",
+            use_tools: &["inspect"],
+            why: "inspect is the merged read surface: name => symbol mode, file => file-outline mode, file+start_line+end_line => exact line-range mode.",
+            steps: &[
+                "Use inspect(name=...) when you know the symbol and want the source or metadata.",
+                "Use inspect(file=...) when you want the function outline for a file.",
+                "Use inspect(file=..., start_line=..., end_line=...) when you need exact lines.",
+            ],
+        },
+        TaskHelp {
+            name: "safe delete",
+            aliases: &["delete safety", "is it safe to delete", "safe deletion"],
+            question: "How do I confirm a function is really safe to remove?",
+            use_tools: &["impact", "health", "change"],
+            why: "Delete safety is about structural impact, not text search. impact(symbol=...) finds live edges, health surfaces dead-code candidates, and change(action=delete) routes to the blocking delete primitive.",
+            steps: &[
+                "Run impact(symbol=...) first to see whether anything still reaches the symbol.",
+                "Use health as a second signal for dead-code candidates, especially when cleaning up groups of functions.",
+                "Run change(action=delete) only after impact is clean; it will still block unless force=true.",
+            ],
+        },
+        TaskHelp {
+            name: "trace request",
+            aliases: &["trace request path", "request flow", "trace endpoint"],
+            question: "How do I follow an HTTP endpoint into business logic?",
+            use_tools: &["impact", "inspect"],
+            why: "impact(endpoint=...) returns the endpoint, handler, and downstream chain in one task-shaped call; inspect is the fastest way to inspect any node in that chain with source or exact lines.",
+            steps: &[
+                "Start with impact(endpoint=...) to identify the matched route, handler, and downstream chain.",
+                "Use inspect(name=..., include_source=true) on the handler or any downstream callee that needs inspection.",
+            ],
+        },
+        TaskHelp {
+            name: "assess impact",
+            aliases: &["impact analysis", "what breaks", "blast radius"],
+            question: "How do I understand what else a symbol or endpoint touches before making a change?",
+            use_tools: &["impact", "inspect", "change"],
+            why: "impact is the merged relation surface: symbol mode scopes callers and affected files, endpoint mode traces the request path into code, and inspect/change handle follow-up reads and edits.",
+            steps: &[
+                "Use impact(symbol=...) before rename, move, or delete work.",
+                "Use impact(endpoint=...) before changing handler logic for a route.",
+                "Open the most relevant caller or handler with inspect(...) before making the change.",
+            ],
+        },
+        TaskHelp {
+            name: "find by intent",
+            aliases: &["semantic search", "find function by intent", "find by behavior"],
+            question: "How do I find code when I know behavior but not the function name?",
+            use_tools: &["ask", "inspect"],
+            why: "ask ranks functions by intent; inspect then verifies the winning candidate with exact source and metadata.",
+            steps: &[
+                "Use ask with a short behavior description such as 'validate user token' or 'spawn blocking task'.",
+                "Open the top candidate with inspect(name=..., include_source=true) before editing or tracing further.",
+            ],
+        },
+        TaskHelp {
+            name: "multi-file patch",
+            aliases: &["patch multiple files", "bulk patch", "cross-file fix"],
+            question: "How should I change several files in one safe pass?",
+            use_tools: &["impact", "change"],
+            why: "impact helps define the affected path for either a symbol or an endpoint; change(action=bulk_edit) applies all edits in one indexed write instead of many fragile string replacements.",
+            steps: &[
+                "Use impact(...) or other task-shaped read tools first to bound the full set of affected files.",
+                "Apply the final cross-file change with change(action=bulk_edit) so offsets stay coherent in one operation.",
+            ],
         },
     ]
 }
@@ -705,26 +817,26 @@ fn workflow_catalog() -> Vec<Workflow> {
             description: "Confirm a function is truly unused before removing it. The combination prevents broken builds.",
             steps: vec![
                 WorkflowStep { tool: "health",       hint: "Get dead code candidates — functions with no detected callers" },
-                WorkflowStep { tool: "blast_radius", hint: "Cross-check: list all transitive callers of the candidate (health can miss router-registered handlers)" },
-                WorkflowStep { tool: "graph_delete", hint: "Remove the function — tool blocks if callers still exist, so this is safe to run" },
+                WorkflowStep { tool: "impact", hint: "Cross-check the candidate before deletion; health can miss router-registered handlers" },
+                WorkflowStep { tool: "change", hint: "Run change(action=delete) only after impact is clean; deletion still blocks unless forced" },
             ],
         },
         Workflow {
             name: "Fix a broken API endpoint end-to-end",
             description: "Trace a route to its full call chain and patch every affected layer in one session.",
             steps: vec![
-                WorkflowStep { tool: "flow",        hint: "Pass the endpoint path substring — returns handler + full call chain + boundaries in one call" },
-                WorkflowStep { tool: "symbol",      hint: "Read each function in the chain with include_source=true to understand the failure" },
-                WorkflowStep { tool: "multi_patch", hint: "Apply all fixes across all files in one call — bottom-up ordering is automatic" },
+                WorkflowStep { tool: "impact", hint: "Pass the endpoint path substring — returns handler + full call chain + boundaries in one call" },
+                WorkflowStep { tool: "inspect", hint: "Read each function in the chain with include_source=true to understand the failure" },
+                WorkflowStep { tool: "change", hint: "Apply the final fix with edit or bulk_edit once the affected files are confirmed" },
             ],
         },
         Workflow {
             name: "Rename with safety check",
             description: "Understand the blast radius before renaming, then rename atomically.",
             steps: vec![
-                WorkflowStep { tool: "blast_radius", hint: "Scope the impact — see all callers and affected files before touching anything" },
-                WorkflowStep { tool: "graph_rename", hint: "Rename at definition + every call site atomically; word-boundary matching prevents partial renames" },
-                WorkflowStep { tool: "symbol",       hint: "Verify the definition carries the new name" },
+                WorkflowStep { tool: "impact", hint: "Scope the impact — see all callers and affected files before touching anything" },
+                WorkflowStep { tool: "change", hint: "Run change(action=rename) to rename at definition + every call site atomically" },
+                WorkflowStep { tool: "inspect",       hint: "Verify the definition carries the new name" },
             ],
         },
         Workflow {
@@ -738,32 +850,28 @@ fn workflow_catalog() -> Vec<Workflow> {
             ],
         },
         Workflow {
-            name: "Graph-level rename (manual — prefer graph_rename)",
-            description: "[DEPRECATED: use graph_rename for one-shot rename] Manual rename via byte-precise edits with multi_patch. Use only when you need fine-grained control over which occurrences to rename.",
+            name: "Manual rename with bounded scope",
+            description: "Use task-shaped tools to bound impact, inspect the exact sites, and then apply a targeted bulk edit when you intentionally do not want a global rename.",
             steps: vec![
-                WorkflowStep { tool: "bake",         hint: "Ensure the index is fresh so byte_start/byte_end are accurate" },
-                WorkflowStep { tool: "symbol",        hint: "Confirm the definition: note file, byte_start, byte_end" },
-                WorkflowStep { tool: "blast_radius",  hint: "Find all callers and affected files" },
-                WorkflowStep { tool: "supersearch",   hint: "Search for the old name (context=identifiers) to collect call-site offsets" },
-                WorkflowStep { tool: "multi_patch",   hint: "Pass all edits (definition + call sites) in one call; bottom-up order is handled automatically" },
+                WorkflowStep { tool: "impact",  hint: "Find all callers and affected files before touching anything" },
+                WorkflowStep { tool: "search",   hint: "Search for the old name with context=identifiers to collect the intended call sites" },
+                WorkflowStep { tool: "change",   hint: "Use change(action=bulk_edit) if you intentionally want a bounded rename instead of a graph rename" },
             ],
         },
         Workflow {
-            name: "Precise in-line edit",
-            description: "Replace a single identifier or expression at exact byte position without touching surrounding code.",
+            name: "Precise local edit",
+            description: "Inspect the exact lines you want to touch, then apply a narrow line-range or symbol edit.",
             steps: vec![
-                WorkflowStep { tool: "symbol",      hint: "Look up the function; note byte_start/byte_end from the index" },
-                WorkflowStep { tool: "slice",       hint: "Read the relevant lines to confirm the target byte range" },
-                WorkflowStep { tool: "patch_bytes", hint: "Splice new_content at byte_start..byte_end; only those bytes change" },
+                WorkflowStep { tool: "inspect",      hint: "Read the function or exact lines first so the change target is unambiguous" },
+                WorkflowStep { tool: "change", hint: "Use change(action=edit) with line-range mode or symbol mode for the narrowest safe patch" },
             ],
         },
         Workflow {
             name: "Trace a call chain",
             description: "Follow a function's callees downward to database, HTTP, or queue boundaries.",
             steps: vec![
-                WorkflowStep { tool: "bake",       hint: "Ensure index is fresh so call edges are populated" },
-                WorkflowStep { tool: "trace_down", hint: "Pass symbol name; optionally set depth (default 5) and file to disambiguate" },
-                WorkflowStep { tool: "symbol",     hint: "Inspect any resolved callee with include_source=true" },
+                WorkflowStep { tool: "impact", hint: "Use symbol mode for upstream callers or endpoint mode for request-path tracing" },
+                WorkflowStep { tool: "inspect",     hint: "Inspect any relevant caller, handler, or downstream callee with include_source=true" },
             ],
         },
         Workflow {
@@ -776,10 +884,10 @@ fn workflow_catalog() -> Vec<Workflow> {
         },
         Workflow {
             name: "Batch blast-radius scan (script)",
-            description: "Run blast_radius on every large function and collect which ones are safe to refactor (zero callers). Replaces N sequential blast_radius calls.",
+            description: "Run impact(symbol=...) on every large function and collect which ones are safe to refactor (zero callers). Replaces N sequential impact calls.",
             steps: vec![
                 WorkflowStep { tool: "health",  hint: "Get large_functions list" },
-                WorkflowStep { tool: "script",  hint: r#"let h = health(); let results = []; for f in h["large_functions"] { let br = blast_radius(f["name"]); results += [#{ name: f["name"], callers: br["total_callers"], safe: br["total_callers"] == 0 }]; } results"# },
+                WorkflowStep { tool: "script",  hint: r#"let h = health(); let results = []; for f in h["large_functions"] { let impact_result = impact(#{symbol: f["name"]}); let callers = impact_result["callers"]; results += [#{ name: f["name"], callers: callers.len(), safe: callers.len() == 0 }]; } results"# },
             ],
         },
         Workflow {
@@ -787,35 +895,7 @@ fn workflow_catalog() -> Vec<Workflow> {
             description: "Classify dead code into public (API surface risk) vs private (safe to delete). Filters health output with a loop — not possible with a single tool call.",
             steps: vec![
                 WorkflowStep { tool: "script",  hint: r#"let h = health(); let pub_dead = []; let priv_dead = []; for d in h["dead_code"] { if d["visibility"] == "public" { pub_dead += [d["name"]]; } else { priv_dead += [d["name"]]; } } #{ public_dead: pub_dead, private_dead_count: priv_dead.len() }"# },
-                WorkflowStep { tool: "blast_radius", hint: "Cross-check any public_dead candidates before deleting — routers register handlers invisibly to the AST" },
-            ],
-        },
-        Workflow {
-            name: "Run a multi-tool pipeline",
-            description: "Chain multiple tools in a single atomic call. Each step can reference previous step output via {{step_id.field[N].subfield}}. Steps with a false 'if' condition are skipped.",
-            steps: vec![
-                WorkflowStep { tool: "pipeline", hint: "Pass spec: a JSON array of steps. Each step has id, tool, args (with optional {{refs}}), and optional if condition. Output: {steps: [{id, tool, ok, result}]}." },
-            ],
-        },
-        Workflow {
-            name: "Pipeline: safe dead code removal",
-            description: "Find dead candidates, confirm zero callers, delete only if safe — in one atomic pipeline call. The if condition is the machine-enforced safety net: if blast_radius finds callers (e.g. a router registration invisible to the AST), the delete is skipped automatically.",
-            steps: vec![
-                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"audit","tool":"health"},{"id":"check","tool":"blast_radius","args":{"symbol":"{{audit.dead_code[0].name}}","depth":2}},{"id":"remove","tool":"graph_delete","args":{"name":"{{audit.dead_code[0].name}}"},"if":"{{check.callers | length == 0}}"}]"# },
-            ],
-        },
-        Workflow {
-            name: "Pipeline: find by intent, read source, check blast radius",
-            description: "Locate a function by natural-language description, read its full source, and measure its blast radius — before touching anything. All three steps in one call.",
-            steps: vec![
-                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"find","tool":"semantic_search","args":{"query":"<describe what the function does>"}},{"id":"read","tool":"symbol","args":{"name":"{{find.results[0].name}}","include_source":true}},{"id":"scope","tool":"blast_radius","args":{"symbol":"{{find.results[0].name}}"}}]"# },
-            ],
-        },
-        Workflow {
-            name: "Pipeline: trace endpoint, check blast radius only if handler found",
-            description: "Trace an HTTP endpoint to its handler, then measure the handler's blast radius — but only if the endpoint matched. The if guard prevents a spurious blast_radius call when the endpoint is not found.",
-            steps: vec![
-                WorkflowStep { tool: "pipeline", hint: r#"spec: [{"id":"trace","tool":"flow","args":{"endpoint":"/api/your-route"}},{"id":"scope","tool":"blast_radius","args":{"symbol":"{{trace.handler.name}}"},"if":"{{trace.handler.name}}"}]"# },
+                WorkflowStep { tool: "impact", hint: "Cross-check any public_dead candidates before deleting — routers register handlers invisibly to the AST" },
             ],
         },
     ]
@@ -827,9 +907,9 @@ fn metapattern_catalog() -> Vec<Metapattern> {
             shape: "Orient → Scope → Read",
             when: "You're unfamiliar with a codebase, a module, or a domain area. Build the mental model before touching anything.",
             steps: vec![
-                MetapatternStep { phase: "Orient",  tools: vec!["shake", "architecture_map"] },
-                MetapatternStep { phase: "Scope",   tools: vec!["package_summary", "all_endpoints"] },
-                MetapatternStep { phase: "Read",    tools: vec!["symbol", "slice"] },
+                MetapatternStep { phase: "Orient",  tools: vec!["boot", "map"] },
+                MetapatternStep { phase: "Scope",   tools: vec!["routes", "health"] },
+                MetapatternStep { phase: "Read",    tools: vec!["inspect"] },
             ],
             instances: vec!["Orient to an unfamiliar codebase", "Deep-dive into a module", "Find a function by intent (semantic search)"],
         },
@@ -837,10 +917,10 @@ fn metapattern_catalog() -> Vec<Metapattern> {
             shape: "Read → Safety → Write → Verify",
             when: "You're about to mutate code. Never write blind — always read first, check blast radius, then patch.",
             steps: vec![
-                MetapatternStep { phase: "Read",    tools: vec!["symbol", "slice"] },
-                MetapatternStep { phase: "Safety",  tools: vec!["blast_radius"] },
-                MetapatternStep { phase: "Write",   tools: vec!["patch", "multi_patch", "graph_rename"] },
-                MetapatternStep { phase: "Verify",  tools: vec!["symbol", "slice"] },
+                MetapatternStep { phase: "Read",    tools: vec!["inspect"] },
+                MetapatternStep { phase: "Safety",  tools: vec!["impact"] },
+                MetapatternStep { phase: "Write",   tools: vec!["change"] },
+                MetapatternStep { phase: "Verify",  tools: vec!["inspect"] },
             ],
             instances: vec!["Edit a function", "Rename with safety check", "Fix a broken API endpoint end-to-end"],
         },
@@ -849,8 +929,8 @@ fn metapattern_catalog() -> Vec<Metapattern> {
             when: "You think something is dead weight. Surface candidates, confirm no hidden callers, then delete.",
             steps: vec![
                 MetapatternStep { phase: "Suspect", tools: vec!["health"] },
-                MetapatternStep { phase: "Confirm", tools: vec!["blast_radius"] },
-                MetapatternStep { phase: "Remove",  tools: vec!["graph_delete"] },
+                MetapatternStep { phase: "Confirm", tools: vec!["impact"] },
+                MetapatternStep { phase: "Remove",  tools: vec!["change"] },
             ],
             instances: vec!["Safely delete dead code"],
         },
@@ -869,9 +949,9 @@ fn metapattern_catalog() -> Vec<Metapattern> {
             shape: "Trace → Read → Fix",
             when: "Something is broken. Follow the path from entry point to failure, read each layer, then patch the root cause.",
             steps: vec![
-                MetapatternStep { phase: "Trace", tools: vec!["flow", "supersearch", "trace_down"] },
-                MetapatternStep { phase: "Read",  tools: vec!["symbol", "slice"] },
-                MetapatternStep { phase: "Fix",   tools: vec!["multi_patch", "patch"] },
+                MetapatternStep { phase: "Trace", tools: vec!["impact", "search"] },
+                MetapatternStep { phase: "Read",  tools: vec!["inspect"] },
+                MetapatternStep { phase: "Fix",   tools: vec!["change"] },
             ],
             instances: vec!["Fix a broken API endpoint end-to-end", "Trace a call chain", "Understand an API endpoint"],
         },
@@ -1002,4 +1082,90 @@ pub fn bake(path: Option<String>) -> Result<String> {
 
     let out = serde_json::to_string_pretty(&summary)?;
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{llm_instructions, tool_help};
+    use serde_json::Value;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn boot_includes_capabilities_and_common_tasks() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+
+        let json = llm_instructions(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+
+        let capabilities = payload["capabilities"].as_array().unwrap();
+        assert!(
+            capabilities.iter().any(|entry| {
+                entry["name"] == "relate"
+                    && entry["tools"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|tool| tool == "impact")
+            }),
+            "boot should expose task-shaped capability groupings"
+        );
+
+        let common_tasks = payload["common_tasks"].as_array().unwrap();
+        assert!(
+            common_tasks.iter().any(|entry| {
+                entry["task"] == "Check whether a function is safe to delete"
+                    && entry["use"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|tool| tool == "change")
+            }),
+            "boot should recommend concrete tools for common tasks"
+        );
+    }
+
+    #[test]
+    fn help_supports_task_topics() {
+        let json = tool_help("safe delete".to_string()).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload["task"], "safe delete");
+        assert!(
+            payload["use"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool == "impact")
+        );
+        assert!(
+            payload["use"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|tool| tool == "change")
+        );
+    }
+
+    #[test]
+    fn help_supports_inspect_tool() {
+        let json = tool_help("inspect".to_string()).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload["name"], "inspect");
+        assert!(
+            payload["limitations"]
+                .as_str()
+                .unwrap()
+                .contains("line-range mode does not")
+        );
+    }
+
+    #[test]
+    fn help_hides_legacy_mechanism_topics() {
+        let err = tool_help("symbol".to_string()).unwrap_err();
+        assert!(err.to_string().contains("Unknown help topic"));
+        assert!(err.to_string().contains("inspect"));
+    }
 }

@@ -31,6 +31,15 @@ fn cap_source(lines: &[&str], s: usize, e: usize, file: &str, start_line: u32, e
     }
 }
 
+fn inspect_next_hint(mode: &str) -> &'static str {
+    match mode {
+        "symbol" => "Use change(action=edit|rename|move|delete) when you are ready to modify this symbol.",
+        "file" => "Use inspect(name=...) for one symbol or inspect(file,start_line,end_line) for an exact excerpt.",
+        "lines" => "Use change(action=edit,file=...,start_line=...,end_line=...) to modify this excerpt safely.",
+        _ => "Use inspect(...) to narrow to the exact code you want to read next.",
+    }
+}
+
 /// Public entrypoint for the `symbol` tool: detailed lookup by function name.
 /// When `include_source` is true, each match includes the function body (lines start_line..end_line).
 pub fn symbol(
@@ -218,6 +227,7 @@ pub fn symbol(
         project_root: root,
         name,
         matches,
+        next_hint: Some("Use inspect(name=...) to read the best match or change(...) to modify it."),
     };
 
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -442,6 +452,7 @@ pub fn supersearch(
         pattern,
         exclude_tests,
         matches,
+        next_hint: Some("Use inspect(name=...) on the best match, or inspect(file,start_line,end_line) for exact lines."),
     };
 
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -743,6 +754,73 @@ mod semantic_note_tests {
         let v: serde_json::Value = serde_json::from_str(&out.unwrap()).unwrap();
         assert_eq!(v["tool"], "semantic_search");
     }
+
+    #[test]
+    fn inspect_symbol_mode_wraps_symbol_payload() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub fn add(left: i32, right: i32) -> i32 {\n    left + right\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("add".into()),
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["tool"], "inspect");
+        assert_eq!(v["mode"], "symbol");
+        assert_eq!(v["name"], "add");
+        assert_eq!(
+            v["next_hint"],
+            "Use change(action=edit|rename|move|delete) when you are ready to modify this symbol."
+        );
+        assert!(v["matches"].as_array().unwrap().len() >= 1);
+    }
+
+    #[test]
+    fn inspect_lines_mode_reads_without_bake() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "fn alpha() {}\nfn beta() {}\nfn gamma() {}\n",
+        )
+        .unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            None,
+            Some("src/lib.rs".into()),
+            Some(2),
+            Some(3),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["mode"], "lines");
+        assert_eq!(v["lines"][0], "fn beta() {}");
+        assert_eq!(
+            v["next_hint"],
+            "Use change(action=edit,file=...,start_line=...,end_line=...) to modify this excerpt safely."
+        );
+    }
 }
 
 /// Public entrypoint for the `semantic_search` tool.
@@ -900,4 +978,112 @@ pub fn file_functions(
 
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
+}
+
+/// Public entrypoint for the `inspect` tool: one read surface for symbol, file, or line range.
+pub fn inspect(
+    path: Option<String>,
+    name: Option<String>,
+    file: Option<String>,
+    start_line: Option<u32>,
+    end_line: Option<u32>,
+    include_source: Option<bool>,
+    include_summaries: Option<bool>,
+    limit: Option<usize>,
+    stdlib: Option<bool>,
+) -> Result<String> {
+    let root = resolve_project_root(path.clone())?;
+    let include_source = include_source.unwrap_or(false);
+    let include_summaries = include_summaries.unwrap_or(true);
+    let stdlib = stdlib.unwrap_or(false);
+
+    let (mode, target, flat_fields) = if let Some(name) = name {
+        let symbol_file = file.clone();
+        let result = crate::engine::symbol(
+            path,
+            name.clone(),
+            include_source,
+            symbol_file.clone(),
+            limit,
+            stdlib,
+        )?;
+        let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
+            .as_object()
+            .cloned()
+            .ok_or_else(|| anyhow!("inspect symbol mode expected object payload"))?;
+        parsed.remove("tool");
+        parsed.remove("version");
+        parsed.remove("project_root");
+        (
+            "symbol",
+            serde_json::json!({
+                "name": name,
+                "file": symbol_file,
+                "include_source": include_source,
+                "limit": limit,
+                "stdlib": stdlib,
+            }),
+            parsed,
+        )
+    } else if let (Some(file), Some(start_line), Some(end_line)) = (file.clone(), start_line, end_line) {
+        let source = fs::read_to_string(root.join(&file))
+            .map_err(|e| anyhow!("Failed to read file '{}': {}", file, e))?;
+        let all_lines: Vec<&str> = source.lines().collect();
+        let start_idx = start_line.saturating_sub(1) as usize;
+        let end_idx = end_line.saturating_sub(1) as usize;
+        let excerpt = cap_source(&all_lines, start_idx, end_idx, &file, start_line, end_line)
+            .ok_or_else(|| anyhow!("Invalid line range {}..{} for '{}'", start_line, end_line, file))?;
+        (
+            "lines",
+            serde_json::json!({
+                "file": file,
+                "start_line": start_line,
+                "end_line": end_line,
+            }),
+            serde_json::Map::from_iter([
+                ("file".to_string(), serde_json::json!(file)),
+                ("start_line".to_string(), serde_json::json!(start_line)),
+                ("end_line".to_string(), serde_json::json!(end_line)),
+                (
+                    "lines".to_string(),
+                    serde_json::json!(excerpt.lines().collect::<Vec<_>>()),
+                ),
+            ]),
+        )
+    } else if let Some(file) = file {
+        let result = crate::engine::file_functions(path, file.clone(), Some(include_summaries))?;
+        let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
+            .as_object()
+            .cloned()
+            .ok_or_else(|| anyhow!("inspect file mode expected object payload"))?;
+        parsed.remove("tool");
+        parsed.remove("version");
+        parsed.remove("project_root");
+        (
+            "file",
+            serde_json::json!({
+                "file": file,
+                "include_summaries": include_summaries,
+            }),
+            parsed,
+        )
+    } else {
+        return Err(anyhow!(
+            "inspect requires either --name <symbol>, --file <path>, or --file <path> with --start-line and --end-line"
+        ));
+    };
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("tool".to_string(), serde_json::json!("inspect"));
+    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert("project_root".to_string(), serde_json::json!(root));
+    payload.insert("mode".to_string(), serde_json::json!(mode));
+    payload.insert("target".to_string(), target);
+    payload.extend(flat_fields);
+    payload.insert(
+        "next_hint".to_string(),
+        serde_json::json!(inspect_next_hint(mode)),
+    );
+
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
 }

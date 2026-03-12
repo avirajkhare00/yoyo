@@ -146,6 +146,7 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
         "callers": callers,
         "affected_files": affected_files,
         "total_callers": total_callers,
+        "next_hint": "Use change(action=rename|move|delete) once the caller set is acceptable, or inspect(name=...) to review one caller.",
     });
 
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -603,6 +604,7 @@ pub fn health(
         shotgun_surgery,
         insider_trading,
         duplicate_code,
+        next_hint: Some("Use callers(name=...) or inspect(name=...) on one finding before deciding to change or delete code."),
     };
 
     if matches!(view, ResponseView::Compact) {
@@ -761,6 +763,7 @@ pub fn health(
                 "use --cursor <section>:<offset> to page one section forward",
                 "use symbol(name) or slice(file,start,end) to inspect one item deeply",
             ],
+            next_hint: Some("Use inspect(name=...) or callers(name=...) on one item before making a change."),
         };
         return Ok(serde_json::to_string_pretty(&compact)?);
     }
