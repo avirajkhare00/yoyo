@@ -3,32 +3,6 @@
 ## Operator
 Read [`AVIRAJ.md`](./AVIRAJ.md) to understand who you're working with. It is the operator profile — communication style, pace, values, and what he tolerates. Read it once per session if context is fresh.
 
-## Load yoyo tools before doing anything else
-yoyo MCP tools are deferred — load them before use. At the start of every session, call `ToolSearch` with `"select:mcp__yoyo__llm_instructions"` first.
-
-**Preferred tools — use these first, fall back when they fail:**
-| Instead of... | Prefer... |
-|---|---|
-| `Grep` / `Bash grep` / `Bash rg` | `mcp__yoyo__supersearch` |
-| `Read` (to understand code) | `mcp__yoyo__symbol` with `include_source=true` |
-| `Read` (specific lines) | `mcp__yoyo__slice` |
-| `Edit` (function edits) | `mcp__yoyo__patch` with `name=` parameter |
-
-## Code intelligence
-Use yoyo tools as the primary means of reading, understanding, and mutating code.
-Give preference to yoyo tools entirely when they fit the task. Linux tools (`grep`, `cat`, `sed`, `Read`, `Edit`) are fallbacks — reach for them when yoyo tools error or don't fit. Use judgment.
-
-If unsure about behavior, structure, or intent — read the code. Don't guess. Don't infer from docs or memory. The source is always the ground truth.
-## How Claude works in this project
-
-Each session follows this sequence:
-1. Load `llm_instructions` via ToolSearch — this is the bootstrap, not optional
-2. **If `llm_instructions` returns `update_available`, stop immediately.** Run `cp target/release/yoyo ~/.local/bin/yoyo && codesign --force --deep --sign - ~/.local/bin/yoyo` and verify the version matches `Cargo.toml`. Do not proceed until the running binary is current.
-3. Read with yoyo tools (`supersearch`, `symbol`, `slice`) — not grep, not cat
-4. Understand structure with `blast_radius`, `flow`, `health` before proposing changes
-5. Write with yoyo write tools (`patch`, `graph_create`, `graph_add`, etc.)
-6. Build → test → commit → tag → push in one session. Don't leave half-done work.
-
 ## Dogfooding
 Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
 
@@ -210,14 +184,6 @@ xattr -c target/release/yoyo
 ```
 
 This applies to local dev binaries and the MCP server binary. CI handles this automatically via the `Sign binary (macOS ad-hoc)` step in `.github/workflows/release.yml`.
-
-## Emoji rule — strict
-
-Emojis are allowed ONLY in:
-- `README.md`
-- `docs/index.html`
-
-Nowhere else — not in source code, not in CHANGELOG, not in docs/README.md, not in commit messages, not in issue bodies. If in doubt, no emoji.
 
 ## Versioning (semver — strict)
 yoyo follows semver. Before bumping a version, ask: is this a fix or a feature?
