@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.8.1] - 2026-03-12
+
+### Fixed
+
+- MCP `initialize` instructions field rewritten to lead with "INSTEAD OF" replacement directives. Previous phrasing ("REPLACEMENTS: search replaces grep") was buried and ineffective -- agents ignored it and kept using Grep/StrReplace. New phrasing names built-in tools explicitly and leads with the replacement rule on every line.
+
+## [1.8.0] - 2026-03-12
+
+### Changed (breaking)
+
+- MCP tool surface redesigned: 30 tools -> 21. Every tool renamed to a shorter, self-explanatory name. Engine functions unchanged.
+
+### Renames
+
+| Old name | New name |
+|---|---|
+| `llm_instructions` | `boot` |
+| `bake` | `index` |
+| `slice` | `read` |
+| `architecture_map` | `map` |
+| `file_functions` | `outline` |
+| `supersearch` | `search` |
+| `semantic_search` | `ask` |
+| `all_endpoints` | `routes` |
+| `blast_radius` | `callers` |
+| `patch` / `patch_string` / `patch_by_symbol` | `edit` |
+| `multi_patch` | `bulk_edit` |
+| `graph_rename` | `rename` |
+| `graph_create` | `create` |
+| `graph_add` | `add` |
+| `graph_move` | `move` |
+| `graph_delete` | `delete` |
+| `pipeline` | `script` |
+
+### Added
+
+- `help` tool: progressive discovery -- returns params, output shape, example, and limitations for any tool on demand. Replaces per-tool descriptions in bootstrap payload.
+
+### Removed (from MCP only -- CLI keeps all)
+
+- `llm_workflows`, `shake`, `find_docs`, `suggest_placement`, `package_summary`, `trace_down`, `patch_bytes`, `api_surface`, `api_trace`, `crud_operations`.
+
+### Changed
+
+- `boot` output leaned to ~500 tokens: tool names grouped by category + 5 concurrency rules. No per-tool descriptions in bootstrap.
+
+### Tests
+
+- 146 tests passing.
+
 ## [1.7.2] - 2026-03-11
 
 ### Added

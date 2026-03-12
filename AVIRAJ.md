@@ -17,7 +17,7 @@
 ## What he values
 - **Shipping.** Every session ends with a tag or a push. No exceptions.
 - **Accuracy.** 97% → 99% matters. He notices.
-- **Leverage.** 196 commits. 12,500 lines of Rust. 15 languages. 30 tools. He knows where the force multiplier is.
+- **Leverage.** 196 commits. 12,500 lines of Rust. 4 primary languages. 21 MCP tools. He knows where the force multiplier is.
 - **Taste.** He rejects bad abstractions instantly. Strong "yuck" reflex.
 - **Systems thinking.** He thinks in architecture before writing line one.
 - **Right measurement.** He will scrap a working eval if it's measuring the wrong thing.

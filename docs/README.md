@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 30 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode 21 tools to read and edit it over MCP. Every answer comes from the AST — not model memory. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
 
@@ -29,11 +29,11 @@ yoyo (the tool) works the same way. Each tool does one thing cleanly. The power 
 
 | Combination | What it does |
 |---|---|
-| `supersearch` → `symbol` → `patch` | Find it, read it, change it |
-| `blast_radius` → `health` → `graph_delete` | Who calls this? Is it dead? Remove it safely. |
-| `flow` → `multi_patch` | Trace the full request path, fix it end-to-end in one shot. |
-| `bake` → `semantic_search` → `suggest_placement` | Where does this new function belong? |
-| `architecture_map` → `api_surface` → `graph_create` | Understand the shape, find the gap, fill it. |
+| `search` → `symbol` → `edit` | Find it, read it, change it |
+| `callers` → `health` → `delete` | Who calls this? Is it dead? Remove it safely. |
+| `flow` → `bulk_edit` | Trace the full request path, fix it end-to-end in one shot. |
+| `index` → `ask` → `map` | Where does this new function belong? |
+| `map` → `routes` → `create` | Understand the shape, find the gap, fill it. |
 
 No single tool is the point. The orchestration is.
 
@@ -42,14 +42,14 @@ No single tool is the point. The orchestration is.
 ## How it works
 
 ```
-bake  →  parse source files with ast-grep  →  write bake.json
-read  →  symbol / supersearch / slice / …  →  read from bake.json
-write →  patch / graph_rename / …          →  write file + reindex
+index →  parse source files with tree-sitter  →  write bake.db
+read  →  symbol / search / read / …           →  query bake.db
+write →  edit / rename / …                     →  write file + reindex
 ```
 
 **Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically so the next read is always fresh.
 
-The index is a plain JSON file (`bakes/latest/bake.json`) in your project root. No server, no daemon.
+The index is a SQLite database (`bakes/latest/bake.db`) in your project root. No server, no daemon.
 
 ---
 
@@ -57,11 +57,11 @@ The index is a plain JSON file (`bakes/latest/bake.json`) in your project root. 
 
 Each session follows this sequence:
 
-1. **Bootstrap** — Claude loads `llm_instructions` on first contact. Returns the lean tool catalog, prime directives, and concurrency rules. No file reading, no grepping.
-2. **Read** — `supersearch`, `symbol`, `slice` replace grep and cat. Structured data from the AST index, not line matches.
-3. **Understand** — `blast_radius`, `flow`, `trace_down`, `health` answer structural questions no text tool can: who calls this? what does this touch? is this dead?
-4. **Write** — `patch`, `graph_rename`, `graph_create`, `graph_add`, `graph_move`, `graph_delete` mutate code and auto-reindex. Claude does not edit files directly when a yoyo write tool applies.
-5. **Dogfood** — every session building yoyo is a yoyo session. Gaps found while building are filed as issues immediately.
+1. **Bootstrap** — Claude calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category and concurrency rules. `index` builds the AST index.
+2. **Read** — `search`, `symbol`, `read` replace grep and cat. Structured data from the AST index, not line matches.
+3. **Understand** — `callers`, `flow`, `health` answer structural questions no text tool can: who calls this? what does this touch? is this dead?
+4. **Write** — `edit`, `rename`, `create`, `add`, `move`, `delete` mutate code and auto-reindex. Claude does not edit files directly when a yoyo write tool applies.
+5. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
 
 Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.
 
@@ -142,7 +142,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
         "hooks": [
           {
             "type": "command",
-            "command": "echo '[yoyo] Use mcp__yoyo__supersearch instead of Grep/Bash grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__slice for line ranges. yoyo tools must be loaded via ToolSearch first if not yet loaded.'"
+            "command": "echo '[yoyo] Use mcp__yoyo__search instead of Grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__read for line ranges.'"
           }
         ]
       }
@@ -153,56 +153,59 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 ---
 
-## Tools reference
+## Tools reference (21 MCP tools)
 
 ### Bootstrap
 
-| Tool | requires bake | What it does |
+| Tool | requires index | What it does |
 |---|---|---|
-| `llm_instructions` | No | Lean bootstrap: tool catalog, prime directives, concurrency rules. Claude calls this first. |
-| `llm_workflows` | No | On-demand reference: combination workflows, decision map, antipatterns, metapatterns. |
-| `bake` | No | Parse the project, write the index. Run before any indexed tool. |
-| `shake` | No | Language breakdown, file count, top-complexity functions. |
+| `boot` | No | Lean bootstrap: tool names grouped by category, concurrency rules (~500 tokens). Call first. |
+| `index` | No | Parse the project, write the AST index (`bake.db`). Run before any read-indexed tool. |
+| `help` | No | Progressive discovery: params, output shape, example, and limitations for any tool on demand. |
 
-### Read (no bake required)
+### Read
 
-| Tool | What it does |
-|---|---|
-| `slice` | Read any line range from any file. Use `start_line`/`end_line` from `symbol` output. |
-| `find_docs` | Locate README, .env, Dockerfile, and config files. |
+| Tool | requires index | What it does |
+|---|---|---|
+| `read` | No | Read any line range from any file. Use `start_line`/`end_line` from `symbol` output. |
+| `symbol` | Yes | Find a function by name. Returns file, line range, visibility, calls, optionally full body. |
+| `outline` | Yes | Every function in a file with line ranges and cyclomatic complexity. |
+| `search` | Yes | AST-aware search. Finds call sites, assignments, identifiers. Replaces grep. |
+| `ask` | Yes | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 
-### Read (bake required)
+### Understand
 
-| Tool | What it does |
-|---|---|
-| `symbol` | Find a function by name. Returns file, line range, visibility, calls, optionally full body. |
-| `file_functions` | Every function in a file with line ranges and cyclomatic complexity. |
-| `supersearch` | AST-aware search. Finds call sites, assignments, identifiers. Prefer over grep. |
-| `semantic_search` | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
-| `blast_radius` | All functions that transitively call a symbol. Affected file list included. |
-| `trace_down` | BFS call chain from a function to db/http/queue boundaries. Rust + Go only. |
-| `flow` | **One-call vertical slice:** endpoint → handler → call chain to boundary. Replaces `api_trace` + `trace_down` + `symbol`. |
-| `health` | Dead code, large functions (high complexity + fan-out), duplicate name hints. |
-| `package_summary` | All functions, endpoints, and complexity for a module path substring. |
-| `architecture_map` | Directory tree with inferred roles (routes, services, models, etc.). |
-| `api_surface` | Exported functions grouped by module. |
-| `suggest_placement` | Ranked files to add a new function to, based on related symbols. |
-| `all_endpoints` | All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo). |
-| `api_trace` | Trace a route path + HTTP method to its handler function. |
-| `crud_operations` | Create/read/update/delete matrix inferred from routes. |
+| Tool | requires index | What it does |
+|---|---|---|
+| `map` | Yes | Directory tree with inferred roles (routes, services, models, etc.). |
+| `callers` | Yes | All functions that transitively call a symbol. Affected file list included. |
+| `flow` | Yes | Endpoint → handler → call chain to boundary in one call. |
+| `routes` | Yes | All detected HTTP routes (Express, Actix, Rocket, gin, echo, net/http). |
+| `health` | Yes | Dead code, large functions (high complexity + fan-out), duplicate name hints. |
 
 ### Write
 
 | Tool | What it does |
 |---|---|
-| `patch` | Write changes by symbol name, line range, or exact string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
-| `patch_bytes` | Splice at exact byte offsets from the index. |
-| `multi_patch` | Apply N edits across M files in one call, bottom-up so offsets stay valid. |
-| `graph_rename` | Rename a symbol at its definition and every call site, atomically. |
-| `graph_create` | Create a new file with an initial function scaffold. Errors if file exists or parent dir missing. |
-| `graph_add` | Insert a function scaffold into an existing file, optionally after a named symbol. |
-| `graph_move` | Move a function from one file to another. Removes from source, appends to destination. |
-| `graph_delete` | Remove a function by name. Checks blast radius before deleting. |
+| `edit` | Write changes by symbol name, line range, or exact string match. Compiles after write — rolls back on error (Rust, Go, Zig). Auto-reindexes. |
+| `bulk_edit` | Apply N edits across M files in one call, bottom-up so offsets stay valid. |
+| `rename` | Rename a symbol at its definition and every call site, atomically. |
+| `create` | Create a new file with an initial function scaffold. Errors if file exists or parent dir missing. |
+| `add` | Insert a function scaffold into an existing file, optionally after a named symbol. |
+| `move` | Move a function from one file to another. Removes from source, appends to destination. |
+| `delete` | Remove a function by name. Checks blast radius before deleting. |
+
+### Orchestration
+
+| Tool | What it does |
+|---|---|
+| `script` | Run a Rhai script with yoyo tools as functions. |
+
+### CLI-only tools (not exposed via MCP)
+
+These are available via `yoyo <command>` but removed from MCP to keep context cost low:
+
+`shake`, `find_docs`, `suggest_placement`, `package_summary`, `trace_down`, `patch_bytes`, `llm_workflows`, `api_surface`, `api_trace`, `crud_operations`.
 
 ---
 
@@ -226,9 +229,9 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | Zig | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 
-**Endpoints** — route detection via `all_endpoints`, `api_trace`, `crud_operations`, `flow`.
-**Import graph** — `blast_radius` uses imports to expand affected files.
-**trace_down / flow** — BFS call chain to db/http/queue boundaries (Rust + Go today).
+**Endpoints** — route detection via `routes`, `flow` (MCP) and `api_trace`, `crud_operations` (CLI).
+**Import graph** — `callers` uses imports to expand affected files.
+**flow** — BFS call chain to db/http/queue boundaries (Rust + Go today).
 
 ---
 
@@ -236,10 +239,10 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 - **Route detection is partial** — works for Express, Actix-web, Rocket, Flask, FastAPI, gin, echo, net/http. Axum, NestJS, Fastify, Django, and dynamic routers not yet supported.
 - **`health` false positives for HTTP handlers** — functions registered via router (not direct calls) may be flagged as dead code. The static call graph can't see router registration.
-- **`trace_down` / `flow` call chain** — Rust + Go only. TypeScript and Python not yet supported.
-- **Call graph is name-based** — `blast_radius` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
+- **`flow` call chain** — Rust + Go only. TypeScript and Python not yet supported.
+- **Call graph is name-based** — `callers` matches callee names without module qualification. A function named `parse` in one package matches all callers of any `parse`.
 - **C++ namespace false positives** — `namespace` blocks may appear as top-complexity entries.
-- **bake performance on large C codebases** — can time out on repos with 700+ files (tracked in [#65](https://github.com/avirajkhare00/yoyo/issues/65)).
+- **`index` performance on large C codebases** — can time out on repos with 700+ files (tracked in [#65](https://github.com/avirajkhare00/yoyo/issues/65)).
 
 Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkhare00/yoyo/issues)
 
@@ -250,17 +253,18 @@ Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkha
 ```
 src/
   main.rs        binary entrypoint — CLI vs MCP switch
-  cli.rs         CLI (clap)
-  mcp.rs         MCP JSON-RPC server over stdio
+  cli.rs         CLI (clap) — exposes all engine capabilities
+  mcp.rs         MCP JSON-RPC server over stdio — curated 21-tool surface
   engine/
-    index.rs     bake, shake, llm_instructions
-    search.rs    symbol, supersearch, file_functions, semantic_search
-    edit.rs      patch, patch_bytes, multi_patch, slice (+ compiler guard)
-    graph.rs     graph_rename, graph_create, graph_add, graph_move, trace_chain
-    analysis.rs  blast_radius, find_docs, health, graph_delete
+    index.rs     boot (llm_instructions), index (bake), shake, help
+    search.rs    symbol, search (supersearch), outline (file_functions), ask (semantic_search)
+    edit.rs      edit (patch), bulk_edit (multi_patch), read (slice) + compiler guard
+    graph.rs     rename, create, add, move, trace_chain
+    analysis.rs  callers (blast_radius), health, delete (graph_delete), find_docs
     embed.rs     fastembed ONNX embeddings + SQLite store
-    api.rs       all_endpoints, api_surface, api_trace, crud_operations, flow
-    nav.rs       architecture_map, package_summary, suggest_placement
+    db.rs        SQLite bake index (bake.db) — read/write
+    api.rs       routes (all_endpoints), flow, api_surface, api_trace, crud_operations
+    nav.rs       map (architecture_map), package_summary, suggest_placement
     types.rs     shared payload structs
     util.rs      resolve_project_root, load_bake_index, reindex_files
   lang/

@@ -145,13 +145,16 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
 
             let n_tools = crate::engine::tool_catalog().len();
             let instructions = format!(
-                "You have access to yoyo, a code intelligence MCP server -- {n_tools} tools to read and edit any codebase from the AST. \
-                    ON FIRST CONTACT: call `boot` and `index` in parallel. \
-                    `boot` returns tool names grouped by category and concurrency rules. \
-                    `index` builds the AST index all read-indexed tools depend on. \
-                    Call `help(name)` to get params, output shape, and examples for any tool before using it. \
-                    Key combos: health->callers->delete (safe dead code removal), flow->symbol->bulk_edit (fix endpoint end-to-end), callers->rename->symbol (safe rename). \
-                    REPLACEMENTS: search replaces grep/rg. symbol+include_source replaces cat/Read. read replaces line-range reads. edit replaces Edit for function-level changes."
+                "yoyo: {n_tools} AST-grounded code intelligence tools. \
+                    ALWAYS use yoyo tools INSTEAD OF built-ins: \
+                    search INSTEAD OF Grep/rg. \
+                    symbol(include_source=true) INSTEAD OF Read for code. \
+                    read INSTEAD OF Read for line ranges. \
+                    edit INSTEAD OF StrReplace. \
+                    bulk_edit INSTEAD OF multiple StrReplace calls. \
+                    map INSTEAD OF Glob for finding files. \
+                    UNIQUE tools (no built-in equivalent): callers, flow, health, rename, move, delete, add, routes, ask, outline, script. \
+                    ON FIRST CONTACT: call boot and index in parallel. Call help(name) for any tool's params and examples."
             );
             let result = json!({
                 "protocolVersion": protocol_version,

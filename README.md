@@ -6,7 +6,7 @@
 
 **Claude Code on steroids. Codex on steroids. Any AI coding agent — on steroids.**
 
-yoyo is an MCP server that gives your agent 30 AST-grounded tools to read, understand, and edit code. No hallucinated file paths. No guessing. Facts from the source.
+yoyo is an MCP server that gives your agent 21 AST-grounded tools to read, understand, and edit code. No hallucinated file paths. No guessing. Facts from the source.
 
 **99% eval accuracy** across 4 languages, 8 real codebases — vs 26% baseline (Claude Code alone).
 
@@ -16,7 +16,7 @@ yoyo is an MCP server that gives your agent 30 AST-grounded tools to read, under
 
 Your AI agent reads code like a human with no IDE: grep, cat, hope. It hallucinates function names. It misses callers. It patches the wrong file.
 
-yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `symbol` instead of `cat`. It calls `blast_radius` before deleting. It calls `flow` to trace a request end to end. It patches by function name, not line number.
+yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `symbol` instead of `cat`. It calls `callers` before deleting. It calls `flow` to trace a request end to end. It edits by function name, not line number.
 
 The eval gap is the proof: **99% vs 26%**. Same model. Same tasks. Different tools.
 
@@ -43,11 +43,11 @@ One trick is fine. Fifty moves chained is transcendent.
 
 | Combination | What it does |
 |---|---|
-| `supersearch` → `symbol` → `patch` | find it, read it, change it ⚡ |
-| `blast_radius` → `health` → `graph_delete` | who calls this? is it dead? remove it safely |
-| `flow` → `multi_patch` | trace the full request path, fix it end-to-end in one shot |
-| `bake` → `semantic_search` → `suggest_placement` | where does this new function belong? |
-| `architecture_map` → `all_endpoints` → `graph_create` | understand the shape, find the gap, fill it |
+| `search` → `symbol` → `edit` | find it, read it, change it |
+| `callers` → `health` → `delete` | who calls this? is it dead? remove it safely |
+| `flow` → `bulk_edit` | trace the full request path, fix it end-to-end in one shot |
+| `index` → `ask` → `map` | where does this new function belong? |
+| `map` → `routes` → `create` | understand the shape, find the gap, fill it |
 
 No single tool is the point. The orchestration is.
 
@@ -127,7 +127,7 @@ Run once per project, again after large changes.
         "hooks": [
           {
             "type": "command",
-            "command": "echo '[yoyo] Use mcp__yoyo__supersearch instead of Grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__slice for line ranges.'"
+            "command": "echo '[yoyo] Use mcp__yoyo__search instead of Grep. Use mcp__yoyo__symbol+include_source instead of Read. Use mcp__yoyo__read for line ranges.'"
           }
         ]
       }
@@ -139,60 +139,58 @@ Run once per project, again after large changes.
 **Codex** — add to `AGENTS.md`:
 ```md
 ## yoyo
-Load `mcp__yoyo__llm_instructions` first.
-Prefer `supersearch` over grep, `symbol` over file reads, `patch` for edits.
+Call `boot` and `index` first.
+Prefer `search` over grep, `symbol` over file reads, `edit` for code changes.
 ```
 
 Without this, your agent sees yoyo but won't reach for it first.
 
 ---
 
-## Tools
+## Tools (21 MCP tools)
 
 ### Bootstrap
 | Tool | What it does |
 |---|---|
-| `bake` | Parse the project, write the AST index. Run first. |
-| `shake` | Language breakdown, file count, top-complexity functions. |
-| `llm_instructions` | Lean bootstrap: tool catalog, prime directives, concurrency rules. |
-| `llm_workflows` | On-demand reference: combination workflows, decision map, antipatterns. |
+| `boot` | Lean bootstrap: tool names grouped by category, concurrency rules. Call first. |
+| `index` | Parse the project, write the AST index. Run before any read-indexed tool. |
+| `help` | Progressive discovery: params, output shape, example, and limitations for any tool. |
 
 ### Read
 | Tool | What it does |
 |---|---|
+| `read` | Read any line range from any file. |
 | `symbol` | Find a function by name — file, line range, optionally full body. |
-| `slice` | Read any line range from any file. |
-| `supersearch` | AST-aware search across all files. Replaces grep. |
-| `semantic_search` | Find functions by intent. Local ONNX embeddings, no API key. |
-| `file_functions` | Every function in a file with complexity scores. |
-| `find_docs` | Locate README, .env, Dockerfile, config files. |
+| `outline` | Every function in a file with line ranges and complexity scores. |
+| `search` | AST-aware search across all files. Replaces grep. |
+| `ask` | Find functions by intent. Local ONNX embeddings, no API key. |
 
 ### Understand
 | Tool | What it does |
 |---|---|
-| `blast_radius` | All transitive callers of a symbol + affected files. |
+| `map` | Directory tree with inferred roles. |
+| `callers` | All transitive callers of a symbol + affected files. |
 | `flow` | Endpoint → handler → call chain in one call. |
-| `trace_down` | BFS call chain to db/http/queue boundary. Rust + Go. |
+| `routes` | All detected HTTP routes. |
 | `health` | Dead code, large functions, duplicate names. |
-| `architecture_map` | Directory tree with inferred roles. |
-| `package_summary` | Functions, endpoints, complexity for a module path. |
-| `api_surface` | Exported functions grouped by module. |
-| `suggest_placement` | Ranked files to place a new function. |
-| `all_endpoints` | All detected HTTP routes. |
-| `api_trace` | Route path + method → handler function. |
-| `crud_operations` | CRUD matrix inferred from routes. |
 
 ### Write
 | Tool | What it does |
 |---|---|
-| `patch` | Write by symbol name, line range, or string match. Compiles after write — rolls back on error. Auto-reindexes. |
-| `patch_bytes` | Write at exact byte offsets. |
-| `multi_patch` | N edits across M files in one call. |
-| `graph_rename` | Rename a symbol at definition + every call site, atomically. |
-| `graph_create` | Create a new file with an initial function scaffold. |
-| `graph_add` | Insert a function scaffold into an existing file. |
-| `graph_move` | Move a function between files. |
-| `graph_delete` | Remove a function by name. Checks blast radius first. |
+| `edit` | Write by symbol name, line range, or string match. Compiles after write — rolls back on error. Auto-reindexes. |
+| `bulk_edit` | N edits across M files in one call. |
+| `rename` | Rename a symbol at definition + every call site, atomically. |
+| `create` | Create a new file with an initial function scaffold. |
+| `add` | Insert a function scaffold into an existing file. |
+| `move` | Move a function between files. |
+| `delete` | Remove a function by name. Checks blast radius first. |
+
+### Orchestration
+| Tool | What it does |
+|---|---|
+| `script` | Run a Rhai script with yoyo tools as functions. |
+
+CLI exposes all engine capabilities including tools removed from MCP (`shake`, `find_docs`, `suggest_placement`, `package_summary`, `trace_down`, `patch_bytes`, `llm_workflows`).
 
 ---
 

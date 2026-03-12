@@ -4,12 +4,12 @@ Single source of truth for yoyo's measurable state. Updated every release.
 
 ---
 
-## Current (v1.7.2 — 2026-03-11)
+## Current (v1.8.1 — 2026-03-12)
 
 | Metric | Value |
 |---|---|
-| Version | v1.7.2 |
-| MCP tools | 30 |
+| Version | v1.8.1 |
+| MCP tools | 21 |
 | Languages (primary) | 4 (Rust, Go, Zig, TypeScript) |
 | Unit tests | 146 passing / 0 failing |
 | Binary size (macOS arm64, release) | 58 MB |
@@ -74,6 +74,8 @@ Rows marked `—` = pending run. See `evals/results/` for full JSON.
 
 | Version | Date | Languages | Tools | Tests | Binary | Eval |
 |---|---|---|---|---|---|---|
+| v1.8.1 | 2026-03-12 | 4 primary | 21 | 146 | 58 MB | 100% |
+| v1.8.0 | 2026-03-12 | 4 primary | 21 | 146 | 58 MB | 100% |
 | v1.7.2 | 2026-03-11 | 4 primary | 30 | 146 | 58 MB | 100% |
 | v1.6.0 | 2026-03-11 | 4 primary | 30 | 134 | 58 MB | 100% |
 | v1.5.2 | 2026-03-11 | 4 primary | 30 | 111 | 58 MB | 100% |
@@ -93,7 +95,7 @@ Rows marked `—` = pending run. See `evals/results/` for full JSON.
 
 **Languages (primary)** — Rust, Go, Zig, TypeScript. Deep support: bake + symbol + supersearch + file_functions + eval-tested against real production repos.
 
-**Tools** — MCP tools exposed via `llm_instructions`. CLI commands are not counted separately.
+**Tools** — MCP tools exposed via `boot`. CLI commands are not counted separately.
 
 **Tests** — `cargo test` passing count. Integration tests (e2e) and unit tests combined.
 
