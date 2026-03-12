@@ -263,7 +263,7 @@ src/
     rust.rs / go.rs / python.rs / typescript.rs / javascript.rs
     c.rs / cpp.rs / csharp.rs / java.rs / kotlin.rs / php.rs / ruby.rs / swift.rs / bash.rs / zig.rs
 evals/
-  harness/       real-repo puncture eval (Go) — clone → patch → run own tests → score
+  harness/       real-repo puncture eval (Go) — setup/score plus control-vs-treatment compare mode
   tasks/         task.json + puncture.patch per codebase
   results/       timestamped JSON score records
 ```

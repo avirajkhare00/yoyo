@@ -3,3 +3,5 @@ bakes/
 .DS_Store
 .fastembed_cache/
 .cursor/
+__pycache__/
+*.pyc
