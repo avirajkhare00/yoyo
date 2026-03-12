@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.8.5] - 2026-03-13
+
+### Changed
+
+- MCP `initialize` first-contact guidance now explicitly tells agents to call `boot` and `index` before any repo exploration, making the yoyo bootstrap directive harder to ignore.
+
 ## [1.8.4] - 2026-03-12
 
 ### Changed

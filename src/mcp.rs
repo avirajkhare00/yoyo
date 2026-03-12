@@ -148,7 +148,7 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "yoyo: {n_tools} AST-grounded code intelligence tools. \
                     Think in tasks, not raw primitives: orient with boot/index/map/routes/health; locate with inspect/search/ask; relate with impact/routes/health; change with change. \
                     ALWAYS use yoyo tools INSTEAD OF built-ins when they fit: inspect INSTEAD OF jumping between file reads and symbol lookup. search INSTEAD OF Grep/rg. impact INSTEAD OF stitching together callers and flow manually. change INSTEAD OF raw StrReplace when the intent is edit, rename, move, delete, create, or add. map INSTEAD OF Glob for finding files. \
-                    ON FIRST CONTACT: call boot and index in parallel. Use help(name) for tool docs and help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact') for task routing."
+                    ON FIRST CONTACT: before any repo exploration, call boot and index in parallel. Use help(name) for tool docs and help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact') for task routing."
             );
             let result = json!({
                 "protocolVersion": protocol_version,
@@ -633,6 +633,7 @@ mod tests {
             .to_string();
 
         assert!(instructions.contains("Think in tasks, not raw primitives"));
+        assert!(instructions.contains("before any repo exploration, call boot and index in parallel"));
         assert!(instructions.contains("help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact')"));
     }
 }
