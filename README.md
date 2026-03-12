@@ -4,6 +4,14 @@
 
 # yoyo
 
+<a href="https://peerlist.io/avirajkhare00/project/yoyo" target="_blank" rel="noreferrer">
+				<img
+					src="https://peerlist.io/api/v1/projects/embed/PRJHDNDNMEQQ6O87M2NQQKM9BO8JNG?showUpvote=true&theme=dark"
+					alt="YoYo"
+					style="width: auto; height: 72px;"
+				/>
+			</a>
+
 **Claude Code on steroids. Codex on steroids. Any AI coding agent - on steroids.**
 
 yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-grounded tools to read, understand, and edit code. No hallucinated file paths. No guessing. Facts from the source.
