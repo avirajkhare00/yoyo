@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.3] - 2026-03-12
+
+### Changed
+
+- `script` now exposes the curated task verbs (`boot`, `index`, `inspect`, `search`, `ask`, `map`, `routes`, `impact`, `health`, `change`, `help`) instead of the old mechanism mix, and rejects direct calls to engine internals; `help`, `boot`, and other catalogs now promote the same task-shaped surface while keeping CLI commands available as fallbacks.
+- Docs and onboarding copy now tell the same task-first story as the runtime (MCP docs, README, static site, and metrics).
+
 ## [1.8.2] - 2026-03-12
 
 ### Fixed
