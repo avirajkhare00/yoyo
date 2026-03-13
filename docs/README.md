@@ -280,4 +280,11 @@ evals/
 
 ---
 
+## Contributors
+
+- [Aviraj Khare](https://github.com/avirajkhare00) — [X](https://x.com/avirajkhare00)
+- [Saurav Kumar](https://github.com/sauravtom) — [X](https://x.com/hackposthq)
+
+---
+
 Apache 2.0 — see [LICENSE](../LICENSE).

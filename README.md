@@ -224,4 +224,11 @@ Use both. LSP while you write. yoyo when your agent needs to understand or chang
 
 ---
 
+## Contributors
+
+- [Aviraj Khare](https://github.com/avirajkhare00) — [X](https://x.com/avirajkhare00)
+- [Saurav Kumar](https://github.com/sauravtom) — [X](https://x.com/hackposthq)
+
+---
+
 Full docs: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · Apache 2.0
