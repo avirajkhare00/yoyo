@@ -20,7 +20,7 @@ Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used 
 
 That run asked three explicit engineer questions: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks without making edits.
 
-Write-side WIP result: the first clean directed `write_only` batch now covers `ripgrep`, `uuid`, and `httprouter`. `semver` is tracked separately: the patch in `src/eval.rs` is correct and passes manual `cargo test`, but the fixture's exact verify command, `cargo test --test *`, is malformed and still needs fixing before strict scoring.
+Write-side WIP result: `yoyo` is strongest when read judgment narrows the surface first, then `change` executes the write cleanly. The first clean directed `write_only` batch now shows that on `ripgrep`, `uuid`, and `httprouter`. `semver` is tracked separately: the patch in `src/eval.rs` is correct and passes manual `cargo test`, but the fixture's exact verify command, `cargo test --test *`, is malformed and still needs fixing before strict scoring.
 
 This is groundedness and tool-use evidence under direction, not yet a broad with-vs-without benchmark. The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, and the current compare smoke runs are still `6/6` ties across `v1.8.5` and `v1.7.3`.
 
