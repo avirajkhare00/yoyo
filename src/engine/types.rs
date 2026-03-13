@@ -767,6 +767,81 @@ pub(crate) struct SemanticMatch {
     pub(crate) kind: &'static str,
 }
 
+// ── judge_change ─────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub(crate) struct JudgeChangePayload {
+    pub(crate) tool: &'static str,
+    pub(crate) version: &'static str,
+    pub(crate) project_root: PathBuf,
+    pub(crate) query: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) symbol_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) file_hint: Option<String>,
+    pub(crate) ownership_layer: JudgeOwnershipLayer,
+    pub(crate) candidate_symbols: Vec<JudgeCandidateSymbol>,
+    pub(crate) candidate_files: Vec<JudgeCandidateFile>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) rejected_alternatives: Vec<JudgeRejectedAlternative>,
+    pub(crate) invariants: Vec<JudgeFinding>,
+    pub(crate) regression_risks: Vec<JudgeFinding>,
+    pub(crate) verification_commands: Vec<JudgeCommand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeOwnershipLayer {
+    pub(crate) name: String,
+    pub(crate) why: String,
+    pub(crate) evidence_files: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeCandidateSymbol {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) kind: &'static str,
+    pub(crate) score: f32,
+    pub(crate) why: String,
+    pub(crate) incoming_callers: usize,
+    pub(crate) caller_files: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) parent_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeCandidateFile {
+    pub(crate) file: String,
+    pub(crate) role: String,
+    pub(crate) why: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeRejectedAlternative {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) kind: &'static str,
+    pub(crate) reason: String,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeFinding {
+    pub(crate) text: String,
+    pub(crate) evidence: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct JudgeCommand {
+    pub(crate) command: String,
+    pub(crate) why: String,
+}
+
 // ── graph_delete ──────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]

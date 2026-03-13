@@ -12,9 +12,9 @@
 				/>
 			</a>
 
-**Claude Code on steroids. Codex on steroids. Any AI coding agent - on steroids.**
+**Grounded codebase answers for AI coding agents.**
 
-yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-grounded tools to read, understand, and edit code. No hallucinated file paths. No guessing. Facts from the source.
+yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-grounded tools to read, understand, and edit code. Less hallucination. More grounded answers. Facts from the source.
 
 **99% eval accuracy** across 4 languages, 8 real codebases — vs 26% baseline (Claude Code alone).
 
@@ -24,9 +24,9 @@ yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-gr
 
 Your AI agent reads code like a human with no IDE: grep, cat, hope. It hallucinates function names. It misses callers. It patches the wrong file.
 
-yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `inspect` instead of raw file reads. It calls `impact` before deleting or renaming. It calls `impact` to trace a request end to end. It edits by intent, not line number.
+yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `judge_change` to answer ownership, invariants, and regression-risk questions before it edits. It calls `inspect` instead of raw file reads. It calls `impact` before deleting or renaming. It edits through `change`, the error-bounded write surface, not line-number roulette.
 
-The eval gap is the proof: **99% vs 26%**. Same model. Same tasks. Different tools.
+The point is not to make trivial tasks look marginally faster. The point is to make answers more truthful and more grounded in the code that actually exists.
 
 ---
 
@@ -52,6 +52,7 @@ One trick is fine. Fifty moves chained is transcendent.
 | Combination | What it does |
 |---|---|
 | `search` → `inspect` → `change` | find it, read it, change it |
+| `judge_change` → `inspect` → `change` | decide where the fix belongs, confirm it, patch it safely |
 | `impact` → `health` → `change` | what breaks if I touch this? is it dead? change it safely |
 | `impact` → `change` | trace the full request path, fix it end-to-end in one shot |
 | `index` → `ask` → `map` | where does this new function belong? |
@@ -150,13 +151,14 @@ Run once per project, again after large changes.
 Call `boot` and `index` first.
 Prefer `search` over grep, `inspect` for code reads, `change` for code changes.
 Prefer `impact` for relation/trace questions.
+Prefer `judge_change` for ownership, invariants, and regression-risk questions before edits.
 ```
 
 Without this, your agent sees yoyo but won't reach for it first.
 
 ---
 
-## Tools (12 MCP tools)
+## Tools (13 MCP tools)
 
 ### Bootstrap
 | Tool | What it does |
@@ -171,6 +173,11 @@ Without this, your agent sees yoyo but won't reach for it first.
 | `inspect` | Inspect a symbol, file outline, or line range from one entrypoint. |
 | `search` | AST-aware search across all files. Replaces grep. |
 | `ask` | Find functions by intent. Local ONNX embeddings, no API key. |
+
+### Judge
+| Tool | What it does |
+|---|---|
+| `judge_change` | High-level read surface for ownership, candidate symbols/files, invariants, regression risks, and verification commands before editing. |
 
 ### Relate
 | Tool | What it does |

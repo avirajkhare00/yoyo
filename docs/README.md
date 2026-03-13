@@ -1,8 +1,10 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST - not model memory. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST, not model memory. The product goal is more truthful, more grounded codebase answers with less hallucination. No API keys, no SaaS, no telemetry.
 
 **Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
+
+For current eval tiers and the realistic daily-engineering suite plan, see [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md).
 
 ---
 
@@ -30,6 +32,7 @@ yoyo (the tool) works the same way. Each tool does one thing cleanly. The power 
 | Combination | What it does |
 |---|---|
 | `search` → `inspect` → `change` | Find it, read it, change it |
+| `judge_change` → `inspect` → `change` | Decide where the fix belongs, confirm the seam, then patch it safely. |
 | `impact` → `health` → `change` | What breaks if I touch this? Is it dead? Change it safely. |
 | `impact` → `change` | Trace the full request path, fix it end-to-end in one shot. |
 | `index` → `ask` → `map` | Where does this new function belong? |
@@ -59,11 +62,12 @@ Each session follows this sequence:
 
 1. **Bootstrap** — Claude calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. `index` builds the AST index.
 2. **Read** — `inspect`, `search`, `ask` replace grep and ad hoc file reads. Structured data from the AST index, not line matches.
-3. **Understand** — `impact`, `health`, `routes` answer structural questions no text tool can: what touches this? what route lands here? is this dead?
-4. **Write** — `change` is the MCP write verb. It routes to the underlying write mechanisms and auto-reindexes. Claude does not edit files directly when a yoyo write tool applies.
-5. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
+3. **Judge** — `judge_change` answers the high-level pre-edit question: where should this fix live, what must stay true, and what is the likely blast radius?
+4. **Understand** — `impact`, `health`, `routes` answer structural questions no text tool can: what touches this? what route lands here? is this dead?
+5. **Write** — `change` is the MCP write verb and the error-bounded write surface. It routes to the underlying write mechanisms and auto-reindexes. Claude does not edit files directly when a yoyo write tool applies.
+6. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
 
-Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.
+Result: Claude answers from facts, not memory. More grounded. Less hallucinated. No stale function names.
 
 ---
 
@@ -153,7 +157,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 ---
 
-## Tools reference (12 MCP tools)
+## Tools reference (13 MCP tools)
 
 ### Bootstrap
 
@@ -170,6 +174,12 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | `inspect` | No* | Inspect a symbol, file outline, or line range from one entrypoint. `file`+`start_line`/`end_line` works without index; symbol/file-outline modes use the index. |
 | `search` | Yes | AST-aware search. Finds call sites, assignments, identifiers. Replaces grep. |
 | `ask` | Yes | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
+
+### Judge
+
+| Tool | requires index | What it does |
+|---|---|---|
+| `judge_change` | Yes | High-level read surface for ownership, candidate symbols/files, invariants, regression risks, and verification commands before editing. |
 
 ### Relate
 

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "locate",
+    "command": "Find the 3 most likely files or symbols involved in this bug. Do not edit anything."
+  },
+  {
+    "id": "ownership",
+    "command": "Which layer should own this fix and why? Answer in terms of CLI argument handling, walker construction, and ignore matching internals. Do not edit anything."
+  },
+  {
+    "id": "invariants",
+    "command": "State the key invariants that must remain true if we fix this bug, and name the main regression risks or blast radius. Do not edit anything."
+  }
+]

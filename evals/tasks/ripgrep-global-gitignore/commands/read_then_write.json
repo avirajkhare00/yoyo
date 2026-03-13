@@ -1,0 +1,18 @@
+[
+  {
+    "id": "locate",
+    "command": "Find the likely implementation area first. Do not edit anything yet."
+  },
+  {
+    "id": "judge",
+    "command": "Before editing, explain which layer should own this fix, what invariants must remain true, and what the main regression risks are."
+  },
+  {
+    "id": "patch",
+    "command": "Make the minimal patch in the correct ownership layer. Avoid broad refactors."
+  },
+  {
+    "id": "verify",
+    "command": "Run the most relevant verification command, then summarize the final diff scope."
+  }
+]

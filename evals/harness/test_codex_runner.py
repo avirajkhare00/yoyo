@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from codex_runner import build_prompt, parse_codex_jsonl, prepare_codex_home
+from codex_runner import build_prompt, parse_codex_jsonl, prepare_codex_home, requests_guidance
 
 
 class CodexRunnerTests(unittest.TestCase):
@@ -85,7 +85,16 @@ class CodexRunnerTests(unittest.TestCase):
 
         self.assertIn("No MCP servers are configured", control)
         self.assertIn("call boot and index in parallel", treatment)
+        self.assertIn("Do not ask for additional product or implementation guidance.", control)
+        self.assertIn("continue investigating the repository", treatment)
+        self.assertIn("Never stop to ask the evaluator what to do next.", control)
         self.assertIn("Extra note.", treatment)
+
+    def test_requests_guidance_only_for_real_guidance_prompts(self):
+        self.assertTrue(requests_guidance("What should I do next?"))
+        self.assertTrue(requests_guidance("Can you clarify what you want me to change?"))
+        self.assertFalse(requests_guidance("I fixed the regression."))
+        self.assertFalse(requests_guidance("I will run the test again now."))
 
     def test_prepare_codex_home_control_omits_mcp_and_treatment_keeps_yoyo(self):
         with tempfile.TemporaryDirectory() as td:
@@ -113,17 +122,21 @@ class CodexRunnerTests(unittest.TestCase):
                 workspace=tmp / "repo",
                 mode="control",
                 base_codex_home=base,
-                out_dir=out,
+                runtime_dir=out / "control-runtime",
                 model=None,
                 reasoning_effort=None,
+                yoyo_command=None,
+                yoyo_args=None,
             )
             treatment_home = prepare_codex_home(
                 workspace=tmp / "repo",
                 mode="treatment",
                 base_codex_home=base,
-                out_dir=out,
+                runtime_dir=out / "treatment-runtime",
                 model=None,
                 reasoning_effort=None,
+                yoyo_command=None,
+                yoyo_args=None,
             )
 
             control_cfg = (control_home / "config.toml").read_text()
@@ -132,6 +145,33 @@ class CodexRunnerTests(unittest.TestCase):
             self.assertNotIn("[mcp_servers.yoyo]", control_cfg)
             self.assertIn("[mcp_servers.yoyo]", treatment_cfg)
             self.assertIn('command = "/usr/local/bin/yoyo"', treatment_cfg)
+            self.assertTrue(str(control_home).startswith(str(out / "control-runtime")))
+            self.assertTrue(str(treatment_home).startswith(str(out / "treatment-runtime")))
+
+    def test_prepare_codex_home_uses_explicit_yoyo_override(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            base = tmp / "base"
+            out = tmp / "out"
+            base.mkdir()
+            out.mkdir()
+            (base / "auth.json").write_text('{"token":"x"}')
+            (base / "config.toml").write_text('model = "gpt-5.4"\n')
+
+            treatment_home = prepare_codex_home(
+                workspace=tmp / "repo",
+                mode="treatment",
+                base_codex_home=base,
+                runtime_dir=out / "runtime",
+                model=None,
+                reasoning_effort=None,
+                yoyo_command="/tmp/yoyo-v1.8.1",
+                yoyo_args=["--mcp-server"],
+            )
+
+            treatment_cfg = (treatment_home / "config.toml").read_text()
+            self.assertIn('command = "/tmp/yoyo-v1.8.1"', treatment_cfg)
+            self.assertIn('args = ["--mcp-server"]', treatment_cfg)
 
 
 if __name__ == "__main__":

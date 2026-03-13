@@ -1,0 +1,15 @@
+{
+  "id": "ripgrep-global-gitignore-rust-001",
+  "name": "ripgrep_global_gitignore",
+  "language": "rust",
+  "repo": "https://github.com/BurntSushi/ripgrep",
+  "commit": "d4b77a8d8967ce1bf701ec65ceb9a75e85e5f2e0",
+  "test_cmd": ["cargo", "test", "--test", "integration", "regression::r3179_global_gitignore_cwd", "--", "--exact"],
+  "punctures": 1,
+  "patch": "puncture.patch",
+  "hints": [
+    "Real bug from BurntSushi/ripgrep#3189",
+    "Global gitignore matching breaks when ripgrep is run against an absolute path",
+    "The right fix is non-local: CLI args, walker setup, and gitignore root handling all matter"
+  ]
+}

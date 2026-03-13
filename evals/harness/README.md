@@ -7,6 +7,37 @@
 - `--compare`: run the same task in `control` and `treatment` dirs, execute one command per condition, then compare tests and diffs
 - `--all`: set up every task under a directory
 
+This harness is currently best treated as a **Tier 0 smoke-test runner**. It is useful for regression checks and tag comparisons, but puncture tasks are not the primary benchmark for day-to-day engineering value. See [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md) for the tiered eval strategy and the realistic replacement suite.
+
+## Directed runner
+
+[`directed_codex_runner.py`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/harness/directed_codex_runner.py) runs a sequence of engineer-issued commands in one Codex session.
+
+It is intended for the directed tool-use benchmark, where the evaluator steers the workflow with commands such as:
+
+- `Find the likely implementation area first.`
+- `Which layer should own this fix and why?`
+- `Make the minimal patch.`
+- `Run the exact verification command.`
+
+Pilot command files live under:
+
+- [`evals/tasks/ripgrep-global-gitignore/commands/read_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/ripgrep-global-gitignore/commands/read_only.json)
+- [`evals/tasks/ripgrep-global-gitignore/commands/write_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/ripgrep-global-gitignore/commands/write_only.json)
+- [`evals/tasks/ripgrep-global-gitignore/commands/read_then_write.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/ripgrep-global-gitignore/commands/read_then_write.json)
+
+Example after fixture setup:
+
+```bash
+cd evals/harness
+python3 directed_codex_runner.py \
+  --mode treatment \
+  --workspace /tmp/yoyo-eval-ripgrep-global-gitignore-rust-001 \
+  --task-file /tmp/yoyo-eval-ripgrep-global-gitignore-rust-001/.yoyo-task.json \
+  --metrics-file /tmp/yoyo-eval-ripgrep-global-gitignore-rust-001/.yoyo-eval/directed-treatment-metrics.json \
+  --commands-file ../tasks/ripgrep-global-gitignore/commands/read_then_write.json
+```
+
 ## Compare mode
 
 Example:
@@ -75,3 +106,27 @@ python3 "$PWD/codex_runner.py" --mode control --dry-run \
 python3 "$PWD/codex_runner.py" --mode treatment --dry-run \
   --workspace /path/to/worktree --task-file /path/to/.yoyo-task.json --metrics-file /tmp/treatment-metrics.json
 ```
+
+## Latest tags matrix
+
+[`run_latest_tags.py`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/harness/run_latest_tags.py) runs the same puncture task set against the latest release tags.
+
+Dry run:
+
+```bash
+cd evals/harness
+python3 run_latest_tags.py --dry-run
+```
+
+Real run against the latest 5 tags and the default task set (`uuid`, `httprouter`, `semver`):
+
+```bash
+cd evals/harness
+python3 run_latest_tags.py
+```
+
+Outputs:
+
+- built tag binaries cached under `/tmp/yoyo-tag-evals/<tag>/`
+- per-tag compare reports under `evals/results/by-tag/<tag>/`
+- one aggregate summary JSON under `evals/results/by-tag/`

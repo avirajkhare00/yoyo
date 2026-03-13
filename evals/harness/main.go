@@ -240,14 +240,8 @@ func setupTaskWithSuffix(taskDir, suffix string) SetupResult {
 		return SetupResult{Task: task, Err: fmt.Sprintf("clean workdir: %v", err)}
 	}
 
-	cloneArgs := []string{"clone", "--depth", "1"}
-	if task.Commit != "" {
-		cloneArgs = append(cloneArgs, "--branch", task.Commit)
-	}
-	cloneArgs = append(cloneArgs, task.Repo, workDir)
-
-	if out, err := exec.Command("git", cloneArgs...).CombinedOutput(); err != nil {
-		return SetupResult{Task: task, Err: fmt.Sprintf("clone: %v\n%s", err, out)}
+	if err := cloneTaskRepo(task.Repo, task.Commit, workDir); err != nil {
+		return SetupResult{Task: task, Err: err.Error()}
 	}
 
 	patchPath, err := filepath.Abs(filepath.Join(taskDir, task.Patch))
@@ -276,6 +270,41 @@ func setupTaskWithSuffix(taskDir, suffix string) SetupResult {
 		Before:  before,
 		Elapsed: time.Since(start),
 	}
+}
+
+func cloneTaskRepo(repo, commit, workDir string) error {
+	if looksLikeCommitSHA(commit) {
+		if out, err := exec.Command("git", "clone", repo, workDir).CombinedOutput(); err != nil {
+			return fmt.Errorf("clone: %v\n%s", err, out)
+		}
+		if out, err := exec.Command("git", "-C", workDir, "checkout", commit).CombinedOutput(); err != nil {
+			return fmt.Errorf("checkout %s: %v\n%s", commit, err, out)
+		}
+		return nil
+	}
+
+	cloneArgs := []string{"clone", "--depth", "1"}
+	if commit != "" {
+		cloneArgs = append(cloneArgs, "--branch", commit)
+	}
+	cloneArgs = append(cloneArgs, repo, workDir)
+
+	if out, err := exec.Command("git", cloneArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("clone: %v\n%s", err, out)
+	}
+	return nil
+}
+
+func looksLikeCommitSHA(s string) bool {
+	if len(s) < 7 || len(s) > 40 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func runTests(dir string, cmd []string) TestResult {

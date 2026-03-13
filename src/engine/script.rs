@@ -221,6 +221,23 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     }
     {
         let rc = r.clone();
+        engine.register_fn("judge_change", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::judge_change(
+                    Some(rc.clone()),
+                    str_opt(&args, "query")
+                        .ok_or_else(|| anyhow!("Missing required 'query' argument for judge_change"))?,
+                    str_opt(&args, "symbol"),
+                    str_opt(&args, "file"),
+                    uint_opt(&args, "limit"),
+                )
+            })();
+            call_to_dynamic(res)
+        });
+    }
+    {
+        let rc = r.clone();
         engine.register_fn("map", move |intent: String| -> Dynamic {
             call_to_dynamic(crate::engine::architecture_map(
                 Some(rc.clone()),

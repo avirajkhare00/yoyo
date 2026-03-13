@@ -21,6 +21,8 @@ pub enum Command {
     Routes(RoutesArgs),
     /// Understand symbol or endpoint impact from one entrypoint.
     Impact(ImpactArgs),
+    /// Judge the ownership layer, candidate symbols, invariants, and risks before editing.
+    JudgeChange(JudgeChangeArgs),
     /// Vertical slice: endpoint → handler → call chain in one call.
     Flow(FlowArgs),
     /// Read a specific line range of a file.
@@ -327,6 +329,29 @@ pub struct ImpactArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct JudgeChangeArgs {
+    /// Optional path to the project directory.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Engineering question, issue text, or failing-test summary.
+    #[arg(long)]
+    pub query: String,
+
+    /// Optional symbol hint to bias the judgment toward a known name.
+    #[arg(long)]
+    pub symbol: Option<String>,
+
+    /// Optional file path substring to restrict the search surface.
+    #[arg(long)]
+    pub file: Option<String>,
+
+    /// Maximum number of candidate symbols to return (default 3, max 5).
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Args, Debug)]
 pub struct FlowArgs {
     /// Optional path to the project directory.
     #[arg(long)]
@@ -626,6 +651,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Inspect(args)) => run_inspect(args).await?,
         Some(Command::Routes(args)) => run_routes(args).await?,
         Some(Command::Impact(args)) => run_impact(args).await?,
+        Some(Command::JudgeChange(args)) => run_judge_change(args).await?,
         Some(Command::Flow(args)) => run_flow(args).await?,
         Some(Command::Read(args)) => run_read(args).await?,
         Some(Command::Outline(args)) => run_outline(args).await?,
@@ -771,6 +797,18 @@ async fn run_impact(args: ImpactArgs) -> anyhow::Result<()> {
         args.method,
         args.depth,
         Some(args.include_source),
+    )?;
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_judge_change(args: JudgeChangeArgs) -> anyhow::Result<()> {
+    let json = crate::engine::judge_change(
+        args.path,
+        args.query,
+        args.symbol,
+        args.file,
+        args.limit,
     )?;
     println!("{json}");
     Ok(())

@@ -1,0 +1,132 @@
+{
+  "suite": "realistic_daily_engineering_first5",
+  "description": "First five concrete daily-engineering eval tasks selected from real merged pull requests in public OSS repositories. These are intended to replace puncture tasks as the primary direction for agent-value evaluation.",
+  "status": "selected_from_real_repos",
+  "notes": [
+    "Each task pins a pre-fix base commit and a reference merge commit.",
+    "These are concrete source tasks, but they are not yet fixtureized for automated compare runs.",
+    "The next implementation step is to derive a reproducible before-state and verification oracle for each task.",
+    "During issue-first runs, if the agent asks what to do next, the evaluator reply should be exactly: OK, continue."
+  ],
+  "tasks": [
+    {
+      "id": "rde-ripgrep-3189",
+      "category": "bug_triage",
+      "title": "Global gitignore handling breaks when ripgrep is given absolute paths",
+      "language": "rust",
+      "repo": "https://github.com/BurntSushi/ripgrep.git",
+      "source_pr": "https://github.com/BurntSushi/ripgrep/pull/3189",
+      "source_issue": "https://github.com/BurntSushi/ripgrep/issues/3179",
+      "base_commit": "9ec08522bee566c8fbf03c340acd7a1ff1789a9f",
+      "reference_commit": "b610d1cb1506feab33459c5853e4c0d0cb16a6e2",
+      "changed_files": 6,
+      "required_hops": 4,
+      "prompt": "A user reports that global gitignore behavior becomes wrong when ripgrep is run against an absolute path. Fix the bug so ignore patterns from global ignore files are interpreted correctly without regressing normal traversal behavior.",
+      "verification_plan": [
+        "reproduce with a rooted search path and a global ignore pattern anchored to the working directory",
+        "run relevant ignore and traversal tests",
+        "confirm the fix does not introduce repeated current-directory lookups per traversal"
+      ],
+      "why_yoyo_should_help": [
+        "map to orient in ripgrep's ignore and traversal layers",
+        "impact to understand where ignore-file roots are propagated",
+        "inspect and search to connect CLI-facing behavior to ignore crate internals"
+      ]
+    },
+    {
+      "id": "rde-ripgrep-3185",
+      "category": "performance_bug",
+      "title": "Searching stdin becomes pathologically slow with large after-context",
+      "language": "rust",
+      "repo": "https://github.com/BurntSushi/ripgrep.git",
+      "source_pr": "https://github.com/BurntSushi/ripgrep/pull/3185",
+      "source_issue": "https://github.com/BurntSushi/ripgrep/issues/3184",
+      "base_commit": "de2567a4c76fa671005538d6cd841abc44932b9a",
+      "reference_commit": "d4b77a8d8967ce1bf701ec65ceb9a75e85e5f2e0",
+      "changed_files": 4,
+      "required_hops": 3,
+      "prompt": "A performance regression appears when ripgrep reads from stdin with a large value of -A/--after-context. Fix the buffering behavior so after-context does not trigger unnecessary work or excessive reads.",
+      "verification_plan": [
+        "reproduce with stdin input and large after-context values",
+        "compare behavior for -A versus -B to avoid regressing before-context logic",
+        "run targeted printer and search-buffer tests"
+      ],
+      "why_yoyo_should_help": [
+        "inspect to trace the stdin search path through buffer management and printer logic",
+        "impact to find the minimum code path affected by context handling",
+        "search to separate after-context-only behavior from shared context code"
+      ]
+    },
+    {
+      "id": "rde-tokio-6487",
+      "category": "bug_triage",
+      "title": "Interval polling panics when timeout plus period overflows",
+      "language": "rust",
+      "repo": "https://github.com/tokio-rs/tokio.git",
+      "source_pr": "https://github.com/tokio-rs/tokio/pull/6487",
+      "base_commit": "9ed595767d01c400955122d276b34ab52b3a6aab",
+      "reference_commit": "d33fdd86a3de75500fe554d6547cf5ad43e006bf",
+      "changed_files": 2,
+      "required_hops": 3,
+      "prompt": "A user reports that tokio::time::interval(Duration::MAX) panics due to overflow when the delay deadline is advanced. Fix the runtime behavior so large durations no longer panic and the interval remains well-defined.",
+      "verification_plan": [
+        "add or update a regression test around extremely large interval durations",
+        "run targeted tokio time tests",
+        "confirm the fix preserves normal interval behavior when no overflow occurs"
+      ],
+      "why_yoyo_should_help": [
+        "inspect to connect public time APIs to the internal polling path",
+        "impact to identify the minimal set of runtime and test code involved",
+        "search to find related instant arithmetic and overflow handling"
+      ]
+    },
+    {
+      "id": "rde-axum-2645",
+      "category": "migration",
+      "title": "Migrate axum routing behavior to matchit 0.8 syntax and semantics",
+      "language": "rust",
+      "repo": "https://github.com/tokio-rs/axum.git",
+      "source_pr": "https://github.com/tokio-rs/axum/pull/2645",
+      "source_issue": "https://github.com/tokio-rs/axum/issues/2641",
+      "base_commit": "5db62e8452f3c34bab83f3fdfacffa1946b91af1",
+      "reference_commit": "6318b57fda6b524b4d3c7909e07946e2b246ebd2",
+      "changed_files": 46,
+      "required_hops": 5,
+      "prompt": "axum needs to move to matchit 0.8. Update routing syntax and the non-trivial internal logic around typed paths, nested tail parameters, and StripPrefix so the new matcher semantics work across the codebase.",
+      "verification_plan": [
+        "update compile-time and UI tests affected by path syntax changes",
+        "run workspace tests for axum and axum-extra routing behavior",
+        "check for non-obvious regressions in docs and helper abstractions that already use braces"
+      ],
+      "why_yoyo_should_help": [
+        "map to find all routing-related surfaces in a large workspace",
+        "impact to trace where matchit syntax assumptions are embedded",
+        "change to coordinate a safe multi-file migration instead of ad hoc edits"
+      ]
+    },
+    {
+      "id": "rde-axum-3611",
+      "category": "endpoint_change",
+      "title": "Return a specific multipart error message when the body limit is exceeded",
+      "language": "rust",
+      "repo": "https://github.com/tokio-rs/axum.git",
+      "source_pr": "https://github.com/tokio-rs/axum/pull/3611",
+      "source_issue": "https://github.com/tokio-rs/axum/issues/3216",
+      "base_commit": "783c83dded7ab7a598b25035583c7b5133169ff4",
+      "reference_commit": "22f769c7f1812b96a8f1a0539e520b41445ba88f",
+      "changed_files": 2,
+      "required_hops": 3,
+      "prompt": "When a multipart request exceeds the configured body limit, axum already returns the right status code but the error text is too generic. Change the rejection path so the response says \"Request payload is too large\" and keep axum and axum-extra behavior aligned.",
+      "verification_plan": [
+        "update existing body_too_large tests in both axum and axum-extra",
+        "run targeted multipart and rejection-path tests",
+        "verify the status code remains 413 while only the message changes"
+      ],
+      "why_yoyo_should_help": [
+        "impact to trace the multipart rejection path across crates",
+        "inspect to find where message text is constructed versus where status is set",
+        "change to land the minimal cross-crate edit with aligned tests"
+      ]
+    }
+  ]
+}

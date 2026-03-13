@@ -21,9 +21,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from collections import Counter
 from pathlib import Path
 from typing import Any
+
+GUIDANCE_REPLY = "OK, continue."
+GUIDANCE_PATTERNS = (
+    re.compile(r"\bwhat should i do next\b", re.IGNORECASE),
+    re.compile(r"\bhow would you like me to proceed\b", re.IGNORECASE),
+    re.compile(r"\bdo you want me to\b", re.IGNORECASE),
+    re.compile(r"\bcan you clarify\b", re.IGNORECASE),
+    re.compile(r"\bneed more guidance\b", re.IGNORECASE),
+    re.compile(r"\bplease provide\b.*\bguidance\b", re.IGNORECASE),
+)
 
 
 def load_task(path: Path) -> dict[str, Any]:
@@ -99,6 +110,8 @@ def render_config(
     mode: str,
     model: str | None,
     reasoning_effort: str | None,
+    yoyo_command: str | None,
+    yoyo_args: list[str] | None,
 ) -> str:
     lines: list[str] = []
     cfg_model = model or base_config.get("model")
@@ -117,9 +130,13 @@ def render_config(
 
     if mode == "treatment":
         mcp_yoyo = (
-            base_config.get("mcp_servers", {}).get("yoyo")
-            if isinstance(base_config.get("mcp_servers"), dict)
-            else None
+            {"command": yoyo_command, "args": yoyo_args or ["--mcp-server"]}
+            if yoyo_command
+            else (
+                base_config.get("mcp_servers", {}).get("yoyo")
+                if isinstance(base_config.get("mcp_servers"), dict)
+                else None
+            )
         ) or fallback_yoyo_config()
         lines.extend([
             "",
@@ -139,11 +156,13 @@ def prepare_codex_home(
     workspace: Path,
     mode: str,
     base_codex_home: Path,
-    out_dir: Path,
+    runtime_dir: Path,
     model: str | None,
     reasoning_effort: str | None,
+    yoyo_command: str | None,
+    yoyo_args: list[str] | None,
 ) -> Path:
-    codex_home = out_dir / f"codex-home-{mode}"
+    codex_home = runtime_dir / f"codex-home-{mode}"
     if codex_home.exists():
         shutil.rmtree(codex_home)
     codex_home.mkdir(parents=True, exist_ok=True)
@@ -159,6 +178,8 @@ def prepare_codex_home(
         mode=mode,
         model=model,
         reasoning_effort=reasoning_effort,
+        yoyo_command=yoyo_command,
+        yoyo_args=yoyo_args,
     )
     (codex_home / "config.toml").write_text(config_text)
     return codex_home
@@ -171,6 +192,9 @@ def build_prompt(task: dict[str, Any], mode: str, extra: str | None) -> str:
         "Modify only the current repository so the task test command passes.",
         "Start by reading .yoyo-task.json and checking the current git diff.",
         "Use the provided test command as the correctness oracle and run it before finishing.",
+        "Do not ask for additional product or implementation guidance.",
+        "If you are unsure what to do next, continue investigating the repository and run the next relevant local verification command.",
+        "Never stop to ask the evaluator what to do next. Make the best reasonable assumption and continue.",
         "",
         f"Task ID: {task['id']}",
         f"Task name: {task['name']}",
@@ -268,6 +292,14 @@ def parse_codex_jsonl(lines: list[str]) -> tuple[dict[str, Any], str | None]:
     return metrics, last_message
 
 
+def requests_guidance(message: str | None) -> bool:
+    if not message:
+        return False
+    if "?" not in message:
+        return False
+    return any(pattern.search(message) for pattern in GUIDANCE_PATTERNS)
+
+
 def run_codex(
     *,
     codex_bin: str,
@@ -279,39 +311,86 @@ def run_codex(
     color: str,
     enable_multi_agent: bool,
     last_message_path: Path,
+    raw_jsonl_path: Path,
+    raw_stderr_path: Path,
+    resume_last: bool = False,
+    append_output: bool = False,
 ) -> tuple[int, list[str], str]:
-    cmd = [
-        codex_bin,
-        "exec",
-        "--json",
-        "--color",
-        color,
-        "--full-auto",
-        "-C",
-        str(workspace),
-        "-o",
-        str(last_message_path),
-    ]
+    if resume_last:
+        cmd = [
+            codex_bin,
+            "exec",
+            "resume",
+            "--last",
+            "--json",
+            "--full-auto",
+            "-o",
+            str(last_message_path),
+        ]
+    else:
+        cmd = [
+            codex_bin,
+            "exec",
+            "--json",
+            "--color",
+            color,
+            "--full-auto",
+            "-C",
+            str(workspace),
+            "-o",
+            str(last_message_path),
+        ]
     if model:
         cmd.extend(["-m", model])
     if mode == "treatment" and enable_multi_agent:
         cmd.extend(["--enable", "multi_agent"])
-    cmd.append(prompt)
+    cmd.append(GUIDANCE_REPLY if resume_last else prompt)
 
     env = dict(os.environ)
     env["CODEX_HOME"] = str(codex_home)
+    env.setdefault("OTEL_SDK_DISABLED", "true")
+    env.setdefault("CODEX_DISABLE_TELEMETRY", "1")
 
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
         env=env,
+        cwd=str(workspace) if resume_last else None,
     )
     assert proc.stdout is not None
-    stdout_lines = proc.stdout.readlines()
-    stderr_text = proc.stderr.read() if proc.stderr is not None else ""
-    return proc.wait(), stdout_lines, stderr_text
+    assert proc.stderr is not None
+
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def pump(stream: Any, sink_path: Path, bucket: list[str]) -> None:
+        mode = "a" if append_output else "w"
+        with sink_path.open(mode) as sink:
+            for line in stream:
+                sink.write(line)
+                sink.flush()
+                bucket.append(line)
+
+    stdout_thread = threading.Thread(
+        target=pump,
+        args=(proc.stdout, raw_jsonl_path, stdout_lines),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=pump,
+        args=(proc.stderr, raw_stderr_path, stderr_lines),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+
+    returncode = proc.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+    return returncode, stdout_lines, "".join(stderr_lines)
 
 
 def main() -> int:
@@ -327,6 +406,9 @@ def main() -> int:
     parser.add_argument("--base-codex-home", default=os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
     parser.add_argument("--color", default="never", choices=["always", "never", "auto"])
     parser.add_argument("--disable-multi-agent", action="store_true")
+    parser.add_argument("--yoyo-command")
+    parser.add_argument("--yoyo-arg", action="append", default=None)
+    parser.add_argument("--max-guidance-resumes", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -337,25 +419,29 @@ def main() -> int:
     task_file = Path(args.task_file).resolve()
     metrics_file = Path(args.metrics_file).resolve()
     metrics_file.parent.mkdir(parents=True, exist_ok=True)
-    out_dir = metrics_file.parent
+    runtime_dir = Path(
+        tempfile.mkdtemp(prefix=f"yoyo-codex-{args.mode}-", dir=tempfile.gettempdir())
+    ).resolve()
 
     task = load_task(task_file)
     codex_home = prepare_codex_home(
         workspace=workspace,
         mode=args.mode,
         base_codex_home=Path(args.base_codex_home).expanduser().resolve(),
-        out_dir=out_dir,
+        runtime_dir=runtime_dir,
         model=args.model,
         reasoning_effort=args.reasoning_effort,
+        yoyo_command=args.yoyo_command,
+        yoyo_args=args.yoyo_arg,
     )
     prompt = build_prompt(task, args.mode, args.prompt_extra)
 
-    prompt_path = out_dir / f"codex-{args.mode}.prompt.txt"
+    prompt_path = runtime_dir / f"codex-{args.mode}.prompt.txt"
     prompt_path.write_text(prompt)
     config_path = codex_home / "config.toml"
-    last_message_path = out_dir / f"codex-{args.mode}.last-message.txt"
-    raw_jsonl_path = out_dir / f"codex-{args.mode}.jsonl"
-    raw_stderr_path = out_dir / f"codex-{args.mode}.stderr.log"
+    last_message_path = runtime_dir / f"codex-{args.mode}.last-message.txt"
+    raw_jsonl_path = runtime_dir / f"codex-{args.mode}.jsonl"
+    raw_stderr_path = runtime_dir / f"codex-{args.mode}.stderr.log"
 
     command_preview = [
         args.codex_bin,
@@ -382,6 +468,7 @@ def main() -> int:
                 f"mode={args.mode}",
                 f"workspace={workspace}",
                 f"codex_home={codex_home}",
+                f"runtime_dir={runtime_dir}",
                 f"config_path={config_path}",
                 f"command={' '.join(shlex.quote(part) for part in command_preview)}",
             ],
@@ -390,29 +477,46 @@ def main() -> int:
         print(json.dumps({"mode": args.mode, "prompt_path": str(prompt_path), "config_path": str(config_path)}))
         return 0
 
-    returncode, stdout_lines, stderr_text = run_codex(
-        codex_bin=args.codex_bin,
-        workspace=workspace,
-        codex_home=codex_home,
-        prompt=prompt,
-        mode=args.mode,
-        model=args.model,
-        color=args.color,
-        enable_multi_agent=not args.disable_multi_agent,
-        last_message_path=last_message_path,
-    )
+    stdout_lines: list[str] = []
+    stderr_chunks: list[str] = []
+    guidance_resumes = 0
+    returncode = 0
+    parsed_last_message: str | None = None
+    while True:
+        returncode, new_stdout_lines, new_stderr_text = run_codex(
+            codex_bin=args.codex_bin,
+            workspace=workspace,
+            codex_home=codex_home,
+            prompt=prompt,
+            mode=args.mode,
+            model=args.model,
+            color=args.color,
+            enable_multi_agent=not args.disable_multi_agent,
+            last_message_path=last_message_path,
+            raw_jsonl_path=raw_jsonl_path,
+            raw_stderr_path=raw_stderr_path,
+            resume_last=guidance_resumes > 0,
+            append_output=guidance_resumes > 0,
+        )
+        stdout_lines.extend(new_stdout_lines)
+        stderr_chunks.append(new_stderr_text)
+        _, parsed_last_message = parse_codex_jsonl(stdout_lines)
+        if guidance_resumes >= args.max_guidance_resumes or not requests_guidance(parsed_last_message):
+            break
+        guidance_resumes += 1
 
-    raw_jsonl_path.write_text("".join(stdout_lines))
-    raw_stderr_path.write_text(stderr_text)
-
+    stderr_text = "".join(stderr_chunks)
     metrics, parsed_last_message = parse_codex_jsonl(stdout_lines)
     metrics["notes"].extend(
         [
             f"returncode={returncode}",
+            f"runtime_dir={runtime_dir}",
             f"raw_jsonl={raw_jsonl_path}",
             f"raw_stderr={raw_stderr_path}",
         ]
     )
+    if guidance_resumes:
+        metrics["notes"].append(f"guidance_auto_resumes={guidance_resumes}")
     if args.mode == "treatment" and "yoyo_tool_calls=0" not in metrics["notes"]:
         yoyo_calls = next((note for note in metrics["notes"] if note.startswith("yoyo_tool_calls=")), None)
         if yoyo_calls is None:

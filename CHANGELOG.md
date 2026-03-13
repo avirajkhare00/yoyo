@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.6] - 2026-03-13
+
+### Changed
+
+- Added `judge_change`, a high-level read surface for ownership, invariants, regression risks, and verification planning before edits.
+- Moved eval runner runtime artifacts outside the repo-under-test so groundedness checks no longer leak Codex session residue back into yoyo indexing.
+- Reframed README and docs around truthfulness and groundedness: `judge_change` for grounded reads, `change` as the error-bounded write surface.
+
 ## [1.8.5] - 2026-03-13
 
 ### Changed

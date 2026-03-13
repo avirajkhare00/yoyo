@@ -1,0 +1,28 @@
+{
+  "suite": "directed_tool_use_first3",
+  "description": "First executable pilot set for directed tool-use evals. These tasks use engineer-issued commands, including principal-engineer-level codebase questions about ownership, invariants, and regression risk.",
+  "status": "pilot_executable",
+  "tasks": [
+    {
+      "id": "dtu-pilot-ripgrep-read-only",
+      "mode": "read_only",
+      "task_dir": "evals/tasks/ripgrep-global-gitignore",
+      "commands_file": "evals/tasks/ripgrep-global-gitignore/commands/read_only.json",
+      "goal": "Locate the right fix surface and explain ownership, invariants, and blast radius without editing."
+    },
+    {
+      "id": "dtu-pilot-ripgrep-write-only",
+      "mode": "write_only",
+      "task_dir": "evals/tasks/ripgrep-global-gitignore",
+      "commands_file": "evals/tasks/ripgrep-global-gitignore/commands/write_only.json",
+      "goal": "Patch a pre-narrowed surface with a minimal change and verify it."
+    },
+    {
+      "id": "dtu-pilot-ripgrep-read-then-write",
+      "mode": "read_then_write",
+      "task_dir": "evals/tasks/ripgrep-global-gitignore",
+      "commands_file": "evals/tasks/ripgrep-global-gitignore/commands/read_then_write.json",
+      "goal": "Find the right ownership layer, explain invariants and risks, then land the minimal patch and verify it."
+    }
+  ]
+}

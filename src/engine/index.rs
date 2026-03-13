@@ -59,6 +59,11 @@ fn capability_catalog() -> Vec<serde_json::Value> {
             "tools": ["inspect", "search", "ask"],
         }),
         json!({
+            "name": "judge",
+            "question": "Where should this fix live and what must stay true?",
+            "tools": ["judge_change", "inspect"],
+        }),
+        json!({
             "name": "relate",
             "question": "What else touches this and what breaks if I change it?",
             "tools": ["impact", "routes", "health"],
@@ -99,6 +104,10 @@ fn common_task_catalog() -> Vec<serde_json::Value> {
         json!({
             "task": "Trace request path to business logic",
             "use": ["impact", "inspect"],
+        }),
+        json!({
+            "task": "Judge ownership, invariants, and regression risk before editing",
+            "use": ["judge_change", "inspect"],
         }),
         json!({
             "task": "Check whether a function is safe to delete",
@@ -466,6 +475,8 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
         ToolDescription { name: "search", description: "AST-aware search. Replaces grep/rg.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "ask", description: "Find functions by intent using embeddings.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "routes", description: "All detected HTTP routes.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
+        ToolDescription { name: "judge_change", description: "Judge the likely ownership layer, candidate symbols, invariants, regression risks, and verification plan for a change.", requires_bake: true, category: "read-indexed", parallelisable: true,
+            output_shape: Some(r#"{"ownership_layer":{"name":"","why":"","evidence_files":[]},"candidate_symbols":[{"name":"","file":"","start_line":0,"kind":"function|type","score":0.0,"why":"","incoming_callers":0,"caller_files":0}],"candidate_files":[{"file":"","role":"","why":""}],"invariants":[{"text":"","evidence":[]}],"regression_risks":[{"text":"","evidence":[]}],"verification_commands":[{"command":"","why":""}]}"#) },
         ToolDescription { name: "impact", description: "Task-shaped impact analysis for a symbol or endpoint.", requires_bake: true, category: "read-indexed", parallelisable: true,
             output_shape: Some(r#"{"mode":"symbol|endpoint","target":{},"summary":"(endpoint mode)","callers":[],"affected_files":[],"call_chain":[]}"#) },
         ToolDescription { name: "health", description: "Dead code, large functions, and duplicate hints.", requires_bake: true, category: "read-indexed", parallelisable: true,
@@ -581,6 +592,13 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             limitations: "Requires index. Uses ONNX embeddings when available, falls back to TF-IDF.",
         },
         ToolHelp {
+            name: "judge_change",
+            params: json!({"query": "required - engineering question, issue text, or failing-test summary", "symbol": "optional - known symbol hint", "file": "optional - file path substring", "limit": "optional - max candidate symbols (default 3, max 5)", "path": "optional"}),
+            output_shape: Some(r#"{"ownership_layer":{"name":"","why":"","evidence_files":[]},"candidate_symbols":[{"name":"","file":"","start_line":0,"kind":"function|type","score":0.0,"why":"","incoming_callers":0,"caller_files":0}],"candidate_files":[{"file":"","role":"","why":""}],"rejected_alternatives":[{"name":"","file":"","reason":""}],"invariants":[{"text":"","evidence":[]}],"regression_risks":[{"text":"","evidence":[]}],"verification_commands":[{"command":"","why":""}]}"#),
+            example: json!({"call": {"query": "Global gitignore matching breaks when searching an absolute path", "file": "ignore"}}),
+            limitations: "Requires index. First cut is read-only judgment, not a patch planner. Use it to replace long search/inspect/impact chains before editing, then route writes through change for the error-bounded patch.",
+        },
+        ToolHelp {
             name: "routes",
             params: json!({"path": "optional"}),
             output_shape: Some(r#"{"endpoints":[{"method":"","path":"","handler":"","file":"","line":0}]}"#),
@@ -612,8 +630,8 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             name: "script",
             params: json!({"code": "required - Rhai script", "path": "optional"}),
             output_shape: Some(r#"{"tool":"script","result":"(last expression value)"}"#),
-            example: json!({"call": {"code": "let h = health(); let risk = []; for d in h[\"dead_code\"] { let i = impact(#{symbol: d[\"name\"]}); if i[\"callers\"].len() == 0 { risk += [d[\"name\"]]; } } risk"}}),
-            limitations: "Task-shaped script surface only: boot, index, inspect, search, ask, map, routes, impact, health, change, help. Prefer script when you need loops, filtering, or aggregation across task-tool results.",
+            example: json!({"call": {"code": "let j = judge_change(#{query: \"validate user token flow\"}); j[\"ownership_layer\"]"}}),
+            limitations: "Task-shaped script surface only: boot, index, inspect, search, ask, map, routes, judge_change, impact, health, change, help. Prefer script when you need loops, filtering, or aggregation across task-tool results.",
         },
         ToolHelp {
             name: "help",
@@ -627,6 +645,18 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
 
 fn task_help_catalog() -> Vec<TaskHelp> {
     vec![
+        TaskHelp {
+            name: "judge change",
+            aliases: &["ownership analysis", "judge ownership", "invariants and risks"],
+            question: "How do I identify the likely ownership layer, invariants, and regression risks before editing?",
+            use_tools: &["judge_change", "inspect", "change"],
+            why: "judge_change is the high-level read surface for grounded change triage: it returns candidate symbols/files, the likely ownership layer, invariants, regression risks, and verification commands in one call, while change remains the error-bounded write surface.",
+            steps: &[
+                "Start with judge_change(query=...) to get the likely ownership layer and top candidates.",
+                "Use inspect(...) on one candidate only if the ownership layer or invariant list needs confirmation.",
+                "Use change(action=...) after you accept the judged ownership layer and minimal verification plan.",
+            ],
+        },
         TaskHelp {
             name: "inspect code",
             aliases: &["inspect symbol", "inspect file", "inspect lines"],
@@ -1111,6 +1141,17 @@ mod tests {
             }),
             "boot should expose task-shaped capability groupings"
         );
+        assert!(
+            capabilities.iter().any(|entry| {
+                entry["name"] == "judge"
+                    && entry["tools"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|tool| tool == "judge_change")
+            }),
+            "boot should expose the high-level change-judgment capability"
+        );
 
         let common_tasks = payload["common_tasks"].as_array().unwrap();
         assert!(
@@ -1123,6 +1164,17 @@ mod tests {
                         .any(|tool| tool == "change")
             }),
             "boot should recommend concrete tools for common tasks"
+        );
+        assert!(
+            common_tasks.iter().any(|entry| {
+                entry["task"] == "Judge ownership, invariants, and regression risk before editing"
+                    && entry["use"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|tool| tool == "judge_change")
+            }),
+            "boot should route change-triage questions to judge_change"
         );
     }
 
@@ -1159,6 +1211,26 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("line-range mode does not")
+        );
+    }
+
+    #[test]
+    fn help_supports_judge_change_tool() {
+        let json = tool_help("judge_change".to_string()).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload["name"], "judge_change");
+        assert!(
+            payload["limitations"]
+                .as_str()
+                .unwrap()
+                .contains("read-only judgment")
+        );
+        assert!(
+            payload["output_shape"]
+                .as_str()
+                .unwrap()
+                .contains("ownership_layer")
         );
     }
 

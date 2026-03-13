@@ -1,0 +1,14 @@
+[
+  {
+    "id": "ownership",
+    "command": "You are already on the likely fix surface. Keep the change within crates/core/flags/hiargs.rs, crates/ignore/src/dir.rs, crates/ignore/src/walk.rs, and tests/regression.rs unless there is a compelling reason not to. First state which of those layers should own the behavior and what invariant you must preserve."
+  },
+  {
+    "id": "patch",
+    "command": "Make the minimal patch on that pre-narrowed surface only. Avoid unrelated refactors."
+  },
+  {
+    "id": "verify",
+    "command": "Run the exact regression test command and report whether the patch stayed scoped."
+  }
+]

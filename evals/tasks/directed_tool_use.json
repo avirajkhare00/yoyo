@@ -1,0 +1,259 @@
+{
+  "suite": "directed_tool_use",
+  "description": "Primary yoyo product eval suite. These tasks evaluate yoyo as an MCP tool collection used under explicit engineer commands, not as an autonomous coding agent.",
+  "modes": [
+    {
+      "id": "read_only",
+      "goal": "Measure structural understanding without allowing code edits to hide weak repo navigation.",
+      "primary_metrics": [
+        "phase1_locate_quality",
+        "phase2_explain_quality",
+        "ownership_quality",
+        "invariant_quality",
+        "blast_radius_accuracy",
+        "irrelevant_file_mentions",
+        "elapsed_ms",
+        "tool_calls",
+        "retries"
+      ]
+    },
+    {
+      "id": "write_only",
+      "goal": "Measure patch quality once the target surface is already known.",
+      "primary_metrics": [
+        "completion",
+        "diff_quality",
+        "scope_quality",
+        "wrong_edits",
+        "hallucinated_apis",
+        "elapsed_ms",
+        "tool_calls"
+      ]
+    },
+    {
+      "id": "read_then_write",
+      "goal": "Measure the full engineer-directed workflow: investigate first, then patch, then verify.",
+      "primary_metrics": [
+        "phase1_locate_quality",
+        "phase2_explain_quality",
+        "ownership_quality",
+        "invariant_quality",
+        "completion",
+        "elapsed_ms",
+        "tool_calls",
+        "retries",
+        "scope_quality",
+        "diff_quality",
+        "wrong_edits",
+        "hallucinated_apis"
+      ]
+    }
+  ],
+  "scoring": [
+    "phase1_locate_quality",
+    "phase2_explain_quality",
+    "ownership_quality",
+    "invariant_quality",
+    "completion",
+    "elapsed_ms",
+    "tool_calls",
+    "retries",
+    "scope_quality",
+    "diff_quality",
+    "wrong_edits",
+    "hallucinated_apis"
+  ],
+  "interaction_model": {
+    "type": "multi_turn_commanded",
+    "allowed_evaluator_commands": [
+      "Find the likely implementation area first.",
+      "Explain what else this change touches before editing.",
+      "Make the minimal patch.",
+      "Run the most relevant verification command.",
+      "Stop and justify the current scope."
+    ],
+    "disallowed_evaluator_commands": [
+      "Name the exact file or symbol unless the task itself includes it.",
+      "Reveal the hidden merged fix.",
+      "Give step-by-step implementation hints that collapse the repo search problem."
+    ]
+  },
+  "phases": [
+    {
+      "id": "locate",
+      "goal": "Identify the likely files and symbols before editing.",
+      "expected_yoyo_tools": [
+        "boot",
+        "index",
+        "map",
+        "inspect",
+        "search",
+        "ask"
+      ]
+    },
+    {
+      "id": "explain",
+      "goal": "Describe the dependency chain, ownership boundary, invariants, or blast radius.",
+      "expected_yoyo_tools": [
+        "impact",
+        "inspect",
+        "routes",
+        "health"
+      ]
+    },
+    {
+      "id": "judge",
+      "goal": "Decide the correct ownership layer, invariants, and regression risks before editing.",
+      "expected_yoyo_tools": [
+        "impact",
+        "inspect",
+        "health",
+        "routes"
+      ]
+    },
+    {
+      "id": "change",
+      "goal": "Make the minimal correct edit.",
+      "expected_yoyo_tools": [
+        "change",
+        "impact",
+        "inspect"
+      ]
+    },
+    {
+      "id": "verify",
+      "goal": "Run the right targeted verification command.",
+      "expected_yoyo_tools": []
+    }
+  ],
+  "tasks": [
+    {
+      "id": "dtu-001",
+      "mode": "read_only",
+      "category": "bug_triage",
+      "title": "Integration failure with non-local root cause",
+      "required_hops": 3,
+      "prompt_shape": "A test or user report fails in one area, but the correct fix lives in another helper or abstraction. The evaluator commands the agent to locate the likely files and symbols and explain the dependency chain, but not to edit yet.",
+      "why_yoyo_should_help": [
+        "inspect and search narrow the candidate code quickly",
+        "impact exposes the non-local dependency chain before editing",
+        "the same evidence should support an ownership-layer judgment"
+      ]
+    },
+    {
+      "id": "dtu-002",
+      "mode": "write_only",
+      "category": "feature_work",
+      "title": "Patch a known implementation surface with a minimal change",
+      "required_hops": 2,
+      "prompt_shape": "The evaluator already names the target function or file. The task is to make the minimal correct edit and run the right verification command without unnecessary codebase exploration.",
+      "why_yoyo_should_help": [
+        "inspect gives exact local context before editing",
+        "change can keep the patch coordinated and minimal"
+      ]
+    },
+    {
+      "id": "dtu-003",
+      "mode": "read_then_write",
+      "category": "refactor",
+      "title": "Rename an internal API safely",
+      "required_hops": 3,
+      "prompt_shape": "Rename or reshape an internal symbol used across multiple files. The evaluator commands the agent to enumerate affected callers, explain the ownership boundary, then make the change.",
+      "why_yoyo_should_help": [
+        "impact is the key signal for caller discovery",
+        "change can coordinate the edit once scope is known",
+        "ownership analysis should prevent patching the wrong layer"
+      ]
+    },
+    {
+      "id": "dtu-004",
+      "mode": "read_only",
+      "category": "investigation",
+      "title": "Blast-radius analysis before edit",
+      "required_hops": 3,
+      "prompt_shape": "Before any patch, answer what would break if a given symbol or behavior changed, which layer owns the behavior, and what invariants must remain true. The evaluator is only asking for analysis, not edits.",
+      "why_yoyo_should_help": [
+        "impact and inspect are the natural tools for this phase split",
+        "health can confirm whether code is actually live or dead",
+        "the same structural evidence should support principal-level risk judgment"
+      ]
+    },
+    {
+      "id": "dtu-005",
+      "mode": "read_then_write",
+      "category": "large_repo_feature",
+      "title": "Small feature in a large repo with ambiguous placement",
+      "required_hops": 5,
+      "prompt_shape": "Implement a narrow change in a large codebase. The evaluator commands the agent to identify the subsystem, justify the ownership layer and invariants, then patch the minimum path.",
+      "why_yoyo_should_help": [
+        "boot, index, and map cut orientation time",
+        "ask, search, and impact help avoid random file hopping",
+        "ownership judgment is where codebase structure matters most"
+      ]
+    },
+    {
+      "id": "dtu-006",
+      "mode": "write_only",
+      "category": "migration",
+      "title": "Update a known signature and directly affected callers",
+      "required_hops": 2,
+      "prompt_shape": "The evaluator identifies the helper that changed. The job is to update the signature and the immediately affected callers with the smallest safe diff.",
+      "why_yoyo_should_help": [
+        "inspect confirms exact call shapes",
+        "impact helps avoid missing direct dependents",
+        "change supports coordinated edits"
+      ]
+    },
+    {
+      "id": "dtu-007",
+      "mode": "read_only",
+      "category": "safe_delete",
+      "title": "Is this symbol safe to remove?",
+      "required_hops": 3,
+      "prompt_shape": "The evaluator names a symbol and asks whether it is safe to delete. The agent must justify the answer with caller analysis, ownership reasoning, and invariants only.",
+      "why_yoyo_should_help": [
+        "impact is the primary signal",
+        "health can reveal dead-code hints",
+        "inspect confirms edge cases before concluding"
+      ]
+    },
+    {
+      "id": "dtu-008",
+      "mode": "read_then_write",
+      "category": "test_maintenance",
+      "title": "Decide whether the implementation or test is wrong, then fix the right side",
+      "required_hops": 3,
+      "prompt_shape": "The evaluator provides a failing behavior report. The agent must first determine whether the failure belongs in code or tests, which layer owns the behavior, and what must remain invariant, then make the minimal fix and verify it.",
+      "why_yoyo_should_help": [
+        "inspect and search help compare behavior and assertions",
+        "impact reduces the risk of narrow local fixes",
+        "change can keep the final patch scoped"
+      ]
+    },
+    {
+      "id": "dtu-009",
+      "mode": "write_only",
+      "category": "refactor",
+      "title": "Known-scope coordinated rename",
+      "required_hops": 2,
+      "prompt_shape": "The evaluator already narrows the change to a known symbol family. The job is to perform the coordinated rename cleanly and verify compilation or tests.",
+      "why_yoyo_should_help": [
+        "change is the key value here",
+        "impact can confirm direct callers before the rename lands"
+      ]
+    },
+    {
+      "id": "dtu-010",
+      "mode": "read_then_write",
+      "category": "endpoint_change",
+      "title": "Trace request flow, then patch the minimal end-to-end path",
+      "required_hops": 4,
+      "prompt_shape": "The evaluator gives a user-visible behavior change. The agent must identify the entrypoint, trace the path through validation and business logic, decide the correct ownership layer, then patch only the necessary surfaces and verify.",
+      "why_yoyo_should_help": [
+        "routes, inspect, and impact fit the flow-tracing phase",
+        "change helps coordinate the final patch once the path is known",
+        "ownership judgment reduces the chance of patching the wrong edge"
+      ]
+    }
+  ]
+}

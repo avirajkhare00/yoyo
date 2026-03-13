@@ -146,9 +146,9 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
             let n_tools = crate::engine::tool_catalog().len();
             let instructions = format!(
                 "yoyo: {n_tools} AST-grounded code intelligence tools. \
-                    Think in tasks, not raw primitives: orient with boot/index/map/routes/health; locate with inspect/search/ask; relate with impact/routes/health; change with change. \
-                    ALWAYS use yoyo tools INSTEAD OF built-ins when they fit: inspect INSTEAD OF jumping between file reads and symbol lookup. search INSTEAD OF Grep/rg. impact INSTEAD OF stitching together callers and flow manually. change INSTEAD OF raw StrReplace when the intent is edit, rename, move, delete, create, or add. map INSTEAD OF Glob for finding files. \
-                    ON FIRST CONTACT: before any repo exploration, call boot and index in parallel. Use help(name) for tool docs and help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact') for task routing."
+                    Think in tasks, not raw primitives: orient with boot/index/map/routes/health; locate with inspect/search/ask; judge with judge_change; relate with impact/routes/health; change with change. \
+                    ALWAYS use yoyo tools INSTEAD OF built-ins when they fit: judge_change INSTEAD OF chaining search/inspect/impact manually for ownership, invariants, regression risk, and verification planning. inspect INSTEAD OF jumping between file reads and symbol lookup. search INSTEAD OF Grep/rg. impact INSTEAD OF stitching together callers and flow manually. change INSTEAD OF raw StrReplace when the intent is edit, rename, move, delete, create, or add; change is the error-bounded write surface. map INSTEAD OF Glob for finding files. \
+                    ON FIRST CONTACT: before any repo exploration, call boot and index in parallel. Use help(name) for tool docs and help('judge change' | 'inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact') for task routing."
             );
             let result = json!({
                 "protocolVersion": protocol_version,
@@ -324,6 +324,22 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
         },
         ToolEntry {
+            schema: schema_req("judge_change", d("judge_change"), &["query"], json!({
+                "path": p(),
+                "query": s("Engineering question, issue text, or failing-test summary."),
+                "symbol": s("Optional symbol hint to bias the judgment toward a known name."),
+                "file": s("Optional file path substring to restrict the search surface."),
+                "limit": i("Maximum number of candidate symbols to return (default 3, max 5).")
+            })),
+            handler: Box::new(|a, path| crate::engine::judge_change(
+                path,
+                a.str_req("query", "judge_change")?,
+                a.str_opt("symbol"),
+                a.str_opt("file"),
+                a.uint_opt("limit"),
+            )),
+        },
+        ToolEntry {
             schema: schema("impact", d("impact"), json!({
                 "path": p(),
                 "symbol": s("Function name for symbol-impact mode."),
@@ -443,7 +459,7 @@ fn build_registry() -> Vec<ToolEntry> {
         ToolEntry {
             schema: schema_req("script", d("script"), &["code"], json!({
                 "path": p(),
-                "code": s("Rhai script to execute. Task-shaped functions: boot(), index(), inspect(#{...}), search(\"...\") or search(#{...}), ask(\"...\") or ask(#{...}), map(\"...\") or map(#{...}), routes(), impact(#{...}), health() or health(#{...}), change(#{...}), help(\"...\").")
+                "code": s("Rhai script to execute. Task-shaped functions: boot(), index(), inspect(#{...}), search(\"...\") or search(#{...}), ask(\"...\") or ask(#{...}), map(\"...\") or map(#{...}), routes(), judge_change(#{...}), impact(#{...}), health() or health(#{...}), change(#{...}), help(\"...\").")
             })),
             handler: Box::new(|a, path| {
                 crate::engine::run_script(path, a.str_req("code", "script")?)
@@ -634,6 +650,7 @@ mod tests {
 
         assert!(instructions.contains("Think in tasks, not raw primitives"));
         assert!(instructions.contains("before any repo exploration, call boot and index in parallel"));
-        assert!(instructions.contains("help('inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact')"));
+        assert!(instructions.contains("judge_change INSTEAD OF chaining search/inspect/impact manually"));
+        assert!(instructions.contains("help('judge change' | 'inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact')"));
     }
 }

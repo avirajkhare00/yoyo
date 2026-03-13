@@ -82,6 +82,42 @@ mod tests {
     }
 
     #[test]
+    fn e2e_judge_change_returns_grounded_payload() {
+        let dir = setup();
+        let out = crate::engine::judge_change(
+            root(&dir),
+            "add numbers and format a result".to_string(),
+            None,
+            None,
+            Some(3),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        assert_eq!(v["tool"], "judge_change");
+        assert!(v["ownership_layer"]["name"].as_str().unwrap().contains("src"));
+        assert!(!v["candidate_symbols"].as_array().unwrap().is_empty());
+        assert!(!v["invariants"].as_array().unwrap().is_empty());
+        assert!(!v["verification_commands"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn e2e_judge_change_prioritises_symbol_hint() {
+        let dir = setup();
+        let out = crate::engine::judge_change(
+            root(&dir),
+            "format some numbers".to_string(),
+            Some("sum_three".to_string()),
+            None,
+            Some(3),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let top = &v["candidate_symbols"].as_array().unwrap()[0];
+        assert_eq!(top["name"], "sum_three");
+    }
+
+    #[test]
     fn e2e_symbol_accepts_subdirectory_path_when_bake_exists_at_project_root() {
         let dir = setup();
         let out = crate::engine::symbol(subdir_root(&dir), "add".into(), false, None, None, false).unwrap();

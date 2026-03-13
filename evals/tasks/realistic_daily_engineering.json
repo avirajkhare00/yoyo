@@ -1,0 +1,146 @@
+{
+  "suite": "realistic_daily_engineering",
+  "description": "Spec for the next primary yoyo eval suite. These are not synthetic punctures; they are daily-engineering task templates that should be instantiated from real repositories and natural prompts.",
+  "scoring": [
+    "completion",
+    "elapsed_ms",
+    "tool_calls",
+    "retries",
+    "scope_quality",
+    "diff_quality",
+    "wrong_edits",
+    "hallucinated_apis"
+  ],
+  "tasks": [
+    {
+      "id": "rde-001",
+      "category": "bug_triage",
+      "title": "Integration test failure with non-local root cause",
+      "required_hops": 3,
+      "prompt_shape": "Start from a failing integration test or stack trace. The correct fix requires tracing from the failing surface to a helper or abstraction in another file.",
+      "why_yoyo_should_help": [
+        "inspect for symbol context",
+        "search for targeted call sites",
+        "impact for related callers before editing"
+      ],
+      "daily_engineering_fit": "Typical production bugfix with misleading local symptoms."
+    },
+    {
+      "id": "rde-002",
+      "category": "feature_work",
+      "title": "Add a config option that propagates through the stack",
+      "required_hops": 4,
+      "prompt_shape": "Implement a small new option or flag that must move through parsing, model wiring, runtime behavior, and tests.",
+      "why_yoyo_should_help": [
+        "map to orient in an unfamiliar repo",
+        "inspect to place the change",
+        "impact to find affected downstream code"
+      ],
+      "daily_engineering_fit": "Common product work in services, CLIs, and libraries."
+    },
+    {
+      "id": "rde-003",
+      "category": "refactor",
+      "title": "Safe API rename across a real codebase",
+      "required_hops": 3,
+      "prompt_shape": "Rename a shared symbol or method used across multiple files without changing behavior.",
+      "why_yoyo_should_help": [
+        "search for structural symbol matches",
+        "impact to enumerate callers",
+        "change for safe rename or coordinated edits"
+      ],
+      "daily_engineering_fit": "Routine maintenance and cleanup work."
+    },
+    {
+      "id": "rde-004",
+      "category": "migration",
+      "title": "Signature change on a widely used helper",
+      "required_hops": 4,
+      "prompt_shape": "Add or remove a parameter on a shared helper, then migrate the correct callers and tests.",
+      "why_yoyo_should_help": [
+        "impact to find dependent call chains",
+        "inspect for exact signature and receiver details",
+        "change for coordinated edits"
+      ],
+      "daily_engineering_fit": "Typical internal API evolution."
+    },
+    {
+      "id": "rde-005",
+      "category": "endpoint_change",
+      "title": "HTTP behavior change across router, validation, and response layer",
+      "required_hops": 4,
+      "prompt_shape": "Implement or fix request behavior that spans route registration, input validation, business logic, and response formatting.",
+      "why_yoyo_should_help": [
+        "routes to find entrypoints",
+        "impact to trace flow",
+        "change to update the minimal end-to-end path"
+      ],
+      "daily_engineering_fit": "Common backend feature and bugfix work."
+    },
+    {
+      "id": "rde-006",
+      "category": "contract_mismatch",
+      "title": "Trait or interface contract mismatch",
+      "required_hops": 3,
+      "prompt_shape": "A behavior bug appears in one module, but the real issue is an implementation mismatch behind a trait or interface boundary.",
+      "why_yoyo_should_help": [
+        "search for implementations",
+        "inspect for contract details",
+        "impact for downstream effects"
+      ],
+      "daily_engineering_fit": "Frequent in layered or modular codebases."
+    },
+    {
+      "id": "rde-007",
+      "category": "investigation",
+      "title": "What breaks if we change this symbol?",
+      "required_hops": 3,
+      "prompt_shape": "No code change at first. The job is to produce an accurate blast-radius analysis for a proposed change.",
+      "why_yoyo_should_help": [
+        "impact as the primary tool",
+        "inspect for source confirmation",
+        "health to detect dead or risky dependents"
+      ],
+      "daily_engineering_fit": "Very common before refactors or deprecations."
+    },
+    {
+      "id": "rde-008",
+      "category": "safe_delete",
+      "title": "Can this code be safely removed?",
+      "required_hops": 3,
+      "prompt_shape": "Determine whether a symbol, route, or helper is truly unused or still connected through a non-obvious path.",
+      "why_yoyo_should_help": [
+        "health for dead-code hints",
+        "impact to confirm reachability",
+        "change only if the delete is justified"
+      ],
+      "daily_engineering_fit": "Maintenance work with real regression risk."
+    },
+    {
+      "id": "rde-009",
+      "category": "test_maintenance",
+      "title": "Behavior changed intentionally; repair the right side",
+      "required_hops": 3,
+      "prompt_shape": "A failing test no longer matches intended behavior. Determine whether to update the test, the implementation, or both.",
+      "why_yoyo_should_help": [
+        "inspect for current behavior",
+        "search for related assertions and callers",
+        "impact to avoid narrow local fixes"
+      ],
+      "daily_engineering_fit": "Routine after feature work and refactors."
+    },
+    {
+      "id": "rde-010",
+      "category": "large_repo_feature",
+      "title": "Small feature in a large repo with ambiguous placement",
+      "required_hops": 5,
+      "prompt_shape": "Add a narrow feature or option in a large codebase where placement is not obvious from file names alone.",
+      "why_yoyo_should_help": [
+        "boot and map to orient quickly",
+        "ask and search to find the right implementation area",
+        "impact and change to land a minimal patch"
+      ],
+      "daily_engineering_fit": "Representative of work in mature OSS repos."
+    }
+  ]
+}
