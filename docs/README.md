@@ -2,7 +2,8 @@
 
 yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST, not model memory. The product goal is more truthful, more grounded codebase answers with less hallucination. No API keys, no SaaS, no telemetry.
 
-**Eval:** 119/120 tasks correct (99%) across 7 real codebases vs 26% baseline (Claude Code without index).
+**Current eval status:** still being redesigned.
+The old `119/120` tool-accuracy benchmark remains as a legacy regression report, but it is not the product benchmark anymore. The current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, and the directed tool-use benchmark is still under construction. See [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md).
 
 For current eval tiers and the realistic daily-engineering suite plan, see [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md).
 
@@ -13,7 +14,7 @@ For current eval tiers and the realistic daily-engineering suite plan, see [`eva
 - [Philosophy](#philosophy)
 - [Architecture](./architecture.md)
 - [How it works](#how-it-works)
-- [How Claude works with yoyo](#how-claude-works-with-yoyo)
+- [How agents work with yoyo](#how-agents-work-with-yoyo)
 - [Installation](#installation)
 - [MCP setup](#mcp-setup)
 - [Tools reference](#tools-reference)
@@ -56,18 +57,18 @@ The index is a SQLite database (`bakes/latest/bake.db`) in your project root. No
 
 ---
 
-## How Claude works with yoyo
+## How agents work with yoyo
 
-Each session follows this sequence:
+Each agent session follows this sequence:
 
-1. **Bootstrap** — Claude calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. `index` builds the AST index.
+1. **Bootstrap** — the agent calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. `index` builds the AST index.
 2. **Read** — `inspect`, `search`, `ask` replace grep and ad hoc file reads. Structured data from the AST index, not line matches.
 3. **Judge** — `judge_change` answers the high-level pre-edit question: where should this fix live, what must stay true, and what is the likely blast radius?
 4. **Understand** — `impact`, `health`, `routes` answer structural questions no text tool can: what touches this? what route lands here? is this dead?
-5. **Write** — `change` is the MCP write verb and the error-bounded write surface. It routes to the underlying write mechanisms and auto-reindexes. Claude does not edit files directly when a yoyo write tool applies.
+5. **Write** — `change` is the MCP write verb and the error-bounded write surface. It routes to the underlying write mechanisms and auto-reindexes. The agent does not edit files directly when a yoyo write tool applies.
 6. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
 
-Result: Claude answers from facts, not memory. More grounded. Less hallucinated. No stale function names.
+Result: agents answer from facts, not memory. More grounded. Less hallucinated. No stale function names.
 
 ---
 
@@ -171,7 +172,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 | Tool | requires index | What it does |
 |---|---|---|
-| `inspect` | No* | Inspect a symbol, file outline, or line range from one entrypoint. `file`+`start_line`/`end_line` works without index; symbol/file-outline modes use the index. |
+| `inspect` | No* | Inspect a symbol, signature-only API shape, type surface, file outline, or line range from one entrypoint. `file`+`start_line`/`end_line` works without index; symbol/file-outline modes use the index. |
 | `search` | Yes | AST-aware search. Finds call sites, assignments, identifiers. Replaces grep. |
 | `ask` | Yes | Find functions by intent using local ONNX embeddings (fastembed). No API key. |
 
@@ -255,13 +256,15 @@ Open issues: [github.com/avirajkhare00/yoyo/issues](https://github.com/avirajkha
 src/
   main.rs        binary entrypoint — CLI vs MCP switch
   cli.rs         CLI (clap) — exposes all engine capabilities
-  mcp.rs         MCP JSON-RPC server over stdio — curated 12-tool surface
+  mcp.rs         MCP JSON-RPC server over stdio — curated 13-tool surface
   engine/
     index.rs     boot (llm_instructions), index (bake), shake, help
-    search.rs    inspect, symbol, search (supersearch), outline (file_functions), ask (semantic_search)
+    search.rs    inspect (signature/type/depth reads), symbol, search (supersearch), outline (file_functions), ask (semantic_search)
     edit.rs      change, edit (patch), bulk_edit (multi_patch), read (slice) + compiler guard
     graph.rs     rename, create, add, move, trace_chain
     analysis.rs  callers (blast_radius), health, delete (graph_delete), find_docs
+    judge.rs     judge_change — ownership, invariants, regression risk
+    script.rs    script execution over the task-shaped surface
     embed.rs     fastembed ONNX embeddings + SQLite store
     db.rs        SQLite bake index (bake.db) — read/write
     api.rs       routes (all_endpoints), impact endpoint tracing, flow, api_surface, api_trace, crud_operations
@@ -270,11 +273,11 @@ src/
     util.rs      resolve_project_root, load_bake_index, reindex_files
   lang/
     mod.rs       IndexedFunction, IndexedEndpoint, LanguageAnalyzer trait
-    rust.rs / go.rs / python.rs / typescript.rs / javascript.rs
+    rust.rs / go.rs / python.rs / typescript.rs
     c.rs / cpp.rs / csharp.rs / java.rs / kotlin.rs / php.rs / ruby.rs / swift.rs / bash.rs / zig.rs
 evals/
-  harness/       real-repo puncture eval (Go) — setup/score plus control-vs-treatment compare mode
-  tasks/         task.json + puncture.patch per codebase
+  harness/       compare and directed eval harnesses
+  tasks/         puncture tasks plus realistic directed task specs
   results/       timestamped JSON score records
 ```
 

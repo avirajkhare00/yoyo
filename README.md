@@ -16,7 +16,8 @@
 
 yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-grounded tools to read, understand, and edit code. Less hallucination. More grounded answers. Facts from the source.
 
-**99% eval accuracy** across 4 languages, 8 real codebases — vs 26% baseline (Claude Code alone).
+**Current eval status:** still being redesigned.
+The old `119/120` tool-accuracy benchmark exists as a legacy regression report, but it is not the product benchmark anymore. The current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, and the directed tool-use benchmark is still under construction. See [`evals/README.md`](./evals/README.md).
 
 ---
 
@@ -25,6 +26,8 @@ yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-gr
 Your AI agent reads code like a human with no IDE: grep, cat, hope. It hallucinates function names. It misses callers. It patches the wrong file.
 
 yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `judge_change` to answer ownership, invariants, and regression-risk questions before it edits. It calls `inspect` instead of raw file reads. It calls `impact` before deleting or renaming. It edits through `change`, the error-bounded write surface, not line-number roulette.
+
+On the read side, `inspect` now covers cheap API and structure reads directly: signature-only symbol lookups, type surfaces, and depth-controlled file structure. That keeps answers grounded without dragging full file bodies into context.
 
 The point is not to make trivial tasks look marginally faster. The point is to make answers more truthful and more grounded in the code that actually exists.
 
@@ -170,7 +173,7 @@ Without this, your agent sees yoyo but won't reach for it first.
 ### Locate
 | Tool | What it does |
 |---|---|
-| `inspect` | Inspect a symbol, file outline, or line range from one entrypoint. |
+| `inspect` | Inspect a symbol, signature, type surface, file outline, or line range from one entrypoint. |
 | `search` | AST-aware search across all files. Replaces grep. |
 | `ask` | Find functions by intent. Local ONNX embeddings, no API key. |
 

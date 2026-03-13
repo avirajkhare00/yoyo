@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yoyo – Code search and editing tools for AI assistants</title>
+  <title>yoyo – Grounded codebase answers for AI coding agents</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -260,7 +260,7 @@
     <span class="logo">yo<span>yo</span></span>
     <ul>
       <li><a href="#how">How it works</a></li>
-      <li><a href="#claude">How Claude works</a></li>
+      <li><a href="#claude">How agents work</a></li>
       <li><a href="#tools">Tools</a></li>
       <li><a href="#install">Install</a></li>
       <li><a href="#blog">Blog</a></li>
@@ -273,8 +273,8 @@
   <div class="container">
     <h1>Your AI reads your<br><em>actual code.</em></h1>
     <p class="subtitle">
-      yoyo parses your codebase into a searchable index and gives Claude or Cursor a curated task-shaped MCP surface to read and edit it.
-      No more guessing at file paths, function names, or module structure.
+      yoyo parses your codebase into a grounded index and gives Claude, Codex, Cursor, Gemini, or OpenCode a curated MCP surface to read and change it.
+      Less hallucination. More truthful answers from the code that actually exists.
     </p>
     <div class="cta-group">
       <a class="btn btn-primary" href="#install">Install</a>
@@ -286,20 +286,20 @@
 <div class="stat-bar">
   <div class="inner">
     <div class="stat">
-      <div class="stat-num">~30s</div>
-      <div class="stat-label">to index a 400-file codebase</div>
+      <div class="stat-num">13</div>
+      <div class="stat-label">task-shaped MCP tools</div>
     </div>
     <div class="stat">
-      <div class="stat-num">30–40×</div>
-      <div class="stat-label">faster than manual file reading</div>
+      <div class="stat-num">4</div>
+      <div class="stat-label">primary languages: Rust, Go, Zig, TypeScript</div>
     </div>
     <div class="stat">
-      <div class="stat-num">27</div>
-      <div class="stat-label">tools over MCP</div>
+      <div class="stat-num">Rust + Go</div>
+      <div class="stat-label">indexed structured signatures in inspect</div>
     </div>
     <div class="stat">
-      <div class="stat-num">99%</div>
-      <div class="stat-label">eval accuracy across 7 codebases (120 tasks)</div>
+      <div class="stat-num">6/6 ties</div>
+      <div class="stat-label">current compare smoke runs across v1.8.5 and v1.7.3</div>
     </div>
     <div class="stat">
       <div class="stat-num">0</div>
@@ -318,8 +318,9 @@
         <ul class="problem-list">
           <li><strong>Wrong file paths</strong>AI assistants invent plausible-sounding paths that don't exist in your project.</li>
           <li><strong>Stale function names</strong>Answers come from training data, not your current code on disk.</li>
-          <li><strong>20-minute onboarding</strong>To understand a 400-file project, the AI reads dozens of files one by one.</li>
-          <li><strong>Missed call chains</strong>Without a call graph, the AI can't tell you what breaks when you rename a function.</li>
+          <li><strong>Guessed ownership</strong>It knows something is wrong, but not where the fix should actually live.</li>
+          <li><strong>Context bloat</strong>To answer a small API-shape question, it drags full file bodies into context.</li>
+          <li><strong>Missed call chains</strong>Without structural analysis, the AI can't tell you what breaks when you rename a function.</li>
         </ul>
       </div>
       <div>
@@ -327,8 +328,9 @@
         <ul class="benefit-list">
           <li><strong>Exact file paths and line numbers</strong>Every answer comes from the AST. File, line, and byte offset are exact.</li>
           <li><strong>Current function names</strong>yoyo reads your files on disk. The index is always in sync after every edit.</li>
-          <li><strong>30-second onboarding</strong>8 parallel tool calls replace 15–20 minutes of directory browsing and grepping.</li>
-          <li><strong>Structural impact in one step</strong><code>impact</code> shows who calls yours, what breaks, and how a request path lands.</li>
+          <li><strong>Explicit ownership and invariants</strong><code>judge_change</code> answers where the fix belongs and what must stay true before any edit.</li>
+          <li><strong>Cheap structured reads</strong><code>inspect</code> can return signatures, type surfaces, and file structure without pulling full bodies.</li>
+          <li><strong>Structural impact in one step</strong><code>impact</code> shows who calls this, what breaks, and how a request path lands.</li>
         </ul>
       </div>
     </div>
@@ -340,17 +342,22 @@
 <section>
   <div class="container">
     <h2>What it does</h2>
-    <p class="section-sub">yoyo runs one command to parse your project, then serves the results over MCP.</p>
+      <p class="section-sub">yoyo runs one command to parse your project, stores a grounded SQLite index, then serves the results over MCP.</p>
     <div class="grid">
 
       <div class="card">
-        <h3>Parses your code with ast-grep</h3>
-        <p>Builds an index of every function, its file, line range, byte offsets, complexity score, and outgoing calls. Supports 15 languages: TypeScript, JavaScript, Rust, Python, Go, C, C++, C#, Java, Kotlin, PHP, Ruby, Swift, Bash, and Zig.</p>
+        <h3>Builds a grounded SQLite index</h3>
+        <p>Parses your code into <code>bakes/latest/bake.db</code> with functions, types, routes, call edges, and signature facts. The read path comes from indexed structure, not model memory.</p>
       </div>
 
       <div class="card">
-        <h3>Gives Claude exact answers</h3>
-        <p><code>inspect</code> returns the exact symbol, file outline, or line range you need. <code>search</code> finds call sites and identifiers across hundreds of files. No guessing.</p>
+        <h3>Gives agents exact read surfaces</h3>
+        <p><code>inspect</code> returns the exact symbol, signature-only API shape, type surface, file outline, or line range you need. <code>search</code> finds call sites and identifiers across hundreds of files. No guessing.</p>
+      </div>
+
+      <div class="card">
+        <h3>Judges where the fix belongs</h3>
+        <p><code>judge_change</code> surfaces the likely ownership layer, candidate symbols/files, invariants, regression risks, and verification commands before an edit happens.</p>
       </div>
 
       <div class="card">
@@ -380,7 +387,7 @@
 
       <div class="card">
         <h3>Runs entirely on your machine</h3>
-        <p>Single static binary. No network requests, no API keys, no telemetry. The index is a plain JSON file in your project root.</p>
+        <p>Single binary. No network requests, no API keys, no telemetry. The index is a local SQLite database in your project root.</p>
       </div>
 
     </div>
@@ -391,27 +398,31 @@
 
 <section id="claude">
   <div class="container">
-    <h2>How Claude works with yoyo</h2>
-    <p class="section-sub">Claude treats yoyo as its primary interface to the codebase. You don't manage the tool calls.</p>
+    <h2>How agents work with yoyo</h2>
+    <p class="section-sub">Claude, Codex, Cursor, and Gemini can treat yoyo as their grounded interface to the codebase. You don't manage the tool calls manually.</p>
     <div class="grid">
       <div class="card">
         <h3>1. Bootstrap</h3>
-        <p>Claude calls <code>boot</code> and <code>index</code> on first contact — lean catalog, task routing, and concurrency rules up front. Calls deeper guidance only on demand. No file reading, no grepping.</p>
+        <p>The agent calls <code>boot</code> and <code>index</code> on first contact — lean catalog, task routing, and concurrency rules up front. Calls deeper guidance only on demand.</p>
       </div>
       <div class="card">
         <h3>2. Read</h3>
-        <p><code>inspect</code>, <code>search</code>, and <code>ask</code> replace grep and ad hoc file reads. Structured data from the AST index — not line matches from raw source.</p>
+        <p><code>inspect</code>, <code>search</code>, and <code>ask</code> replace grep and ad hoc file reads. Structured data from the index, including cheap signature/type reads, not line matches from raw source.</p>
       </div>
       <div class="card">
-        <h3>3. Understand</h3>
+        <h3>3. Judge</h3>
+        <p><code>judge_change</code> answers the high-level pre-edit question: where should this fix live, what must stay true, and what is the likely blast radius?</p>
+      </div>
+      <div class="card">
+        <h3>4. Understand</h3>
         <p><code>impact</code>, <code>routes</code>, and <code>health</code> answer structural questions no text tool can: who calls this? what does this touch? is this dead?</p>
       </div>
       <div class="card">
-        <h3>4. Write</h3>
-        <p><code>change</code> mutates code and auto-reindexes. One write verb, many actions. No direct file edits.</p>
+        <h3>5. Write</h3>
+        <p><code>change</code> mutates code and auto-reindexes. One write verb, many actions. No direct file edits when a yoyo write path applies.</p>
       </div>
     </div>
-    <p style="margin-top:24px; font-size:0.9rem; color:var(--muted);">Result: Claude answers from facts, not memory. No hallucinated file paths. No stale function names.</p>
+    <p style="margin-top:24px; font-size:0.9rem; color:var(--muted);">Result: agents answer from facts, not memory. Fewer hallucinated file paths. More grounded ownership and API-shape reads.</p>
   </div>
 </section>
 
@@ -420,7 +431,7 @@
 <section id="tools">
   <div class="container">
     <h2>Tools</h2>
-    <p class="section-sub">Every tool is callable over MCP. Claude picks the right ones — you don't manage this manually.</p>
+    <p class="section-sub">Every tool is callable over MCP. The agent picks the right ones — you don't manage this manually.</p>
     <table>
       <thead>
         <tr><th>Tool</th><th>Status</th><th>What it returns</th></tr>
@@ -429,9 +440,10 @@
         <tr><td><code>boot</code></td><td><span class="pill pill-green">Stable</span></td><td>Lean bootstrap: task-shaped capability families, common-task routing, and concurrency rules.</td></tr>
         <tr><td><code>index</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
         <tr><td><code>help</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand tool and task guidance: params, output shape, examples, and limitations.</td></tr>
-        <tr><td><code>inspect</code></td><td><span class="pill pill-green">Stable</span></td><td>One read surface for symbol lookup, file outlines, and exact line ranges.</td></tr>
+        <tr><td><code>inspect</code></td><td><span class="pill pill-green">Stable</span></td><td>One read surface for symbol lookup, signature-only API reads, type surfaces, file outlines, and exact line ranges.</td></tr>
         <tr><td><code>search</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, and identifiers across all files.</td></tr>
         <tr><td><code>ask</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
+        <tr><td><code>judge_change</code></td><td><span class="pill pill-green">Stable</span></td><td>High-level grounded read surface for ownership, candidate files/symbols, invariants, regression risks, and verification commands.</td></tr>
         <tr><td><code>map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles such as routes, services, and models.</td></tr>
         <tr><td><code>routes</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo, net/http).</td></tr>
         <tr><td><code>impact</code></td><td><span class="pill pill-green">Stable</span></td><td>Task-shaped impact analysis for a symbol or endpoint. Wraps caller and route-chain analysis.</td></tr>
@@ -508,8 +520,8 @@
 
 <section id="mcp">
   <div class="container">
-    <h2>Connect to Claude or Cursor</h2>
-    <p class="section-sub">Add yoyo as an MCP server. Claude calls the tools automatically — you don't manage it.</p>
+    <h2>Connect yoyo to your agent</h2>
+    <p class="section-sub">Add yoyo as an MCP server. Claude, Codex, Cursor, Gemini, or OpenCode can then call the tools automatically.</p>
     <div class="mcp-block">
       <div class="mcp-text">
         <h3>Claude Code</h3>
@@ -585,32 +597,14 @@
 <section>
   <div class="container">
     <h2>Eval results</h2>
-    <p class="section-sub">Measured against 7 real codebases (Rust, Go, Python) — 120 tasks total.</p>
+    <p class="section-sub">yoyo has a strong legacy structural benchmark, but current eval work is moving toward more realistic directed tool-use tasks.</p>
 
-    <table style="margin-bottom:24px;">
-      <thead>
-        <tr><th>Codebase</th><th>Language</th><th>yoyo</th><th>Claude Code (no index)</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>ripgrep — CLI binary</td><td>Rust</td><td><strong style="color:var(--accent2)">22/22 — 100%</strong></td><td style="color:var(--muted)">5/20 — 25%</td></tr>
-        <tr><td>tokio — async runtime</td><td>Rust</td><td><strong style="color:var(--accent2)">23/23 — 100%</strong></td><td style="color:var(--muted)">7/20 — 35%</td></tr>
-        <tr><td>axum — web framework</td><td>Rust</td><td><strong style="color:var(--accent2)">20/20 — 100%</strong></td><td style="color:var(--muted)">8/18 — 44%</td></tr>
-        <tr><td>jiff — date/time library</td><td>Rust</td><td><strong style="color:var(--accent2)">16/16 — 100%</strong></td><td style="color:var(--muted)">5/15 — 33%</td></tr>
-        <tr><td>serde — serialization</td><td>Rust</td><td><strong style="color:var(--accent2)">11/12 — 92%</strong></td><td style="color:var(--muted)">5/12 — 42%</td></tr>
-        <tr><td>gin — web framework</td><td>Go</td><td><strong style="color:var(--accent2)">14/14 — 100%</strong></td><td style="color:var(--muted)">0/15 — 0%</td></tr>
-        <tr><td>flask — web framework</td><td>Python</td><td><strong style="color:var(--accent2)">13/13 — 100%</strong></td><td style="color:var(--muted)">0/14 — 0%</td></tr>
-        <tr><td><strong>Total</strong></td><td><strong>7 codebases</strong></td><td><strong style="color:var(--accent2)">119/120 — 99%</strong></td><td style="color:var(--muted)"><strong>30/114 — 26%</strong></td></tr>
-      </tbody>
-    </table>
-
-    <p style="font-size:0.88rem; color:var(--muted); margin-bottom:20px;">
-      Tasks: definition location, complexity rank, fan-out, caller count, visibility, dead code, large functions, module path.<br>
-      Claude Code ceiling is ~26% — limited to single-file reads and lexical grep with no cross-file index.
-    </p>
-
-    <p style="font-size:0.88rem; color:var(--muted);">
-      Full report: <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/REPORT.md">evals/REPORT.md</a>
-    </p>
+    <div class="card">
+      <h3>Current eval status</h3>
+      <p>The old <code>119/120</code> tool-accuracy number still exists as a legacy regression report, but it is not the product benchmark anymore.</p>
+      <p>The current compare smoke runs are <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code> on three puncture tasks. That is useful for harness sanity checks, not for product truth.</p>
+      <p>The benchmark we actually care about now is directed tool-use on real codebase work, and that eval is still under construction. See <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/README.md">evals/README.md</a> for the current plan and <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/REPORT.md">evals/REPORT.md</a> for the legacy report.</p>
+    </div>
   </div>
 </section>
 
