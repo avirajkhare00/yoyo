@@ -6,3 +6,6 @@ bakes/
 __pycache__/
 *.pyc
 evals/harness/harness
+evals/results/*.json
+evals/results/by-tag/
+evals/evals/results/
