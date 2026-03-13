@@ -4,9 +4,16 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
-use super::types::{GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload, TraceNode};
-use super::edit::ast_check_str;
-use super::util::{detect_language, load_bake_index, reindex_files, require_bake_index, resolve_project_root};
+use super::edit::{
+    ast_check_str, semantic_check_errors_for_files, write_bytes_with_compiler_guard,
+};
+use super::types::{
+    GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, SyntaxError,
+    TraceDownPayload, TraceNode,
+};
+use super::util::{
+    detect_language, load_bake_index, reindex_files, require_bake_index, resolve_project_root,
+};
 use crate::lang::Visibility;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,12 +53,7 @@ fn collect_source_files(root: &PathBuf) -> Vec<PathBuf> {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if matches!(
                             name,
-                            ".git"
-                                | "node_modules"
-                                | "target"
-                                | "dist"
-                                | "build"
-                                | "__pycache__"
+                            ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__",
                         ) {
                             continue;
                         }
@@ -68,6 +70,111 @@ fn collect_source_files(root: &PathBuf) -> Vec<PathBuf> {
     files
 }
 
+fn wrap_guard_error(op: &str, file: &str, err: anyhow::Error) -> anyhow::Error {
+    let msg = err.to_string();
+    let detail = msg.strip_prefix("patch rejected: ").unwrap_or(&msg);
+    anyhow!("{} rejected in {}: {}", op, file, detail)
+}
+
+fn write_graph_bytes_with_guard(
+    op: &str,
+    root: &PathBuf,
+    full_path: &Path,
+    file: &str,
+    bytes: &[u8],
+) -> Result<()> {
+    write_bytes_with_compiler_guard(root, full_path, file, bytes)
+        .map_err(|err| wrap_guard_error(op, file, err))
+}
+
+struct PendingWrite<'a> {
+    full_path: &'a Path,
+    file: &'a str,
+    bytes: &'a [u8],
+}
+
+fn format_guard_errors(errors: &[SyntaxError]) -> String {
+    errors
+        .iter()
+        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn restore_graph_original(full_path: &Path, file: &str, original: Option<&[u8]>) -> Result<()> {
+    match original {
+        Some(bytes) => {
+            fs::write(full_path, bytes).with_context(|| format!("Failed to restore {}", file))
+        }
+        None => {
+            if full_path.exists() {
+                fs::remove_file(full_path).with_context(|| format!("Failed to remove {}", file))
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+fn restore_graph_batch(writes: &[PendingWrite<'_>], originals: &[Option<Vec<u8>>]) -> Result<()> {
+    let mut first_err = None;
+    for (write, original) in writes.iter().zip(originals.iter()) {
+        if let Err(err) = restore_graph_original(write.full_path, write.file, original.as_deref()) {
+            if first_err.is_none() {
+                first_err = Some(err);
+            }
+        }
+    }
+
+    if let Some(err) = first_err {
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn write_graph_batch_with_guard(
+    op: &str,
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+) -> Result<()> {
+    let originals: Vec<Option<Vec<u8>>> = writes
+        .iter()
+        .map(|write| fs::read(write.full_path).ok())
+        .collect();
+    let mut written = 0usize;
+
+    for write in writes {
+        if let Err(err) = fs::write(write.full_path, write.bytes) {
+            if written > 0 {
+                restore_graph_batch(&writes[..written], &originals[..written])?;
+            }
+            return Err(anyhow!(err).context(format!("Failed to write {}", write.file)));
+        }
+        written += 1;
+    }
+
+    let guard_inputs: Vec<(&Path, &str)> = writes
+        .iter()
+        .map(|write| (write.full_path, write.file))
+        .collect();
+    let mut errors_by_file = semantic_check_errors_for_files(root, &guard_inputs);
+    if errors_by_file.is_empty() {
+        return Ok(());
+    }
+
+    restore_graph_batch(writes, &originals)?;
+
+    let mut summaries: Vec<String> = errors_by_file
+        .drain()
+        .map(|(file, errors)| format!("{}:\n{}", file, format_guard_errors(&errors)))
+        .collect();
+    summaries.sort();
+    Err(anyhow!(
+        "{} rejected: compiler/interpreter errors (files restored to original):\n{}",
+        op,
+        summaries.join("\n")
+    ))
+}
 /// A typed parameter for scaffold generation.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Param {
@@ -85,15 +192,26 @@ fn generate_typed_scaffold(
     on: Option<&str>,
 ) -> String {
     let param_str: String = match lang {
-        "go" => params.iter().map(|p| format!("{} {}", p.name, p.type_str)).collect::<Vec<_>>().join(", "),
-        _ => params.iter().map(|p| format!("{}: {}", p.name, p.type_str)).collect::<Vec<_>>().join(", "),
+        "go" => params
+            .iter()
+            .map(|p| format!("{} {}", p.name, p.type_str))
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, p.type_str))
+            .collect::<Vec<_>>()
+            .join(", "),
     };
 
     match lang {
         "rust" => {
             let ret = returns.map(|r| format!(" -> {}", r)).unwrap_or_default();
             if let Some(struct_name) = on {
-                format!("\nimpl {} {{\n    fn {}({}){} {{\n        todo!()\n    }}\n}}\n", struct_name, name, param_str, ret)
+                format!(
+                    "\nimpl {} {{\n    fn {}({}){} {{\n        todo!()\n    }}\n}}\n",
+                    struct_name, name, param_str, ret
+                )
             } else {
                 format!("\nfn {}({}){} {{\n    todo!()\n}}\n", name, param_str, ret)
             }
@@ -101,15 +219,28 @@ fn generate_typed_scaffold(
         "go" => {
             let ret = returns.map(|r| format!(" {}", r)).unwrap_or_default();
             if let Some(struct_name) = on {
-                let recv = struct_name.chars().next().map(|c| c.to_lowercase().to_string()).unwrap_or_else(|| "r".to_string());
-                format!("\nfunc ({} *{}) {}({}){} {{\n    // TODO\n}}\n", recv, struct_name, name, param_str, ret)
+                let recv = struct_name
+                    .chars()
+                    .next()
+                    .map(|c| c.to_lowercase().to_string())
+                    .unwrap_or_else(|| "r".to_string());
+                format!(
+                    "\nfunc ({} *{}) {}({}){} {{\n    // TODO\n}}\n",
+                    recv, struct_name, name, param_str, ret
+                )
             } else {
-                format!("\nfunc {}({}){} {{\n    // TODO\n}}\n", name, param_str, ret)
+                format!(
+                    "\nfunc {}({}){} {{\n    // TODO\n}}\n",
+                    name, param_str, ret
+                )
             }
         }
         "typescript" | "javascript" => {
             let ret = returns.map(|r| format!(": {}", r)).unwrap_or_default();
-            format!("\nfunction {}({}){} {{\n    // TODO\n}}\n", name, param_str, ret)
+            format!(
+                "\nfunction {}({}){} {{\n    // TODO\n}}\n",
+                name, param_str, ret
+            )
         }
         "zig" => {
             let ret = returns.unwrap_or("void");
@@ -118,7 +249,10 @@ fn generate_typed_scaffold(
         "python" => {
             let ret = returns.map(|r| format!(" -> {}", r)).unwrap_or_default();
             let self_prefix = if on.is_some() { "self, " } else { "" };
-            format!("\ndef {}({}{}){} :\n    pass\n", name, self_prefix, param_str, ret)
+            format!(
+                "\ndef {}({}{}){} :\n    pass\n",
+                name, self_prefix, param_str, ret
+            )
         }
         _ => format!("\nfn {}({}) {{\n    // TODO\n}}\n", name, param_str),
     }
@@ -127,10 +261,7 @@ fn generate_typed_scaffold(
 /// Generate a language-idiomatic test function scaffold for `fn_name`.
 fn generate_test_scaffold(fn_name: &str, lang: &str) -> String {
     match lang {
-        "rust" => format!(
-            "\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n",
-            fn_name
-        ),
+        "rust" => format!("\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n", fn_name),
         "go" => {
             // Go test functions must be exported: TestFnName
             let mut test_name = String::from("Test");
@@ -139,27 +270,14 @@ fn generate_test_scaffold(fn_name: &str, lang: &str) -> String {
                 test_name.extend(first.to_uppercase());
                 test_name.push_str(chars.as_str());
             }
-            format!(
-                "\nfunc {}(t *testing.T) {{\n    // TODO\n}}\n",
-                test_name
-            )
+            format!("\nfunc {}(t *testing.T) {{\n    // TODO\n}}\n", test_name)
         }
-        "typescript" | "javascript" => format!(
-            "\nit(\"{}\", () => {{\n    // TODO\n}});\n",
-            fn_name
-        ),
-        "zig" => format!(
-            "\ntest \"{}\" {{\n    // TODO\n}}\n",
-            fn_name
-        ),
-        "python" => format!(
-            "\ndef test_{}():\n    pass\n",
-            fn_name
-        ),
-        _ => format!(
-            "\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n",
-            fn_name
-        ),
+        "typescript" | "javascript" => {
+            format!("\nit(\"{}\", () => {{\n    // TODO\n}});\n", fn_name)
+        }
+        "zig" => format!("\ntest \"{}\" {{\n    // TODO\n}}\n", fn_name),
+        "python" => format!("\ndef test_{}():\n    pass\n", fn_name),
+        _ => format!("\n#[test]\nfn test_{}() {{\n    todo!()\n}}\n", fn_name),
     }
 }
 
@@ -188,11 +306,7 @@ fn generate_scaffold(entity_type: &str, name: &str, lang: &str) -> String {
 ///   Private  → rename only within the defining file (safe, no external callers)
 ///   Module   → rename within all files in the same directory (same package)
 ///   Public   → rename project-wide + emit a warning (external callers may exist)
-pub fn graph_rename(
-    path: Option<String>,
-    name: String,
-    new_name: String,
-) -> Result<String> {
+pub fn graph_rename(path: Option<String>, name: String, new_name: String) -> Result<String> {
     if name == new_name {
         return Err(anyhow!("old_name and new_name are identical: {:?}", name));
     }
@@ -203,7 +317,11 @@ pub fn graph_rename(
     // Determine rename scope from bake index visibility.
     let bake = load_bake_index(&root)?;
     let (source_files, scope_label, warnings) = if let Some(ref bake) = bake {
-        if let Some(func) = bake.functions.iter().find(|f| f.name.to_lowercase() == name_lc) {
+        if let Some(func) = bake
+            .functions
+            .iter()
+            .find(|f| f.name.to_lowercase() == name_lc)
+        {
             match func.visibility {
                 Visibility::Private => {
                     // Private: safe to rename only the defining file.
@@ -216,7 +334,9 @@ pub fn graph_rename(
                         .parent()
                         .map(|p| p.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    let scoped: Vec<PathBuf> = bake.files.iter()
+                    let scoped: Vec<PathBuf> = bake
+                        .files
+                        .iter()
                         .filter(|f| {
                             let fdir = std::path::Path::new(&f.path)
                                 .parent()
@@ -281,12 +401,11 @@ pub fn graph_rename(
     }
 
     let files_changed = edits_by_file.len();
-    let mut all_changed_files: Vec<String> = Vec::new();
+    let mut planned_edits: Vec<(String, PathBuf, Vec<u8>)> = Vec::new();
 
     for (rel, mut occs) in edits_by_file {
         let full_path = root.join(&rel);
-        let mut bytes = fs::read(&full_path)
-            .with_context(|| format!("Failed to read {}", rel))?;
+        let mut bytes = fs::read(&full_path).with_context(|| format!("Failed to read {}", rel))?;
 
         // Apply bottom-up so earlier offsets stay valid.
         occs.sort_by(|a, b| b.0.cmp(&a.0));
@@ -297,28 +416,45 @@ pub fn graph_rename(
         // Pre-write AST check — reject before touching disk.
         let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match std::str::from_utf8(&bytes) {
-            Err(_) => return Err(anyhow!(
-                "graph_rename rejected: result is invalid UTF-8 in {} (file not modified)",
-                rel
-            )),
+            Err(_) => {
+                return Err(anyhow!(
+                    "graph_rename rejected: result is invalid UTF-8 in {} (file not modified)",
+                    rel
+                ))
+            }
             Ok(patched_str) => {
                 let pre_errors = ast_check_str(patched_str, ext);
                 if !pre_errors.is_empty() {
-                    let summary: Vec<String> = pre_errors.iter()
+                    let summary: Vec<String> = pre_errors
+                        .iter()
                         .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                         .collect();
                     return Err(anyhow!(
                         "graph_rename rejected: syntax errors in {} (file not modified):\n{}",
-                        rel, summary.join("\n")
+                        rel,
+                        summary.join("\n")
                     ));
                 }
             }
         }
 
-        fs::write(&full_path, &bytes)
-            .with_context(|| format!("Failed to write {}", rel))?;
-        all_changed_files.push(rel);
+        planned_edits.push((rel, full_path, bytes));
     }
+
+    let writes: Vec<PendingWrite<'_>> = planned_edits
+        .iter()
+        .map(|(rel, full_path, bytes)| PendingWrite {
+            full_path: full_path.as_path(),
+            file: rel.as_str(),
+            bytes: bytes.as_slice(),
+        })
+        .collect();
+    write_graph_batch_with_guard("graph_rename", &root, &writes)?;
+
+    let all_changed_files: Vec<String> = planned_edits
+        .iter()
+        .map(|(rel, _, _)| rel.clone())
+        .collect();
 
     let refs: Vec<&str> = all_changed_files.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
@@ -371,8 +507,7 @@ pub fn graph_add(
             .iter()
             .find(|f| {
                 f.file.to_lowercase().ends_with(&file_lc)
-                    && (f.name.to_lowercase() == sym_lc
-                        || f.name.to_lowercase().contains(&sym_lc))
+                    && (f.name.to_lowercase() == sym_lc || f.name.to_lowercase().contains(&sym_lc))
             })
             .map(|f| f.byte_end)
             .ok_or_else(|| anyhow!("Symbol {:?} not found in {:?}", sym, file))?
@@ -407,18 +542,19 @@ pub fn graph_add(
     if let Ok(patched_str) = std::str::from_utf8(&bytes) {
         let pre_errors = ast_check_str(patched_str, ext);
         if !pre_errors.is_empty() {
-            let summary: Vec<String> = pre_errors.iter()
+            let summary: Vec<String> = pre_errors
+                .iter()
                 .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                 .collect();
             return Err(anyhow!(
                 "graph_add rejected: syntax errors in {} (file not modified):\n{}",
-                file, summary.join("\n")
+                file,
+                summary.join("\n")
             ));
         }
     }
 
-    fs::write(&full_path, &bytes)
-        .with_context(|| format!("Failed to write {}", file))?;
+    write_graph_bytes_with_guard("graph_add", &root, &full_path, &file, &bytes)?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
 
@@ -491,17 +627,24 @@ pub fn graph_create(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let pre_errors = ast_check_str(&scaffold_content, ext);
     if !pre_errors.is_empty() {
-        let summary: Vec<String> = pre_errors.iter()
+        let summary: Vec<String> = pre_errors
+            .iter()
             .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
             .collect();
         return Err(anyhow!(
             "graph_create rejected: syntax errors in scaffold for {} (file not modified):\n{}",
-            file, summary.join("\n")
+            file,
+            summary.join("\n")
         ));
     }
 
-    fs::write(&full_path, &scaffold_content)
-        .with_context(|| format!("Failed to create file {}", file))?;
+    write_graph_bytes_with_guard(
+        "graph_create",
+        &root,
+        &full_path,
+        &file,
+        scaffold_content.as_bytes(),
+    )?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
 
@@ -548,7 +691,9 @@ fn inject_needed_imports(body: &str, src_content: &str, dst_content: &str) -> Ve
         }
         let exposed = exposed_idents_from_import(t);
         // Wildcard imports are always included if source has them.
-        let matches = exposed.iter().any(|id| id == "*" || body_words.contains(id.as_str()));
+        let matches = exposed
+            .iter()
+            .any(|id| id == "*" || body_words.contains(id.as_str()));
         if matches {
             needed.push(t.to_string());
         }
@@ -572,7 +717,9 @@ fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
                 .map(|s| {
                     let s = s.trim();
                     // handle `Name as Alias`
-                    s.split(" as ").last().unwrap_or(s)
+                    s.split(" as ")
+                        .last()
+                        .unwrap_or(s)
                         .split("::")
                         .last()
                         .unwrap_or(s)
@@ -599,7 +746,14 @@ fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
             if let Some(close) = t.find('}') {
                 return t[brace + 1..close]
                     .split(',')
-                    .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().to_string())
+                    .map(|s| {
+                        s.trim()
+                            .split(" as ")
+                            .last()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
+                    })
                     .filter(|s| !s.is_empty())
                     .collect();
             }
@@ -619,7 +773,14 @@ fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
         if let Some(import_pos) = t.find(" import ") {
             return t[import_pos + 8..]
                 .split(',')
-                .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().to_string())
+                .map(|s| {
+                    s.trim()
+                        .split(" as ")
+                        .last()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string()
+                })
                 .filter(|s| !s.is_empty())
                 .collect();
         }
@@ -627,7 +788,17 @@ fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
     if t.starts_with("import ") {
         return t[7..]
             .split(',')
-            .map(|s| s.trim().split(" as ").last().unwrap_or("").trim().split('.').last().unwrap_or("").to_string())
+            .map(|s| {
+                s.trim()
+                    .split(" as ")
+                    .last()
+                    .unwrap_or("")
+                    .trim()
+                    .split('.')
+                    .last()
+                    .unwrap_or("")
+                    .to_string()
+            })
             .filter(|s| !s.is_empty())
             .collect();
     }
@@ -636,11 +807,7 @@ fn exposed_idents_from_import(stmt: &str) -> Vec<String> {
 }
 
 /// Move a function from one file to another.
-pub fn graph_move(
-    path: Option<String>,
-    name: String,
-    to_file: String,
-) -> Result<String> {
+pub fn graph_move(path: Option<String>, name: String, to_file: String) -> Result<String> {
     let root = resolve_project_root(path)?;
 
     let bake = require_bake_index(&root)?;
@@ -664,8 +831,8 @@ pub fn graph_move(
     }
 
     let src_full = root.join(&from_file);
-    let mut src_bytes = fs::read(&src_full)
-        .with_context(|| format!("Failed to read source {}", from_file))?;
+    let mut src_bytes =
+        fs::read(&src_full).with_context(|| format!("Failed to read source {}", from_file))?;
 
     if byte_end > src_bytes.len() || byte_start > byte_end {
         return Err(anyhow!(
@@ -709,7 +876,8 @@ pub fn graph_move(
     let final_dst = if imports_added.is_empty() {
         dst_bytes
     } else {
-        let import_block = imports_added.iter()
+        let import_block = imports_added
+            .iter()
             .map(|s| format!("{}\n", s))
             .collect::<String>();
         let mut out = import_block.into_bytes();
@@ -720,14 +888,17 @@ pub fn graph_move(
     // Pre-write AST checks — both files checked before either is written to disk.
     let src_ext = src_full.extension().and_then(|e| e.to_str()).unwrap_or("");
     match std::str::from_utf8(&src_bytes) {
-        Err(_) => return Err(anyhow!(
-            "graph_move rejected: invalid UTF-8 in source {} after removal (no files modified)",
-            from_file
-        )),
+        Err(_) => {
+            return Err(anyhow!(
+                "graph_move rejected: invalid UTF-8 in source {} after removal (no files modified)",
+                from_file
+            ))
+        }
         Ok(src_str) => {
             let pre_errors = ast_check_str(src_str, src_ext);
             if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors.iter()
+                let summary: Vec<String> = pre_errors
+                    .iter()
                     .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                     .collect();
                 return Err(anyhow!(
@@ -740,29 +911,41 @@ pub fn graph_move(
 
     let dst_ext = dst_full.extension().and_then(|e| e.to_str()).unwrap_or("");
     match std::str::from_utf8(&final_dst) {
-        Err(_) => return Err(anyhow!(
-            "graph_move rejected: invalid UTF-8 in dest {} (no files modified)",
-            to_file
-        )),
+        Err(_) => {
+            return Err(anyhow!(
+                "graph_move rejected: invalid UTF-8 in dest {} (no files modified)",
+                to_file
+            ))
+        }
         Ok(dst_str) => {
             let pre_errors = ast_check_str(dst_str, dst_ext);
             if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors.iter()
+                let summary: Vec<String> = pre_errors
+                    .iter()
                     .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                     .collect();
                 return Err(anyhow!(
                     "graph_move rejected: syntax errors in dest {} (no files modified):\n{}",
-                    to_file, summary.join("\n")
+                    to_file,
+                    summary.join("\n")
                 ));
             }
         }
     }
 
-    // Both checks passed — safe to write.
-    fs::write(&src_full, &src_bytes)
-        .with_context(|| format!("Failed to write source {}", from_file))?;
-    fs::write(&dst_full, &final_dst)
-        .with_context(|| format!("Failed to write dest {}", to_file))?;
+    let writes = vec![
+        PendingWrite {
+            full_path: &src_full,
+            file: &from_file,
+            bytes: &src_bytes,
+        },
+        PendingWrite {
+            full_path: &dst_full,
+            file: &to_file,
+            bytes: &final_dst,
+        },
+    ];
+    write_graph_batch_with_guard("graph_move", &root, &writes)?;
 
     let _ = reindex_files(&root, &[from_file.as_str(), to_file.as_str()]);
 
@@ -781,11 +964,45 @@ pub fn graph_move(
 // ── trace_down ────────────────────────────────────────────────────────────────
 
 /// Known external boundary signals — qualifier substrings → boundary label.
-const DB_QUALIFIERS: &[&str] = &["db", "sql", "gorm", "sqlx", "pg", "mysql", "mongo", "redis", "store", "repo", "repository"];
-const DB_CALLEES:    &[&str] = &["query", "exec", "find", "findbyid", "insert", "update", "delete", "save", "scan", "get", "create"];
-const HTTP_QUALIFIERS: &[&str] = &["client", "http", "fetch", "axios", "reqwest", "request", "httpclient"];
-const HTTP_CALLEES:    &[&str] = &["get", "post", "put", "patch", "delete", "do", "send", "request", "call"];
-const QUEUE_QUALIFIERS: &[&str] = &["kafka", "iggy", "nats", "rabbit", "queue", "producer", "publisher", "broker"];
+const DB_QUALIFIERS: &[&str] = &[
+    "db",
+    "sql",
+    "gorm",
+    "sqlx",
+    "pg",
+    "mysql",
+    "mongo",
+    "redis",
+    "store",
+    "repo",
+    "repository",
+];
+const DB_CALLEES: &[&str] = &[
+    "query", "exec", "find", "findbyid", "insert", "update", "delete", "save", "scan", "get",
+    "create",
+];
+const HTTP_QUALIFIERS: &[&str] = &[
+    "client",
+    "http",
+    "fetch",
+    "axios",
+    "reqwest",
+    "request",
+    "httpclient",
+];
+const HTTP_CALLEES: &[&str] = &[
+    "get", "post", "put", "patch", "delete", "do", "send", "request", "call",
+];
+const QUEUE_QUALIFIERS: &[&str] = &[
+    "kafka",
+    "iggy",
+    "nats",
+    "rabbit",
+    "queue",
+    "producer",
+    "publisher",
+    "broker",
+];
 /// Receiver names too generic to use as qualifier hints.
 const TRIVIAL_RECEIVERS: &[&str] = &["self", "this", "c", "s", "r", "ctx", "app", "e", "g"];
 
@@ -834,7 +1051,10 @@ fn resolve_candidate<'a>(
             }
 
             // 2. Qualifier exactly matches module_path (Go packages, Python modules).
-            if let Some(m) = candidates.iter().find(|f| f.module_path.to_lowercase() == ql) {
+            if let Some(m) = candidates
+                .iter()
+                .find(|f| f.module_path.to_lowercase() == ql)
+            {
                 return Some(m);
             }
 
@@ -848,14 +1068,20 @@ fn resolve_candidate<'a>(
             }
 
             // 4. Fallback: qualifier as file path substring (original heuristic).
-            if let Some(m) = candidates.iter().find(|f| f.file.to_lowercase().contains(&ql)) {
+            if let Some(m) = candidates
+                .iter()
+                .find(|f| f.file.to_lowercase().contains(&ql))
+            {
                 return Some(m);
             }
         }
     }
 
     // Same language, single match.
-    let same_lang: Vec<_> = candidates.iter().filter(|f| f.language == caller.language).collect();
+    let same_lang: Vec<_> = candidates
+        .iter()
+        .filter(|f| f.language == caller.language)
+        .collect();
     if same_lang.len() == 1 {
         return Some(same_lang[0]);
     }
@@ -871,23 +1097,46 @@ fn resolve_candidate<'a>(
 fn is_stdlib_symbol(callee: &str, qualifier: Option<&str>) -> bool {
     // Known Go stdlib package qualifiers
     const GO_PKGS: &[&str] = &[
-        "fmt", "log", "time", "errors", "strings", "strconv", "os", "io", "sync",
-        "context", "math", "sort", "regexp", "http", "json", "bytes", "bufio",
-        "filepath", "path", "runtime", "reflect", "atomic", "rand", "hex", "base64",
-        "ioutil", "net", "url", "unicode", "utf8",
+        "fmt", "log", "time", "errors", "strings", "strconv", "os", "io", "sync", "context",
+        "math", "sort", "regexp", "http", "json", "bytes", "bufio", "filepath", "path", "runtime",
+        "reflect", "atomic", "rand", "hex", "base64", "ioutil", "net", "url", "unicode", "utf8",
     ];
     // Known Go builtins (no qualifier)
     const GO_BUILTINS: &[&str] = &[
-        "len", "cap", "make", "append", "delete", "new", "close", "panic", "recover",
-        "print", "println", "copy", "complex", "real", "imag", "string", "int",
-        "uint", "float64", "float32", "bool", "byte", "rune", "error",
+        "len", "cap", "make", "append", "delete", "new", "close", "panic", "recover", "print",
+        "println", "copy", "complex", "real", "imag", "string", "int", "uint", "float64",
+        "float32", "bool", "byte", "rune", "error",
     ];
     // Known Rust builtins / common std items (no qualifier)
     const RUST_BUILTINS: &[&str] = &[
-        "println", "eprintln", "print", "eprint", "vec", "format", "assert",
-        "assert_eq", "assert_ne", "panic", "todo", "unimplemented", "unreachable",
-        "dbg", "write", "writeln", "unwrap", "expect", "clone", "into", "from",
-        "len", "push", "pop", "is_empty", "to_string", "to_owned", "as_str",
+        "println",
+        "eprintln",
+        "print",
+        "eprint",
+        "vec",
+        "format",
+        "assert",
+        "assert_eq",
+        "assert_ne",
+        "panic",
+        "todo",
+        "unimplemented",
+        "unreachable",
+        "dbg",
+        "write",
+        "writeln",
+        "unwrap",
+        "expect",
+        "clone",
+        "into",
+        "from",
+        "len",
+        "push",
+        "pop",
+        "is_empty",
+        "to_string",
+        "to_owned",
+        "as_str",
     ];
 
     if let Some(q) = qualifier {
@@ -965,7 +1214,9 @@ pub(crate) fn trace_chain<'a>(
                     Some(q) => format!("{}.{}", q, call.callee),
                     None => call.callee.clone(),
                 };
-                if !unresolved.contains(&label) && !is_stdlib_symbol(&call.callee, call.qualifier.as_deref()) {
+                if !unresolved.contains(&label)
+                    && !is_stdlib_symbol(&call.callee, call.qualifier.as_deref())
+                {
                     unresolved.push(label);
                 }
             }
@@ -999,7 +1250,12 @@ pub fn trace_down(
                     .map(|ff| f.file.to_lowercase().contains(ff.as_str()))
                     .unwrap_or(true)
         })
-        .ok_or_else(|| anyhow!("Symbol '{}' not found. Run `bake` first or check the name.", symbol))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "Symbol '{}' not found. Run `bake` first or check the name.",
+                symbol
+            )
+        })?;
 
     let lang = start.language.to_lowercase();
     if lang != "rust" && lang != "go" {
@@ -1046,6 +1302,14 @@ mod tests {
 
     fn bake_dir(root: &TempDir) {
         crate::engine::bake(Some(root.path().to_string_lossy().into_owned())).unwrap();
+    }
+
+    fn command_available(cmd: &str, version_arg: &str) -> bool {
+        std::process::Command::new(cmd)
+            .arg(version_arg)
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     }
 
     // ── graph_rename ──────────────────────────────────────────────────────────
@@ -1118,7 +1382,9 @@ mod tests {
             "src/lib.rs".into(),
             None,
             Some("rust".into()),
-            None, None, None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -1141,7 +1407,8 @@ mod tests {
             "src/new_module.rs".into(),
             "process_event".into(),
             Some("rust".into()),
-            None, None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -1164,7 +1431,9 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "src/existing.rs".into(),
             "new_fn".into(),
-            None, None, None,
+            None,
+            None,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("already exists"));
@@ -1178,7 +1447,9 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "nonexistent/dir/foo.rs".into(),
             "my_fn".into(),
-            None, None, None,
+            None,
+            None,
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("does not exist"));
@@ -1194,7 +1465,8 @@ mod tests {
             "src/handler.py".into(),
             "handle_request".into(),
             Some("python".into()),
-            None, None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -1216,7 +1488,8 @@ mod tests {
             "src/service.ts".into(),
             "fetchUser".into(),
             Some("typescript".into()),
-            None, None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -1236,7 +1509,9 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "src/utils.go".into(),
             "parseArgs".into(),
-            None, None, None,
+            None,
+            None,
+            None,
         )
         .unwrap();
 
@@ -1249,71 +1524,127 @@ mod tests {
     #[test]
     fn test_scaffold_rust_generates_test_fn() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+        );
         bake_dir(&dir);
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "test".into(), "add".into(), "src/lib.rs".into(),
-            None, Some("rust".into()),
-            None, None, None,
-        ).unwrap();
+            "test".into(),
+            "add".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
         assert!(content.contains("#[test]"), "#[test] missing:\n{}", content);
-        assert!(content.contains("fn test_add()"), "test fn name missing:\n{}", content);
+        assert!(
+            content.contains("fn test_add()"),
+            "test fn name missing:\n{}",
+            content
+        );
         assert!(content.contains("todo!()"), "todo!() missing:\n{}", content);
     }
 
     #[test]
     fn test_scaffold_go_generates_test_fn() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.go", "package lib\nfunc Add(a, b int) int { return a + b }\n");
+        write_file(
+            &dir,
+            "src/lib.go",
+            "package lib\nfunc Add(a, b int) int { return a + b }\n",
+        );
         bake_dir(&dir);
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "test".into(), "Add".into(), "src/lib.go".into(),
-            None, Some("go".into()),
-            None, None, None,
-        ).unwrap();
+            "test".into(),
+            "Add".into(),
+            "src/lib.go".into(),
+            None,
+            Some("go".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.go")).unwrap();
-        assert!(content.contains("func TestAdd(t *testing.T)"), "Go test fn missing:\n{}", content);
+        assert!(
+            content.contains("func TestAdd(t *testing.T)"),
+            "Go test fn missing:\n{}",
+            content
+        );
     }
 
     #[test]
     fn test_scaffold_typescript_generates_it_block() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/math.ts", "export function add(a: number, b: number): number { return a + b; }\n");
+        write_file(
+            &dir,
+            "src/math.ts",
+            "export function add(a: number, b: number): number { return a + b; }\n",
+        );
         bake_dir(&dir);
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "test".into(), "add".into(), "src/math.ts".into(),
-            None, Some("typescript".into()),
-            None, None, None,
-        ).unwrap();
+            "test".into(),
+            "add".into(),
+            "src/math.ts".into(),
+            None,
+            Some("typescript".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/math.ts")).unwrap();
-        assert!(content.contains("it(\"add\""), "it() block missing:\n{}", content);
+        assert!(
+            content.contains("it(\"add\""),
+            "it() block missing:\n{}",
+            content
+        );
     }
 
     #[test]
     fn test_scaffold_zig_generates_test_block() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.zig", "pub fn add(a: i32, b: i32) i32 { return a + b; }\n");
+        write_file(
+            &dir,
+            "src/lib.zig",
+            "pub fn add(a: i32, b: i32) i32 { return a + b; }\n",
+        );
         bake_dir(&dir);
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "test".into(), "add".into(), "src/lib.zig".into(),
-            None, Some("zig".into()),
-            None, None, None,
-        ).unwrap();
+            "test".into(),
+            "add".into(),
+            "src/lib.zig".into(),
+            None,
+            Some("zig".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.zig")).unwrap();
-        assert!(content.contains("test \"add\""), "Zig test block missing:\n{}", content);
+        assert!(
+            content.contains("test \"add\""),
+            "Zig test block missing:\n{}",
+            content
+        );
     }
 
     #[test]
@@ -1324,20 +1655,35 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "test".into(), "add".into(), "src/math.py".into(),
-            None, Some("python".into()),
-            None, None, None,
-        ).unwrap();
+            "test".into(),
+            "add".into(),
+            "src/math.py".into(),
+            None,
+            Some("python".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/math.py")).unwrap();
-        assert!(content.contains("def test_add()"), "Python test fn missing:\n{}", content);
+        assert!(
+            content.contains("def test_add()"),
+            "Python test fn missing:\n{}",
+            content
+        );
         assert!(content.contains("pass"), "pass missing:\n{}", content);
     }
 
     // ── typed scaffold ────────────────────────────────────────────────────────
 
     fn params(list: &[(&str, &str)]) -> Vec<Param> {
-        list.iter().map(|(n, t)| Param { name: n.to_string(), type_str: t.to_string() }).collect()
+        list.iter()
+            .map(|(n, t)| Param {
+                name: n.to_string(),
+                type_str: t.to_string(),
+            })
+            .collect()
     }
 
     #[test]
@@ -1348,16 +1694,28 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "fn".into(), "parse_config".into(), "src/lib.rs".into(),
-            None, Some("rust".into()),
+            "fn".into(),
+            "parse_config".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
             Some(params(&[("input", "&str"), ("timeout", "u32")])),
             Some("Result<Config, Error>".into()),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
-        assert!(content.contains("fn parse_config(input: &str, timeout: u32)"), "params missing: {}", content);
-        assert!(content.contains("-> Result<Config, Error>"), "return type missing: {}", content);
+        assert!(
+            content.contains("fn parse_config(input: &str, timeout: u32)"),
+            "params missing: {}",
+            content
+        );
+        assert!(
+            content.contains("-> Result<Config, Error>"),
+            "return type missing: {}",
+            content
+        );
         assert!(content.contains("todo!()"), "body missing: {}", content);
     }
 
@@ -1369,17 +1727,33 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "fn".into(), "load".into(), "src/lib.rs".into(),
-            None, Some("rust".into()),
+            "fn".into(),
+            "load".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
             Some(params(&[("path", "&str")])),
             Some("Result<Self, Error>".into()),
             Some("Config".into()),
-        ).unwrap();
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
-        assert!(content.contains("impl Config"), "impl block missing: {}", content);
-        assert!(content.contains("fn load(path: &str)"), "method sig missing: {}", content);
-        assert!(content.contains("-> Result<Self, Error>"), "return type missing: {}", content);
+        assert!(
+            content.contains("impl Config"),
+            "impl block missing: {}",
+            content
+        );
+        assert!(
+            content.contains("fn load(path: &str)"),
+            "method sig missing: {}",
+            content
+        );
+        assert!(
+            content.contains("-> Result<Self, Error>"),
+            "return type missing: {}",
+            content
+        );
     }
 
     #[test]
@@ -1390,16 +1764,28 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "func".into(), "ParseConfig".into(), "src/lib.go".into(),
-            None, Some("go".into()),
+            "func".into(),
+            "ParseConfig".into(),
+            "src/lib.go".into(),
+            None,
+            Some("go".into()),
             Some(params(&[("input", "string"), ("timeout", "int")])),
             Some("(Config, error)".into()),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.go")).unwrap();
-        assert!(content.contains("func ParseConfig(input string, timeout int)"), "sig missing: {}", content);
-        assert!(content.contains("(Config, error)"), "return type missing: {}", content);
+        assert!(
+            content.contains("func ParseConfig(input string, timeout int)"),
+            "sig missing: {}",
+            content
+        );
+        assert!(
+            content.contains("(Config, error)"),
+            "return type missing: {}",
+            content
+        );
     }
 
     #[test]
@@ -1410,16 +1796,28 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "function".into(), "fetchUser".into(), "src/service.ts".into(),
-            None, Some("typescript".into()),
+            "function".into(),
+            "fetchUser".into(),
+            "src/service.ts".into(),
+            None,
+            Some("typescript".into()),
             Some(params(&[("id", "number"), ("opts", "RequestOptions")])),
             Some("Promise<User>".into()),
             None,
-        ).unwrap();
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/service.ts")).unwrap();
-        assert!(content.contains("function fetchUser(id: number, opts: RequestOptions)"), "sig missing: {}", content);
-        assert!(content.contains(": Promise<User>"), "return type missing: {}", content);
+        assert!(
+            content.contains("function fetchUser(id: number, opts: RequestOptions)"),
+            "sig missing: {}",
+            content
+        );
+        assert!(
+            content.contains(": Promise<User>"),
+            "return type missing: {}",
+            content
+        );
     }
 
     #[test]
@@ -1430,13 +1828,23 @@ mod tests {
 
         graph_add(
             Some(dir.path().to_string_lossy().into_owned()),
-            "fn".into(), "simple".into(), "src/lib.rs".into(),
-            None, Some("rust".into()),
-            None, None, None,
-        ).unwrap();
+            "fn".into(),
+            "simple".into(),
+            "src/lib.rs".into(),
+            None,
+            Some("rust".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
-        assert!(content.contains("fn simple()"), "bare scaffold missing: {}", content);
+        assert!(
+            content.contains("fn simple()"),
+            "bare scaffold missing: {}",
+            content
+        );
     }
 
     // ── graph_move ────────────────────────────────────────────────────────────
@@ -1444,11 +1852,7 @@ mod tests {
     #[test]
     fn move_relocates_function_body_to_destination() {
         let dir = TempDir::new().unwrap();
-        write_file(
-            &dir,
-            "src/a.rs",
-            "fn helper() {\n    let x = 1;\n}\n",
-        );
+        write_file(&dir, "src/a.rs", "fn helper() {\n    let x = 1;\n}\n");
         write_file(&dir, "src/b.rs", "fn other() {}\n");
         bake_dir(&dir);
 
@@ -1488,7 +1892,12 @@ mod tests {
 
     // ── resolve_candidate ─────────────────────────────────────────────────────
 
-    fn make_fn(name: &str, file: &str, lang: &str, module_path: &str) -> crate::lang::IndexedFunction {
+    fn make_fn(
+        name: &str,
+        file: &str,
+        lang: &str,
+        module_path: &str,
+    ) -> crate::lang::IndexedFunction {
         crate::lang::IndexedFunction {
             name: name.to_string(),
             file: file.to_string(),
@@ -1503,7 +1912,13 @@ mod tests {
             qualified_name: if module_path.is_empty() {
                 name.to_string()
             } else {
-                let sep = if lang == "rust" { "::" } else if lang == "python" { "." } else { "/" };
+                let sep = if lang == "rust" {
+                    "::"
+                } else if lang == "python" {
+                    "."
+                } else {
+                    "/"
+                };
                 format!("{}{}{}", module_path, sep, name)
             },
             visibility: crate::lang::Visibility::Public,
@@ -1579,7 +1994,8 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "foo".into(),
             "bar".into(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
         assert!(content.contains("fn bar()"));
@@ -1601,13 +2017,23 @@ mod tests {
             "src/lib.rs".into(),
             None,
             Some("rust".into()),
-            None, None, None,
-        ).unwrap_err();
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
 
-        assert!(err.to_string().contains("graph_add rejected"), "got: {}", err);
+        assert!(
+            err.to_string().contains("graph_add rejected"),
+            "got: {}",
+            err
+        );
         // File must be untouched.
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
-        assert!(!content.contains("new_fn"), "file was modified despite rejection");
+        assert!(
+            !content.contains("new_fn"),
+            "file was modified despite rejection"
+        );
     }
 
     #[test]
@@ -1623,11 +2049,81 @@ mod tests {
             "src/lib.rs".into(),
             None,
             Some("rust".into()),
-            None, None, None,
-        ).unwrap();
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         let content = fs::read_to_string(dir.path().join("src/lib.rs")).unwrap();
         assert!(content.contains("fn new_helper()"));
+    }
+
+    #[test]
+    fn graph_rename_rejects_javascript_strict_mode_reserved_name_and_restores_all_files() {
+        if !command_available("node", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "src/a.js",
+            "'use strict';\nfunction answer() { return 1; }\n",
+        );
+        write_file(&dir, "src/b.js", "console.log(answer());\n");
+        bake_dir(&dir);
+
+        let err = graph_rename(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "answer".into(),
+            "eval".into(),
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("graph_rename rejected"),
+            "got: {}",
+            err
+        );
+        let src_a = fs::read_to_string(dir.path().join("src/a.js")).unwrap();
+        let src_b = fs::read_to_string(dir.path().join("src/b.js")).unwrap();
+        assert!(src_a.contains("function answer()"));
+        assert!(src_b.contains("answer()"));
+        assert!(!src_a.contains("function eval()"));
+        assert!(!src_b.contains("eval()"));
+    }
+
+    #[test]
+    fn graph_add_rejects_javascript_strict_mode_reserved_name() {
+        if !command_available("node", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "src/main.js", "'use strict';\nconst x = 1;\n");
+        bake_dir(&dir);
+
+        let err = graph_add(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "function".into(),
+            "eval".into(),
+            "src/main.js".into(),
+            None,
+            Some("javascript".into()),
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("graph_add rejected"),
+            "got: {}",
+            err
+        );
+        let content = fs::read_to_string(dir.path().join("src/main.js")).unwrap();
+        assert_eq!(content, "'use strict';\nconst x = 1;\n");
     }
 
     #[test]
@@ -1642,13 +2138,59 @@ mod tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "foo".into(),
             "src/b.rs".into(),
-        ).unwrap_err();
+        )
+        .unwrap_err();
 
-        assert!(err.to_string().contains("graph_move rejected"), "got: {}", err);
+        assert!(
+            err.to_string().contains("graph_move rejected"),
+            "got: {}",
+            err
+        );
         // Both files must be untouched — checks happen before any write.
         let src = fs::read_to_string(dir.path().join("src/a.rs")).unwrap();
         let dst = fs::read_to_string(dir.path().join("src/b.rs")).unwrap();
-        assert!(src.contains("fn foo()"), "source was modified despite rejection");
+        assert!(
+            src.contains("fn foo()"),
+            "source was modified despite rejection"
+        );
         assert_eq!(dst, "fn bar( {}\n", "dest was modified despite rejection");
+    }
+
+    #[test]
+    fn graph_move_rejects_rust_name_collision_and_restores_files() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "Cargo.toml",
+            "[package]\nname = \"graph-move-guard\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        );
+        write_file(&dir, "src/lib.rs", "mod a;\nmod b;\n");
+        write_file(&dir, "src/a.rs", "pub fn helper() -> i32 { 1 }\n");
+        write_file(
+            &dir,
+            "src/b.rs",
+            "const helper: i32 = 2;\npub fn bar() -> i32 { helper }\n",
+        );
+        bake_dir(&dir);
+
+        let err = graph_move(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "helper".into(),
+            "src/b.rs".into(),
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("graph_move rejected"),
+            "got: {}",
+            err
+        );
+        let src = fs::read_to_string(dir.path().join("src/a.rs")).unwrap();
+        let dst = fs::read_to_string(dir.path().join("src/b.rs")).unwrap();
+        assert_eq!(src, "pub fn helper() -> i32 { 1 }\n");
+        assert_eq!(
+            dst,
+            "const helper: i32 = 2;\npub fn bar() -> i32 { helper }\n"
+        );
     }
 }

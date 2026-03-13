@@ -128,9 +128,10 @@ fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     errors
 }
 
-/// Run `cargo check --message-format=json` in `root` and return compiler errors
-/// that mention `file`. Best-effort: returns empty vec on any failure.
-fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+fn cargo_check_errors_for_files(
+    root: &PathBuf,
+    files: &[&str],
+) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     let output = Command::new("cargo")
@@ -138,13 +139,12 @@ fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
         .current_dir(root)
         .output();
 
-    let Ok(output) = output else { return vec![] };
+    let Ok(output) = output else {
+        return HashMap::new();
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut errors = vec![];
-
-    // Normalise the target file path for comparison.
-    let file_norm = file.replace('\\', "/");
+    let mut errors_by_file: HashMap<String, Vec<SyntaxError>> = HashMap::new();
 
     for line in stdout.lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
@@ -165,11 +165,9 @@ fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
 
         for span in spans {
             let span_file = span.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
-            let span_norm = span_file.replace('\\', "/");
-            // Match if either path ends with the other (handles relative vs absolute).
-            if !span_norm.ends_with(&file_norm) && !file_norm.ends_with(&span_norm) {
+            let Some(file) = matching_requested_file(span_file, files) else {
                 continue;
-            }
+            };
 
             let line_num = span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
             let raw = message
@@ -177,19 +175,21 @@ fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
                 .and_then(|m| m.as_str())
                 .unwrap_or("");
             let text: String = raw.chars().take(120).collect();
-            errors.push(SyntaxError {
-                line: line_num,
-                kind: "cargo".to_string(),
-                text,
-            });
+            errors_by_file
+                .entry(file.to_string())
+                .or_default()
+                .push(SyntaxError {
+                    line: line_num,
+                    kind: "cargo".to_string(),
+                    text,
+                });
         }
     }
 
-    errors
+    errors_by_file
 }
 
-/// Run `go build ./...` and return errors mentioning `file`. Best-effort.
-fn go_build_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+fn go_build_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     let output = Command::new("go")
@@ -197,34 +197,63 @@ fn go_build_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
         .current_dir(root)
         .output();
 
-    let Ok(output) = output else { return vec![] };
+    let Ok(output) = output else {
+        return HashMap::new();
+    };
 
     // go build writes errors to stderr in the form: file.go:line:col: message
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let file_name = std::path::Path::new(file)
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or(file);
 
-    let mut errors = vec![];
+    let mut errors_by_file: HashMap<String, Vec<SyntaxError>> = HashMap::new();
     for line in stderr.lines() {
-        if !line.contains(file_name) {
-            continue;
-        }
-        // Format: path/to/file.go:LINE:COL: message
         let parts: Vec<&str> = line.splitn(4, ':').collect();
         if parts.len() < 4 {
             continue;
         }
+        let Some(file) = matching_requested_file(parts[0], files) else {
+            continue;
+        };
         let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
         let text: String = parts[3].trim().chars().take(120).collect();
-        errors.push(SyntaxError {
-            line: line_num,
-            kind: "go".to_string(),
-            text,
-        });
+        errors_by_file
+            .entry(file.to_string())
+            .or_default()
+            .push(SyntaxError {
+                line: line_num,
+                kind: "go".to_string(),
+                text,
+            });
     }
-    errors
+    errors_by_file
+}
+
+fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
+fn matching_requested_file<'a>(reported: &str, files: &'a [&str]) -> Option<&'a str> {
+    let reported_norm = normalize_path(reported);
+    let reported_name = std::path::Path::new(reported)
+        .file_name()
+        .and_then(|name| name.to_str());
+
+    files.iter().copied().find(|file| {
+        let requested_norm = normalize_path(file);
+        let requested_name = std::path::Path::new(file)
+            .file_name()
+            .and_then(|name| name.to_str());
+
+        reported_norm.ends_with(&requested_norm)
+            || requested_norm.ends_with(&reported_norm)
+            || (reported_name.is_some() && reported_name == requested_name)
+    })
+}
+
+fn take_file_errors(
+    mut errors_by_file: HashMap<String, Vec<SyntaxError>>,
+    file: &str,
+) -> Vec<SyntaxError> {
+    errors_by_file.remove(file).unwrap_or_default()
 }
 
 // zig ast-check performs full semantic analysis (type checking, undefined symbols)
@@ -263,24 +292,83 @@ fn zig_check_errors(file: &std::path::Path) -> Vec<SyntaxError> {
     errors
 }
 
-fn semantic_check_errors(
+pub(super) fn semantic_check_errors(
     root: &PathBuf,
     full_path: &std::path::Path,
     file: &str,
 ) -> Vec<SyntaxError> {
-    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    match ext {
-        "rs" => cargo_check_errors(root, file),
-        "go" => go_build_errors(root, file),
-        "zig" => zig_check_errors(full_path),
-        "py" => python_compile_errors(root, file),
-        "ts" | "tsx" | "jsx" => tsc_errors(root, file),
-        "js" => node_check_errors(root, file),
-        "rb" => ruby_check_errors(root, file),
-        "php" => php_check_errors(root, file),
-        "sh" | "bash" => bash_check_errors(root, file),
-        _ => vec![],
+    take_file_errors(
+        semantic_check_errors_for_files(root, &[(full_path, file)]),
+        file,
+    )
+}
+
+pub(super) fn semantic_check_errors_for_files(
+    root: &PathBuf,
+    files: &[(&std::path::Path, &str)],
+) -> HashMap<String, Vec<SyntaxError>> {
+    let mut errors_by_file: HashMap<String, Vec<SyntaxError>> = HashMap::new();
+    let mut cargo_files = Vec::new();
+    let mut go_files = Vec::new();
+    let mut tsc_files = Vec::new();
+
+    for (full_path, file) in files {
+        let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        match ext {
+            "rs" => cargo_files.push(*file),
+            "go" => go_files.push(*file),
+            "ts" | "tsx" | "jsx" => tsc_files.push(*file),
+            "zig" => {
+                let errors = zig_check_errors(full_path);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            "py" => {
+                let errors = python_compile_errors(root, file);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            "js" => {
+                let errors = node_check_errors(root, file);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            "rb" => {
+                let errors = ruby_check_errors(root, file);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            "php" => {
+                let errors = php_check_errors(root, file);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            "sh" | "bash" => {
+                let errors = bash_check_errors(root, file);
+                if !errors.is_empty() {
+                    errors_by_file.insert((*file).to_string(), errors);
+                }
+            }
+            _ => {}
+        }
     }
+
+    for (file, mut errors) in cargo_check_errors_for_files(root, &cargo_files) {
+        errors_by_file.entry(file).or_default().append(&mut errors);
+    }
+    for (file, mut errors) in go_build_errors_for_files(root, &go_files) {
+        errors_by_file.entry(file).or_default().append(&mut errors);
+    }
+    for (file, mut errors) in tsc_errors_for_files(root, &tsc_files) {
+        errors_by_file.entry(file).or_default().append(&mut errors);
+    }
+
+    errors_by_file
 }
 
 fn restore_original_bytes(full_path: &std::path::Path, original: Option<&[u8]>) {
@@ -296,7 +384,7 @@ fn restore_original_bytes(full_path: &std::path::Path, original: Option<&[u8]>) 
 
 // Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
 // Guarantees: if this returns Ok, the file on disk passed the configured guardrails.
-fn write_bytes_with_compiler_guard(
+pub(super) fn write_bytes_with_compiler_guard(
     root: &PathBuf,
     full_path: &std::path::Path,
     file: &str,
@@ -566,9 +654,7 @@ fn php_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     errors
 }
 
-/// Run `tsc --noEmit` and return errors mentioning `file`. Best-effort.
-/// Requires `tsc` to be available (via npx or global install).
-fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+fn tsc_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     // Try npx tsc first, fall back to tsc directly.
@@ -583,38 +669,38 @@ fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
                 .output()
         });
 
-    let Ok(output) = output else { return vec![] };
+    let Ok(output) = output else {
+        return HashMap::new();
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{stdout}{stderr}");
 
-    let file_name = std::path::Path::new(file)
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap_or(file);
-
-    let mut errors = vec![];
+    let mut errors_by_file: HashMap<String, Vec<SyntaxError>> = HashMap::new();
     for ln in combined.lines() {
-        if !ln.contains(file_name) {
-            continue;
-        }
         // Format: path/file.ts(LINE,COL): error TS####: message
-        if let Some(paren) = ln.find('(') {
-            let rest = &ln[paren + 1..];
-            if let Some(comma) = rest.find(',') {
-                let line_num = rest[..comma].parse::<u32>().unwrap_or(0);
-                let text = ln.split(": ").skip(2).collect::<Vec<_>>().join(": ");
-                let text: String = text.chars().take(120).collect();
-                errors.push(SyntaxError {
-                    line: line_num,
-                    kind: "tsc".to_string(),
-                    text,
-                });
-            }
-        }
+        let Some(paren) = ln.find('(') else { continue };
+        let Some(file) = matching_requested_file(&ln[..paren], files) else {
+            continue;
+        };
+        let rest = &ln[paren + 1..];
+        let Some(comma) = rest.find(',') else {
+            continue;
+        };
+        let line_num = rest[..comma].parse::<u32>().unwrap_or(0);
+        let text = ln.split(": ").skip(2).collect::<Vec<_>>().join(": ");
+        let text: String = text.chars().take(120).collect();
+        errors_by_file
+            .entry(file.to_string())
+            .or_default()
+            .push(SyntaxError {
+                line: line_num,
+                kind: "tsc".to_string(),
+                text,
+            });
     }
-    errors
+    errors_by_file
 }
 
 fn collect_errors(node: tree_sitter::Node, source: &str, errors: &mut Vec<SyntaxError>) {
@@ -1405,7 +1491,10 @@ mod tests {
             "got: {}",
             err
         );
-        assert_eq!(std::fs::read_to_string(dir.path().join("main.py")).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("main.py")).unwrap(),
+            original
+        );
     }
 
     #[test]
