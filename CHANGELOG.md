@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2] - 2026-03-13
+
+### Changed
+
+- TypeScript `inspect(..., signature_only=true)` now uses indexed params and return types instead of falling back to source-sliced declarations.
+- TypeScript class methods now carry `parent_type`, so `inspect(..., type_only=true)` groups methods under their class surface like Rust and Go.
+- Added TypeScript coverage for indexed signature-only reads and type-only method grouping.
+
 ## [1.9.1] - 2026-03-13
 
 ### Changed
