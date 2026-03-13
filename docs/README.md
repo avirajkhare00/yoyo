@@ -109,7 +109,7 @@ sudo cp target/release/yoyo /usr/local/bin/yoyo
 
 **Quick start:**
 ```bash
-yoyo bake --path /path/to/your/project
+yoyo index --path /path/to/your/project
 yoyo inspect --path /path/to/your/project --name myFunction
 yoyo impact --path /path/to/your/project --symbol myFunction
 ```

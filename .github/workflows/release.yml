@@ -112,10 +112,19 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           SHA_MACOS="${{ steps.sha_macos.outputs.sha }}"
           SHA_LINUX="${{ steps.sha_linux.outputs.sha }}"
+          export VERSION SHA_MACOS SHA_LINUX
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
 
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" homebrew-yoyo/Formula/yoyo.rb
-          sed -i "/aarch64-apple-darwin/{n;s/sha256 \".*\"/sha256 \"${SHA_MACOS}\"/}" homebrew-yoyo/Formula/yoyo.rb
-          sed -i "/x86_64-unknown-linux-gnu/{n;s/sha256 \".*\"/sha256 \"${SHA_LINUX}\"/}" homebrew-yoyo/Formula/yoyo.rb
+          template = Path("packaging/homebrew/yoyo.rb.template").read_text()
+          rendered = (
+              template.replace("__VERSION__", os.environ["VERSION"])
+              .replace("__SHA_MACOS__", os.environ["SHA_MACOS"])
+              .replace("__SHA_LINUX__", os.environ["SHA_LINUX"])
+          )
+          Path("homebrew-yoyo/Formula/yoyo.rb").write_text(rendered)
+          PY
 
       - name: Commit and push formula update
         run: |

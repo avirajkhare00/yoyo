@@ -115,7 +115,7 @@ gemini mcp add yoyo /usr/local/bin/yoyo --mcp-server
 Then index the project once:
 
 ```bash
-yoyo bake --path /path/to/your/project
+yoyo index --path /path/to/your/project
 ```
 
 ## Teach the agent to use it
