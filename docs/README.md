@@ -242,7 +242,7 @@ These are available via `yoyo <command>` but removed from MCP to keep context co
 | Ruby | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Swift | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Bash | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Zig | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Zig | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 
 **Endpoints** — route detection via `routes`, `impact` (MCP) and `api_trace`, `crud_operations` (CLI).
 **Import graph** — `impact(symbol=...)` uses caller/import expansion to widen affected files.
