@@ -242,7 +242,10 @@ fn build_registry() -> Vec<ToolEntry> {
                 "start_line": i("1-based start line for line-range mode."),
                 "end_line": i("1-based end line for line-range mode."),
                 "include_source": b("Include function body in symbol mode."),
+                "signature_only": b("Return declaration/signature text only in symbol mode."),
+                "type_only": b("Return a type surface instead of generic symbol matches."),
                 "include_summaries": b("Include summaries in file mode."),
+                "depth": s("File structure depth in file mode: 1, 2, or all."),
                 "limit": i("Maximum number of symbol matches."),
                 "stdlib": b("Include stdlib matches in symbol mode.")
             })),
@@ -256,6 +259,9 @@ fn build_registry() -> Vec<ToolEntry> {
                 a.bool_opt("include_summaries"),
                 a.uint_opt("limit"),
                 a.bool_opt("stdlib"),
+                a.bool_opt("signature_only"),
+                a.bool_opt("type_only"),
+                a.str_opt("depth"),
             )),
         },
         // ── read-indexed ─────────────────────────────────────────────────────

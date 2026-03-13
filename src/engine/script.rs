@@ -140,6 +140,9 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                     bool_opt(&args, "include_summaries"),
                     uint_opt(&args, "limit"),
                     bool_opt(&args, "stdlib"),
+                    bool_opt(&args, "signature_only"),
+                    bool_opt(&args, "type_only"),
+                    str_opt(&args, "depth"),
                 )
             })();
             call_to_dynamic(res)

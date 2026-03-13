@@ -190,9 +190,21 @@ pub struct InspectArgs {
     #[arg(long, default_value_t = false)]
     pub include_source: bool,
 
+    /// Return only declaration/signature text for symbol matches instead of full bodies.
+    #[arg(long, default_value_t = false)]
+    pub signature_only: bool,
+
+    /// Read type surfaces directly: declaration, fields, methods, and impl metadata.
+    #[arg(long, default_value_t = false)]
+    pub type_only: bool,
+
     /// Include summaries in file mode.
     #[arg(long, default_value_t = true)]
     pub include_summaries: bool,
+
+    /// File structure depth in file mode: 1 (top-level), 2 (types + members), or all.
+    #[arg(long)]
+    pub depth: Option<String>,
 
     /// Maximum number of symbol matches.
     #[arg(long)]
@@ -406,6 +418,10 @@ pub struct OutlineArgs {
     /// Whether to include summaries (currently a no-op placeholder).
     #[arg(long, default_value_t = true)]
     pub include_summaries: bool,
+
+    /// File structure depth: 1 (top-level), 2 (types + members), or all.
+    #[arg(long)]
+    pub depth: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -778,6 +794,9 @@ async fn run_inspect(args: InspectArgs) -> anyhow::Result<()> {
         Some(args.include_summaries),
         args.limit,
         Some(args.stdlib),
+        Some(args.signature_only),
+        Some(args.type_only),
+        args.depth,
     )?;
     println!("{json}");
     Ok(())
@@ -827,8 +846,12 @@ async fn run_read(args: ReadArgs) -> anyhow::Result<()> {
 }
 
 async fn run_outline(args: OutlineArgs) -> anyhow::Result<()> {
-    let json =
-        crate::engine::file_functions(args.path, args.file, Some(args.include_summaries))?;
+    let json = crate::engine::file_functions(
+        args.path,
+        args.file,
+        Some(args.include_summaries),
+        args.depth,
+    )?;
     println!("{json}");
     Ok(())
 }

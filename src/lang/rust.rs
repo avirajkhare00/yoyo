@@ -11,7 +11,7 @@ use tree_sitter::{Node, Parser};
 
 use super::{
     byte_range, line_range, module_path_from_file, qualified_name, relative,
-    FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
+    FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, SignatureParam,
     LanguageAnalyzer, NodeKinds, Visibility,
 };
 
@@ -150,16 +150,44 @@ fn rust_visibility(node: Node, source: &str) -> Visibility {
 /// Extract a structural sig_hash from a Rust function_item node.
 /// Hashes (param_types, return_type) — name-agnostic.
 fn rust_sig_hash(node: &tree_sitter::Node, source: &str) -> String {
-    let mut param_types: Vec<String> = Vec::new();
-    if let Some(params) = node.child_by_field_name("parameters") {
-        let mut cur = params.walk();
-        for p in params.children(&mut cur) {
-            if p.kind() == "parameter" {
-                if let Some(t) = p.child_by_field_name("type") {
-                    if let Ok(s) = t.utf8_text(source.as_bytes()) {
-                        param_types.push(s.trim().to_string());
+    let (params, return_type, _) = rust_signature_parts(node, source);
+    let param_types: Vec<String> = params.into_iter().map(|p| p.type_str).collect();
+    super::compute_sig_hash(&param_types, return_type.as_deref().unwrap_or_default())
+}
+
+fn rust_signature_parts(
+    node: &tree_sitter::Node,
+    source: &str,
+) -> (Vec<SignatureParam>, Option<String>, Option<String>) {
+    let mut params: Vec<SignatureParam> = Vec::new();
+    let mut receiver: Option<String> = None;
+    if let Some(parameters) = node.child_by_field_name("parameters") {
+        let mut cur = parameters.walk();
+        for p in parameters.children(&mut cur) {
+            match p.kind() {
+                "parameter" => {
+                    let name = p
+                        .child_by_field_name("pattern")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    let type_str = p
+                        .child_by_field_name("type")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    if !name.is_empty() || !type_str.is_empty() {
+                        params.push(SignatureParam { name, type_str });
                     }
                 }
+                "self_parameter" => {
+                    receiver = p
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty());
+                }
+                _ => {}
             }
         }
     }
@@ -167,8 +195,8 @@ fn rust_sig_hash(node: &tree_sitter::Node, source: &str) -> String {
         .child_by_field_name("return_type")
         .and_then(|n| n.utf8_text(source.as_bytes()).ok())
         .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    super::compute_sig_hash(&param_types, &return_type)
+        .filter(|s| !s.is_empty());
+    (params, return_type, receiver)
 }
 
 fn scan_children(
@@ -202,6 +230,7 @@ fn scan_children(
                         let (byte_start, byte_end) = byte_range(&child);
                         let vis = rust_visibility(child, source);
                         let qname = qualified_name(mod_path, name, "rust");
+                        let (params, return_type, receiver) = rust_signature_parts(&child, source);
                         let sig_hash = rust_sig_hash(&child, source);
                         functions.push(IndexedFunction {
                             name: name.to_string(),
@@ -218,6 +247,9 @@ fn scan_children(
                             visibility: vis,
                             parent_type: parent_type.map(str::to_string),
                             implemented_trait: implemented_trait.map(str::to_string),
+                            params,
+                            return_type,
+                            receiver,
                             sig_hash: Some(sig_hash),
                             ..Default::default()
                         });

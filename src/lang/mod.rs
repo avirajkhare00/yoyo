@@ -27,6 +27,13 @@ pub struct CallSite {
     pub line: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignatureParam {
+    pub name: String,
+    /// Raw type text as written in source, e.g. `i32`, `*Counter`, `context.Context`.
+    pub type_str: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Visibility {
     #[serde(rename = "public")]
@@ -71,6 +78,15 @@ pub struct IndexedFunction {
     /// For trait methods implemented inside `impl Trait for Type`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub implemented_trait: Option<String>,
+    /// Structured parameter list for languages that extract signatures explicitly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<SignatureParam>,
+    /// Return type text when known, e.g. `Result<T>`, `error`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_type: Option<String>,
+    /// Receiver text for methods when the language supports one, e.g. `&self`, `c *Counter`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receiver: Option<String>,
     /// True when this function was indexed from a toolchain stdlib (not user code).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_stdlib: bool,
@@ -99,6 +115,9 @@ impl Default for IndexedFunction {
             visibility: Visibility::default(),
             parent_type: None,
             implemented_trait: None,
+            params: vec![],
+            return_type: None,
+            receiver: None,
             is_stdlib: false,
             sig_hash: None,
         }

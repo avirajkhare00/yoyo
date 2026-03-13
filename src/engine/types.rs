@@ -297,6 +297,8 @@ pub(crate) struct SymbolMatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) visibility: Option<crate::lang::Visibility>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) module_path: Option<String>,
@@ -308,6 +310,12 @@ pub(crate) struct SymbolMatch {
     /// For methods: the struct/enum/trait this is defined on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) parent_type: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) params: Vec<crate::lang::SignatureParam>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) return_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) receiver: Option<String>,
     /// For structs/enums: traits this type implements.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub(crate) implements: Vec<String>,
@@ -546,7 +554,10 @@ pub(crate) struct FileFunctionsPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) file: String,
     pub(crate) include_summaries: bool,
+    pub(crate) depth: String,
     pub(crate) functions: Vec<FileFunctionSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) types: Vec<TypeInspectMatch>,
 }
 
 #[derive(Serialize)]
@@ -559,6 +570,49 @@ pub(crate) struct FileFunctionSummary {
     pub(crate) summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) parent_type: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct TypeMethodSummary {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) end_line: u32,
+    pub(crate) complexity: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<crate::lang::Visibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) implemented_trait: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) sig_hash: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct TypeInspectMatch {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) start_line: u32,
+    pub(crate) end_line: u32,
+    pub(crate) primary: bool,
+    pub(crate) kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) declaration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<crate::lang::Visibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) module_path: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) fields: Vec<crate::lang::FieldInfo>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) methods: Vec<TypeMethodSummary>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) implements: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) implementors: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) is_stdlib: bool,
 }
 
 #[derive(Serialize)]

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1] - 2026-03-13
+
+### Changed
+
+- `inspect` now uses structured signatures for Rust and Go, so `signature_only` is grounded in indexed params, return types, and receivers instead of mostly source slicing.
+- Go method indexing now records receiver ownership, which improves `type_only` grouping and grouped file outlines.
+- Added cheap-read coverage for Rust/Go signatures and signature-field roundtrips in the bake DB.
+
 ## [1.9.0] - 2026-03-13
 
 ### Changed

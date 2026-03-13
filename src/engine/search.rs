@@ -4,7 +4,8 @@ use anyhow::{anyhow, Result};
 
 use super::types::{
     FileFunctionSummary, FileFunctionsPayload, SemanticMatch, SemanticSearchPayload,
-    SupersearchMatch, SupersearchPayload, SymbolMatch, SymbolPayload,
+    SupersearchMatch, SupersearchPayload, SymbolMatch, SymbolPayload, TypeInspectMatch,
+    TypeMethodSummary,
 };
 use super::util::{require_bake_index, resolve_project_root};
 
@@ -31,9 +32,323 @@ fn cap_source(lines: &[&str], s: usize, e: usize, file: &str, start_line: u32, e
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OutlineDepth {
+    TopLevel,
+    Members,
+    All,
+}
+
+impl OutlineDepth {
+    fn parse(raw: Option<&str>) -> Result<Self> {
+        match raw.unwrap_or("all").trim().to_ascii_lowercase().as_str() {
+            "1" | "top" | "top_level" | "toplevel" => Ok(Self::TopLevel),
+            "2" | "members" => Ok(Self::Members),
+            "all" => Ok(Self::All),
+            other => Err(anyhow!(
+                "Unsupported depth '{}'. Expected one of: 1, 2, all.",
+                other
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TopLevel => "1",
+            Self::Members => "2",
+            Self::All => "all",
+        }
+    }
+
+    fn include_methods(self) -> bool {
+        !matches!(self, Self::TopLevel)
+    }
+
+    fn include_method_rows(self) -> bool {
+        matches!(self, Self::All)
+    }
+}
+
+fn read_signature_preview(
+    root: &std::path::Path,
+    file: &str,
+    start_line: u32,
+    end_line: u32,
+) -> Option<String> {
+    let source = fs::read_to_string(root.join(file)).ok()?;
+    let lines: Vec<&str> = source.lines().collect();
+    let start = start_line.saturating_sub(1) as usize;
+    if start >= lines.len() {
+        return None;
+    }
+    let max_end = end_line.saturating_sub(1) as usize;
+    let stop = (start.saturating_add(11)).min(max_end).min(lines.len().saturating_sub(1));
+    let mut parts = Vec::new();
+    for raw in &lines[start..=stop] {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            if !parts.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let candidate = if let Some(idx) = trimmed.find('{') {
+            trimmed[..idx].trim()
+        } else {
+            trimmed
+        };
+        if !candidate.is_empty() {
+            parts.push(candidate.to_string());
+        }
+        if trimmed.contains('{')
+            || trimmed.ends_with(':')
+            || trimmed.ends_with(';')
+            || trimmed.ends_with("=>")
+        {
+            break;
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" "))
+    }
+}
+
+fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<String> {
+    let has_structured =
+        !function.params.is_empty() || function.return_type.is_some() || function.receiver.is_some();
+    if !has_structured {
+        return None;
+    }
+
+    let visibility_prefix = match (&*function.language, &function.visibility) {
+        ("rust", crate::lang::Visibility::Public) => "pub ",
+        _ => "",
+    };
+
+    let rust_params = || {
+        function
+            .receiver
+            .iter()
+            .cloned()
+            .chain(function.params.iter().map(|p| {
+                if p.name.is_empty() {
+                    p.type_str.clone()
+                } else {
+                    format!("{}: {}", p.name, p.type_str)
+                }
+            }))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let go_params = || {
+        function
+            .params
+            .iter()
+            .map(|p| {
+                if p.name.is_empty() {
+                    p.type_str.clone()
+                } else {
+                    format!("{} {}", p.name, p.type_str)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    match function.language.as_str() {
+        "rust" => {
+            let params = rust_params();
+            let ret = function
+                .return_type
+                .as_deref()
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| format!(" -> {}", r))
+                .unwrap_or_default();
+            Some(format!(
+                "{}fn {}({}){}",
+                visibility_prefix, function.name, params, ret
+            ))
+        }
+        "go" => {
+            let params = go_params();
+            let receiver = function
+                .receiver
+                .as_deref()
+                .map(|r| format!("({}) ", r))
+                .unwrap_or_default();
+            let ret = function
+                .return_type
+                .as_deref()
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| format!(" {}", r))
+                .unwrap_or_default();
+            Some(format!("func {}{}({}){}", receiver, function.name, params, ret))
+        }
+        _ => None,
+    }
+}
+
+fn build_type_method_summary(
+    root: &std::path::Path,
+    function: &crate::lang::IndexedFunction,
+    include_signature: bool,
+) -> TypeMethodSummary {
+    TypeMethodSummary {
+        name: function.name.clone(),
+        file: function.file.clone(),
+        start_line: function.start_line,
+        end_line: function.end_line,
+        complexity: function.complexity,
+        visibility: Some(function.visibility.clone()),
+        implemented_trait: function.implemented_trait.clone(),
+        signature: include_signature
+            .then(|| {
+                render_indexed_signature(function).or_else(|| {
+                    read_signature_preview(root, &function.file, function.start_line, function.end_line)
+                })
+            })
+            .flatten(),
+        sig_hash: function.sig_hash.clone(),
+    }
+}
+
+fn build_type_match(
+    root: &std::path::Path,
+    bake: &crate::engine::types::BakeIndex,
+    indexed_type: &crate::lang::IndexedType,
+    methods: Vec<TypeMethodSummary>,
+    declaration: bool,
+    primary: bool,
+) -> TypeInspectMatch {
+    let type_name = indexed_type.name.to_lowercase();
+    let implements: Vec<String> = bake
+        .impls
+        .iter()
+        .filter(|i| i.type_name.to_lowercase() == type_name)
+        .filter_map(|i| i.trait_name.clone())
+        .collect();
+    let implementors: Vec<String> = if indexed_type.kind == "trait" {
+        let mut seen = std::collections::HashSet::new();
+        bake.impls
+            .iter()
+            .filter(|i| {
+                i.trait_name
+                    .as_deref()
+                    .map(|tr| tr.to_lowercase())
+                    == Some(type_name.clone())
+            })
+            .map(|i| i.type_name.clone())
+            .filter(|name| seen.insert(name.clone()))
+            .collect()
+    } else {
+        vec![]
+    };
+    TypeInspectMatch {
+        name: indexed_type.name.clone(),
+        file: indexed_type.file.clone(),
+        start_line: indexed_type.start_line,
+        end_line: indexed_type.end_line,
+        primary,
+        kind: indexed_type.kind.clone(),
+        declaration: declaration
+            .then(|| {
+                read_signature_preview(
+                    root,
+                    &indexed_type.file,
+                    indexed_type.start_line,
+                    indexed_type.end_line,
+                )
+            })
+            .flatten(),
+        visibility: Some(indexed_type.visibility.clone()),
+        module_path: (!indexed_type.module_path.is_empty()).then(|| indexed_type.module_path.clone()),
+        fields: indexed_type.fields.clone(),
+        methods,
+        implements,
+        implementors,
+        is_stdlib: indexed_type.is_stdlib,
+    }
+}
+
+fn type_matches(
+    root: &std::path::Path,
+    bake: &crate::engine::types::BakeIndex,
+    name: &str,
+    file_filter: Option<&str>,
+    limit: usize,
+    stdlib: bool,
+    include_methods: bool,
+    declaration: bool,
+) -> Vec<TypeInspectMatch> {
+    let needle = name.to_lowercase();
+    let file_filter = file_filter.map(str::to_lowercase);
+    let mut matches: Vec<_> = bake
+        .types
+        .iter()
+        .filter(|t| stdlib || !t.is_stdlib)
+        .filter(|t| {
+            let tname = t.name.to_lowercase();
+            tname == needle || tname.contains(&needle)
+        })
+        .filter(|t| {
+            file_filter
+                .as_deref()
+                .map(|ff| t.file.to_lowercase().contains(ff))
+                .unwrap_or(true)
+        })
+        .map(|t| {
+            let methods = if include_methods {
+                let mut methods: Vec<_> = bake
+                    .functions
+                    .iter()
+                    .filter(|f| f.parent_type.as_deref() == Some(t.name.as_str()))
+                    .map(|f| build_type_method_summary(root, f, true))
+                    .collect();
+                methods.sort_by(|a, b| {
+                    a.file
+                        .cmp(&b.file)
+                        .then(a.start_line.cmp(&b.start_line))
+                        .then(a.name.cmp(&b.name))
+                });
+                methods
+            } else {
+                vec![]
+            };
+            build_type_match(root, bake, t, methods, declaration, false)
+        })
+        .collect();
+
+    matches.sort_by(|a, b| {
+        let a_exact_case = (a.name == name) as i32;
+        let b_exact_case = (b.name == name) as i32;
+        let a_exact = (a.name.to_lowercase() == needle) as i32;
+        let b_exact = (b.name.to_lowercase() == needle) as i32;
+        let a_public = matches!(a.visibility, Some(crate::lang::Visibility::Public)) as i32;
+        let b_public = matches!(b.visibility, Some(crate::lang::Visibility::Public)) as i32;
+        let a_stdlib = a.is_stdlib as i32;
+        let b_stdlib = b.is_stdlib as i32;
+        a_stdlib
+            .cmp(&b_stdlib)
+            .then(b_exact_case.cmp(&a_exact_case))
+            .then(b_exact.cmp(&a_exact))
+            .then(b_public.cmp(&a_public))
+            .then(a.file.cmp(&b.file))
+    });
+
+    if let Some(first) = matches.first_mut() {
+        first.primary = true;
+    }
+    matches.truncate(limit);
+    matches
+}
+
 fn inspect_next_hint(mode: &str) -> &'static str {
     match mode {
         "symbol" => "Use change(action=edit|rename|move|delete) when you are ready to modify this symbol.",
+        "type" => "Use inspect(name=..., include_source=true) on one method or inspect(file=...) to narrow further inside this type.",
         "file" => "Use inspect(name=...) for one symbol or inspect(file,start_line,end_line) for an exact excerpt.",
         "lines" => "Use change(action=edit,file=...,start_line=...,end_line=...) to modify this excerpt safely.",
         _ => "Use inspect(...) to narrow to the exact code you want to read next.",
@@ -113,11 +428,15 @@ pub fn symbol(
                     primary: false,
                     kind: None,
                     source: None,
+                    signature: render_indexed_signature(f),
                     visibility: Some(f.visibility.clone()),
                     module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
                     qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
                     calls,
                     parent_type: f.parent_type.clone(),
+                    params: f.params.clone(),
+                    return_type: f.return_type.clone(),
+                    receiver: f.receiver.clone(),
                     implements: vec![],
                     implementors: vec![],
                     fields: vec![],
@@ -154,11 +473,15 @@ pub fn symbol(
                     primary: false,
                     kind: Some(t.kind.clone()),
                     source: None,
+                    signature: None,
                     visibility: Some(t.visibility.clone()),
                     module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
                     qualified_name: None,
                     calls: vec![],
                     parent_type: None,
+                    params: vec![],
+                    return_type: None,
+                    receiver: None,
                     implements,
                     implementors,
                     fields: t.fields.clone(),
@@ -297,11 +620,17 @@ fn walk_stdlib_dir(
                         primary: false,
                         kind: None,
                         source: src,
+                        signature: render_indexed_signature(f).or_else(|| {
+                            read_signature_preview(root, &f.file, f.start_line, f.end_line)
+                        }),
                         visibility: Some(f.visibility.clone()),
                         module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
                         qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
                         calls: vec![],
                         parent_type: f.parent_type.clone(),
+                        params: f.params.clone(),
+                        return_type: f.return_type.clone(),
+                        receiver: f.receiver.clone(),
                         implements: vec![],
                         implementors: vec![],
                         fields: vec![],
@@ -327,11 +656,15 @@ fn walk_stdlib_dir(
                         primary: false,
                         kind: Some(t.kind.clone()),
                         source: src,
+                        signature: None,
                         visibility: Some(t.visibility.clone()),
                         module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
                         qualified_name: None,
                         calls: vec![],
                         parent_type: None,
+                        params: vec![],
+                        return_type: None,
+                        receiver: None,
                         implements: vec![],
                         implementors: vec![],
                         fields: t.fields.clone(),
@@ -777,6 +1110,9 @@ mod semantic_note_tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -811,6 +1147,9 @@ mod semantic_note_tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -819,6 +1158,187 @@ mod semantic_note_tests {
         assert_eq!(
             v["next_hint"],
             "Use change(action=edit,file=...,start_line=...,end_line=...) to modify this excerpt safely."
+        );
+    }
+
+    #[test]
+    fn inspect_signature_only_returns_declaration_without_source() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub fn add(left: i32, right: i32) -> i32 {\n    left + right\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("add".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let first = &v["matches"][0];
+        assert_eq!(v["mode"], "symbol");
+        assert_eq!(first["signature"], "pub fn add(left: i32, right: i32) -> i32");
+        assert!(first.get("source").is_none(), "signature-only mode should not return source");
+    }
+
+    #[test]
+    fn inspect_type_only_returns_fields_and_methods() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct Counter {\n    value: i32,\n}\n\nimpl Counter {\n    pub fn new(value: i32) -> Self {\n        Self { value }\n    }\n\n    pub fn value(&self) -> i32 {\n        self.value\n    }\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("Counter".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let first = &v["matches"][0];
+        assert_eq!(v["mode"], "type");
+        assert_eq!(first["name"], "Counter");
+        assert_eq!(first["fields"][0]["name"], "value");
+        assert_eq!(first["methods"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            first["methods"][0]["signature"],
+            "pub fn new(value: i32) -> Self"
+        );
+    }
+
+    #[test]
+    fn inspect_signature_only_uses_indexed_go_signature() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("pkg");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("calc.go"),
+            "package calc\n\nfunc Add(left int, right int) int {\n\treturn left + right\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("Add".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["matches"][0]["signature"], "func Add(left int, right int) int");
+    }
+
+    #[test]
+    fn inspect_type_only_groups_go_methods_under_receiver_type() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("pkg");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("counter.go"),
+            "package counter\n\ntype Counter struct{}\n\nfunc (c *Counter) Value() int {\n\treturn 1\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("Counter".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let first = &v["matches"][0];
+        assert_eq!(v["mode"], "type");
+        assert_eq!(first["name"], "Counter");
+        assert_eq!(first["methods"][0]["name"], "Value");
+        assert_eq!(first["methods"][0]["signature"], "func (c *Counter) Value() int");
+    }
+
+    #[test]
+    fn inspect_file_depth_one_keeps_only_top_level_functions() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct Counter {\n    value: i32,\n}\n\nimpl Counter {\n    pub fn new(value: i32) -> Self {\n        Self { value }\n    }\n}\n\npub fn top_level() {}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            None,
+            Some("src/lib.rs".into()),
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("1".into()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["mode"], "file");
+        assert_eq!(v["functions"].as_array().unwrap().len(), 1);
+        assert_eq!(v["functions"][0]["name"], "top_level");
+        assert_eq!(v["types"][0]["name"], "Counter");
+        assert!(
+            v["types"][0]["methods"].is_null()
+                || v["types"][0]["methods"]
+                    .as_array()
+                    .map(|methods| methods.is_empty())
+                    .unwrap_or(false),
+            "depth=1 should omit grouped methods"
         );
     }
 }
@@ -945,9 +1465,11 @@ pub fn file_functions(
     path: Option<String>,
     file: String,
     include_summaries: Option<bool>,
+    depth: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
+    let depth = OutlineDepth::parse(depth.as_deref())?;
 
     let rel_file = file.clone();
 
@@ -955,6 +1477,7 @@ pub fn file_functions(
         .functions
         .iter()
         .filter(|f| f.file == rel_file)
+        .filter(|f| depth.include_method_rows() || f.parent_type.is_none())
         .map(|f| FileFunctionSummary {
             name: f.name.clone(),
             start_line: f.start_line,
@@ -967,13 +1490,39 @@ pub fn file_functions(
 
     funcs.sort_by(|a, b| a.start_line.cmp(&b.start_line));
 
+    let mut types: Vec<TypeInspectMatch> = bake
+        .types
+        .iter()
+        .filter(|t| t.file == rel_file)
+        .map(|t| {
+            let mut methods = if depth.include_methods() {
+                let mut methods: Vec<_> = bake
+                    .functions
+                    .iter()
+                    .filter(|f| f.file == rel_file && f.parent_type.as_deref() == Some(t.name.as_str()))
+                    .map(|f| build_type_method_summary(&root, f, true))
+                    .collect();
+                methods.sort_by(|a, b| a.start_line.cmp(&b.start_line).then(a.name.cmp(&b.name)));
+                methods
+            } else {
+                vec![]
+            };
+            if !depth.include_methods() {
+                methods.clear();
+            }
+            build_type_match(&root, &bake, t, methods, true, false)
+        })
+        .collect();
+    types.sort_by(|a, b| a.start_line.cmp(&b.start_line).then(a.name.cmp(&b.name)));
     let payload = FileFunctionsPayload {
         tool: "file_functions",
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         file,
         include_summaries: include_summaries.unwrap_or(true),
+        depth: depth.as_str().to_string(),
         functions: funcs,
+        types,
     };
 
     let json = serde_json::to_string_pretty(&payload)?;
@@ -991,40 +1540,118 @@ pub fn inspect(
     include_summaries: Option<bool>,
     limit: Option<usize>,
     stdlib: Option<bool>,
+    signature_only: Option<bool>,
+    type_only: Option<bool>,
+    depth: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path.clone())?;
     let include_source = include_source.unwrap_or(false);
     let include_summaries = include_summaries.unwrap_or(true);
     let stdlib = stdlib.unwrap_or(false);
+    let signature_only = signature_only.unwrap_or(false);
+    let type_only = type_only.unwrap_or(false);
+    let depth = OutlineDepth::parse(depth.as_deref())?;
+
+    if include_source && signature_only {
+        return Err(anyhow!(
+            "inspect cannot use include_source and signature_only together"
+        ));
+    }
+    if include_source && type_only {
+        return Err(anyhow!(
+            "inspect type-only mode is a cheap read surface; omit include_source"
+        ));
+    }
 
     let (mode, target, flat_fields) = if let Some(name) = name {
         let symbol_file = file.clone();
-        let result = crate::engine::symbol(
-            path,
-            name.clone(),
-            include_source,
-            symbol_file.clone(),
-            limit,
-            stdlib,
-        )?;
-        let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
-            .as_object()
-            .cloned()
-            .ok_or_else(|| anyhow!("inspect symbol mode expected object payload"))?;
-        parsed.remove("tool");
-        parsed.remove("version");
-        parsed.remove("project_root");
-        (
-            "symbol",
-            serde_json::json!({
-                "name": name,
-                "file": symbol_file,
-                "include_source": include_source,
-                "limit": limit,
-                "stdlib": stdlib,
-            }),
-            parsed,
-        )
+        if type_only {
+            let bake = require_bake_index(&root)?;
+            let matches = type_matches(
+                &root,
+                &bake,
+                &name,
+                symbol_file.as_deref(),
+                limit.unwrap_or(20),
+                stdlib,
+                true,
+                true,
+            );
+            (
+                "type",
+                serde_json::json!({
+                    "name": name,
+                    "file": symbol_file,
+                    "limit": limit,
+                    "stdlib": stdlib,
+                    "type_only": type_only,
+                }),
+                serde_json::Map::from_iter([(
+                    "matches".to_string(),
+                    serde_json::to_value(matches)?,
+                )]),
+            )
+        } else {
+            let result = crate::engine::symbol(
+                path,
+                name.clone(),
+                include_source,
+                symbol_file.clone(),
+                limit,
+                stdlib,
+            )?;
+            let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
+                .as_object()
+                .cloned()
+                .ok_or_else(|| anyhow!("inspect symbol mode expected object payload"))?;
+            parsed.remove("tool");
+            parsed.remove("version");
+            parsed.remove("project_root");
+            if signature_only {
+                if let Some(matches) = parsed.get_mut("matches").and_then(|m| m.as_array_mut()) {
+                    for m in matches {
+                        if let Some(obj) = m.as_object_mut() {
+                            obj.remove("source");
+                            if !obj.contains_key("signature") {
+                                let file = obj.get("file").and_then(|v| v.as_str());
+                                let start_line = obj.get("start_line").and_then(|v| v.as_u64());
+                                let end_line = obj.get("end_line").and_then(|v| v.as_u64());
+                                if let (Some(file), Some(start_line), Some(end_line)) =
+                                    (file, start_line, end_line)
+                                {
+                                    if let Some(signature) = read_signature_preview(
+                                        &root,
+                                        file,
+                                        start_line as u32,
+                                        end_line as u32,
+                                    ) {
+                                        obj.insert(
+                                            "signature".to_string(),
+                                            serde_json::json!(signature),
+                                        );
+                                    }
+                                }
+                            }
+                            if let Some(signature) = obj.get("signature").cloned() {
+                                obj.insert("signature".to_string(), serde_json::json!(signature));
+                            }
+                        }
+                    }
+                }
+            }
+            (
+                "symbol",
+                serde_json::json!({
+                    "name": name,
+                    "file": symbol_file,
+                    "include_source": include_source,
+                    "limit": limit,
+                    "stdlib": stdlib,
+                    "signature_only": signature_only,
+                }),
+                parsed,
+            )
+        }
     } else if let (Some(file), Some(start_line), Some(end_line)) = (file.clone(), start_line, end_line) {
         let source = fs::read_to_string(root.join(&file))
             .map_err(|e| anyhow!("Failed to read file '{}': {}", file, e))?;
@@ -1051,7 +1678,12 @@ pub fn inspect(
             ]),
         )
     } else if let Some(file) = file {
-        let result = crate::engine::file_functions(path, file.clone(), Some(include_summaries))?;
+        let result = crate::engine::file_functions(
+            path,
+            file.clone(),
+            Some(include_summaries),
+            Some(depth.as_str().to_string()),
+        )?;
         let mut parsed = serde_json::from_str::<serde_json::Value>(&result)?
             .as_object()
             .cloned()
@@ -1064,6 +1696,7 @@ pub fn inspect(
             serde_json::json!({
                 "file": file,
                 "include_summaries": include_summaries,
+                "depth": depth.as_str(),
             }),
             parsed,
         )

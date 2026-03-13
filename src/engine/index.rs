@@ -469,8 +469,8 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
     vec![
         ToolDescription { name: "boot", description: "Bootstrap: tool names, categories, and concurrency rules. Call in parallel with index on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
         ToolDescription { name: "index", description: "Build the AST index all read-indexed tools depend on. Call in parallel with boot on first contact.", requires_bake: false, category: "bootstrap", parallelisable: false, output_shape: None },
-        ToolDescription { name: "inspect", description: "Inspect a symbol, file outline, or line range from one entrypoint.", requires_bake: true, category: "read-indexed", parallelisable: true,
-            output_shape: Some(r#"{"mode":"symbol|file|lines","target":{},"result":{}}"#) },
+        ToolDescription { name: "inspect", description: "Inspect a symbol, type, file outline, or line range from one entrypoint.", requires_bake: true, category: "read-indexed", parallelisable: true,
+            output_shape: Some(r#"{"mode":"symbol|type|file|lines","target":{},"result":{}}"#) },
         ToolDescription { name: "map", description: "Directory tree with inferred roles.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "search", description: "AST-aware search. Replaces grep/rg.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
         ToolDescription { name: "ask", description: "Find functions by intent using embeddings.", requires_bake: true, category: "read-indexed", parallelisable: true, output_shape: None },
@@ -565,10 +565,10 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
         },
         ToolHelp {
             name: "inspect",
-            params: json!({"name": "optional - function name for symbol mode", "file": "optional - file path for file or lines mode", "start_line": "optional - start line for lines mode", "end_line": "optional - end line for lines mode", "include_source": "optional bool - include body in symbol mode", "include_summaries": "optional bool - include summaries in file mode", "limit": "optional - max symbol matches", "stdlib": "optional bool - include stdlib in symbol mode", "path": "optional"}),
-            output_shape: Some(r#"{"mode":"symbol|file|lines","target":{},"result":{}}"#),
-            example: json!({"call": {"name": "handle_request", "include_source": true}}),
-            limitations: "Modes: name => symbol, file => outline, file+start_line+end_line => line range. Symbol and file modes require index; line-range mode does not.",
+            params: json!({"name": "optional - symbol or type name for symbol/type mode", "file": "optional - file path for file or lines mode", "start_line": "optional - start line for lines mode", "end_line": "optional - end line for lines mode", "include_source": "optional bool - include body in symbol mode", "signature_only": "optional bool - return declaration/signature text only in symbol mode", "type_only": "optional bool - return a type surface instead of generic symbol matches", "include_summaries": "optional bool - include summaries in file mode", "depth": "optional - file structure depth: 1, 2, or all", "limit": "optional - max symbol matches", "stdlib": "optional bool - include stdlib in symbol/type mode", "path": "optional"}),
+            output_shape: Some(r#"{"mode":"symbol|type|file|lines","target":{},"result":{}}"#),
+            example: json!({"call": {"name": "handle_request", "signature_only": true}}),
+            limitations: "Modes: name => symbol, name+type_only => type surface, file => outline, file+start_line+end_line => line range. Symbol/type and file modes require index; line-range mode does not. include_source cannot be combined with signature_only or type_only.",
         },
         ToolHelp {
             name: "map",
@@ -665,7 +665,9 @@ fn task_help_catalog() -> Vec<TaskHelp> {
             why: "inspect is the merged read surface: name => symbol mode, file => file-outline mode, file+start_line+end_line => exact line-range mode.",
             steps: &[
                 "Use inspect(name=...) when you know the symbol and want the source or metadata.",
-                "Use inspect(file=...) when you want the function outline for a file.",
+                "Use inspect(name=..., signature_only=true) when you only need the API shape.",
+                "Use inspect(name=..., type_only=true) when you want a type surface with fields and methods.",
+                "Use inspect(file=..., depth=1|2|all) when you want a cheaper file outline.",
                 "Use inspect(file=..., start_line=..., end_line=...) when you need exact lines.",
             ],
         },

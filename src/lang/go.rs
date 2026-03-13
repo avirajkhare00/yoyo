@@ -8,6 +8,7 @@ use tree_sitter::{Node, Parser};
 use super::{
     byte_range, line_range, module_path_from_file, qualified_name, relative,
     IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
+    SignatureParam,
     Visibility,
 };
 
@@ -110,6 +111,85 @@ fn go_visibility(name: &str) -> Visibility {
     }
 }
 
+fn node_text(node: Node, source: &str) -> Option<String> {
+    node.utf8_text(source.as_bytes())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn go_parameter_list(node: Node, source: &str) -> Vec<SignatureParam> {
+    let mut params = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "parameter_declaration" | "variadic_parameter_declaration" => {
+                let type_node = child.child_by_field_name("type");
+                let mut names = Vec::new();
+                let mut inner = child.walk();
+                for part in child.named_children(&mut inner) {
+                    if Some(part.id()) == type_node.map(|n| n.id()) {
+                        continue;
+                    }
+                    if let Some(name) = node_text(part, source) {
+                        names.push(name);
+                    }
+                }
+                let mut type_str = type_node
+                    .and_then(|n| node_text(n, source))
+                    .unwrap_or_else(|| node_text(child, source).unwrap_or_default());
+                if child.kind() == "variadic_parameter_declaration" && !type_str.starts_with("...") {
+                    type_str = format!("...{}", type_str);
+                }
+                if names.is_empty() {
+                    params.push(SignatureParam {
+                        name: String::new(),
+                        type_str,
+                    });
+                } else {
+                    for name in names {
+                        params.push(SignatureParam {
+                            name,
+                            type_str: type_str.clone(),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    params
+}
+
+fn go_receiver_text(node: Node, source: &str) -> Option<String> {
+    node.child_by_field_name("receiver")
+        .and_then(|n| node_text(n, source))
+        .map(|s| s.trim_matches(|c| c == '(' || c == ')').trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn go_receiver_type(receiver: &str) -> Option<String> {
+    let token = receiver.split_whitespace().last()?.trim();
+    let token = token.trim_start_matches('*');
+    (!token.is_empty()).then(|| token.to_string())
+}
+
+fn go_signature_parts(
+    node: Node,
+    source: &str,
+) -> (Vec<SignatureParam>, Option<String>, Option<String>, Option<String>) {
+    let params = node
+        .child_by_field_name("parameters")
+        .map(|n| go_parameter_list(n, source))
+        .unwrap_or_default();
+    let return_type = node
+        .child_by_field_name("result")
+        .and_then(|n| node_text(n, source));
+    let receiver = go_receiver_text(node, source);
+    let parent_type = receiver.as_deref().and_then(go_receiver_type);
+    (params, return_type, receiver, parent_type)
+}
+
 fn walk_go(
     source: &str,
     root: &Path,
@@ -162,6 +242,10 @@ fn walk_go(
                 let (byte_start, byte_end) = byte_range(&node);
                 let vis = go_visibility(&name);
                 let qname = qualified_name(mod_path, &name, "go");
+                let (params, return_type, _, _) = go_signature_parts(node, source);
+                let param_types: Vec<String> = params.iter().map(|p| p.type_str.clone()).collect();
+                let sig_hash =
+                    super::compute_sig_hash(&param_types, return_type.as_deref().unwrap_or_default());
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -175,7 +259,10 @@ fn walk_go(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
+                    params,
+                    return_type,
                     parent_type: None,
+                    sig_hash: Some(sig_hash),
                     ..Default::default()
                 });
             }
@@ -187,6 +274,10 @@ fn walk_go(
                 let (byte_start, byte_end) = byte_range(&node);
                 let vis = go_visibility(&name);
                 let qname = qualified_name(mod_path, &name, "go");
+                let (params, return_type, receiver, parent_type) = go_signature_parts(node, source);
+                let param_types: Vec<String> = params.iter().map(|p| p.type_str.clone()).collect();
+                let sig_hash =
+                    super::compute_sig_hash(&param_types, return_type.as_deref().unwrap_or_default());
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -200,7 +291,11 @@ fn walk_go(
                     module_path: mod_path.to_string(),
                     qualified_name: qname,
                     visibility: vis,
-                    parent_type: None, // TODO: extract receiver type
+                    parent_type,
+                    params,
+                    return_type,
+                    receiver,
+                    sig_hash: Some(sig_hash),
                     ..Default::default()
                 });
             }

@@ -6,7 +6,8 @@ use rusqlite::{Connection, params};
 
 use crate::engine::types::{BakeFile, BakeIndex};
 use crate::lang::{
-    CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, Visibility,
+    CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
+    SignatureParam, Visibility,
 };
 
 // ── schema ────────────────────────────────────────────────────────────────────
@@ -42,6 +43,9 @@ CREATE TABLE IF NOT EXISTS functions (
     visibility        TEXT    NOT NULL,
     parent_type       TEXT,
     implemented_trait TEXT,
+    params_json       TEXT    NOT NULL,
+    return_type       TEXT,
+    receiver          TEXT,
     is_stdlib         INTEGER NOT NULL,
     sig_hash          TEXT
 );
@@ -161,14 +165,15 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
         let mut fn_stmt = tx.prepare(
             "INSERT INTO functions (name, file, language, start_line, end_line, complexity, \
              byte_start, byte_end, module_path, qualified_name, visibility, parent_type, \
-             implemented_trait, is_stdlib, sig_hash) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+             implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
         )?;
         let mut call_stmt = tx.prepare(
             "INSERT INTO calls (function_id, callee, qualifier, line) VALUES (?1, ?2, ?3, ?4)",
         )?;
 
         for f in &bake.functions {
+            let params_json = serde_json::to_string(&f.params).unwrap_or_else(|_| "[]".into());
             fn_stmt.execute(params![
                 f.name,
                 f.file,
@@ -183,6 +188,9 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
                 vis_str(&f.visibility),
                 f.parent_type,
                 f.implemented_trait,
+                params_json,
+                f.return_type,
+                f.receiver,
                 f.is_stdlib as i32,
                 f.sig_hash,
             ])?;
@@ -346,17 +354,19 @@ pub fn write_bake_incremental(
             let mut fn_stmt = tx.prepare(
                 "INSERT INTO functions (name, file, language, start_line, end_line, complexity, \
                  byte_start, byte_end, module_path, qualified_name, visibility, parent_type, \
-                 implemented_trait, is_stdlib, sig_hash) \
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+                 implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
             )?;
             let mut call_stmt = tx.prepare(
                 "INSERT INTO calls (function_id, callee, qualifier, line) VALUES (?1, ?2, ?3, ?4)",
             )?;
             for f in &bake.functions {
+                let params_json = serde_json::to_string(&f.params).unwrap_or_else(|_| "[]".into());
                 fn_stmt.execute(params![
                     f.name, f.file, f.language, f.start_line, f.end_line, f.complexity,
                     f.byte_start as i64, f.byte_end as i64, f.module_path, f.qualified_name,
-                    vis_str(&f.visibility), f.parent_type, f.implemented_trait,
+                    vis_str(&f.visibility), f.parent_type, f.implemented_trait, params_json,
+                    f.return_type, f.receiver,
                     f.is_stdlib as i32, f.sig_hash,
                 ])?;
                 let fn_id = tx.last_insert_rowid();
@@ -484,7 +494,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         let mut stmt = conn.prepare(
             "SELECT id, name, file, language, start_line, end_line, complexity, byte_start, \
              byte_end, module_path, qualified_name, visibility, parent_type, implemented_trait, \
-             is_stdlib, sig_hash FROM functions",
+             params_json, return_type, receiver, is_stdlib, sig_hash FROM functions",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -502,15 +512,19 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 r.get::<_, String>(11)?,
                 r.get::<_, Option<String>>(12)?,
                 r.get::<_, Option<String>>(13)?,
-                r.get::<_, i32>(14)?,
+                r.get::<_, String>(14)?,
                 r.get::<_, Option<String>>(15)?,
+                r.get::<_, Option<String>>(16)?,
+                r.get::<_, i32>(17)?,
+                r.get::<_, Option<String>>(18)?,
             ))
         })?;
         for row in rows {
             let (id, name, file, language, start_line, end_line, complexity,
                  byte_start, byte_end, module_path, qualified_name, visibility,
-                 parent_type, implemented_trait, is_stdlib, sig_hash) = row?;
+                 parent_type, implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) = row?;
             fn_ids.push(id);
+            let params: Vec<SignatureParam> = serde_json::from_str(&params_json).unwrap_or_default();
             functions.push(IndexedFunction {
                 name,
                 file,
@@ -525,6 +539,9 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 visibility: str_vis(&visibility),
                 parent_type,
                 implemented_trait,
+                params,
+                return_type,
+                receiver,
                 is_stdlib: is_stdlib != 0,
                 sig_hash,
                 calls: vec![],
@@ -652,7 +669,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::lang::{CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, Visibility};
+    use crate::lang::{CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, SignatureParam, Visibility};
     use crate::engine::types::{BakeFile, BakeIndex};
 
     fn empty_bake(root: &std::path::Path) -> BakeIndex {
@@ -785,6 +802,9 @@ mod tests {
             visibility: Visibility::Public,
             parent_type: None,
             implemented_trait: None,
+            params: vec![],
+            return_type: None,
+            receiver: None,
             is_stdlib: false,
             sig_hash: Some("abc123".to_string()),
             calls: vec![],
@@ -810,6 +830,9 @@ mod tests {
         assert_eq!(f.module_path, "crate::process");
         assert_eq!(f.qualified_name, "crate::process::process");
         assert_eq!(f.sig_hash, Some("abc123".to_string()));
+        assert!(f.params.is_empty());
+        assert_eq!(f.return_type, None);
+        assert_eq!(f.receiver, None);
         assert!(!f.is_stdlib);
     }
 
@@ -841,6 +864,9 @@ mod tests {
         let mut f = make_fn("method");
         f.parent_type = Some("MyStruct".to_string());
         f.implemented_trait = Some("Display".to_string());
+        f.params = vec![SignatureParam { name: "value".to_string(), type_str: "i32".to_string() }];
+        f.return_type = Some("String".to_string());
+        f.receiver = Some("&self".to_string());
         f.is_stdlib = true;
         f.sig_hash = None;
         bake.functions.push(f);
@@ -848,6 +874,11 @@ mod tests {
         let rf = &out.functions[0];
         assert_eq!(rf.parent_type, Some("MyStruct".to_string()));
         assert_eq!(rf.implemented_trait, Some("Display".to_string()));
+        assert_eq!(rf.params.len(), 1);
+        assert_eq!(rf.params[0].name, "value");
+        assert_eq!(rf.params[0].type_str, "i32");
+        assert_eq!(rf.return_type, Some("String".to_string()));
+        assert_eq!(rf.receiver, Some("&self".to_string()));
         assert!(rf.is_stdlib);
         assert_eq!(rf.sig_hash, None);
     }
