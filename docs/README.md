@@ -273,7 +273,7 @@ src/
   engine/
     index.rs     boot (llm_instructions), index (bake), shake, help
     search.rs    inspect (signature/type/depth reads), symbol, search (supersearch), outline (file_functions), ask (semantic_search)
-    edit.rs      change, edit (patch), bulk_edit (multi_patch), read (slice) + compiler guard
+    edit.rs      change, edit (patch), bulk_edit (multi_patch), read (slice) + compiler/interpreter guard
     graph.rs     rename, create, add, move, trace_chain
     analysis.rs  callers (blast_radius), health, delete (graph_delete), find_docs
     judge.rs     judge_change — ownership, invariants, regression risk

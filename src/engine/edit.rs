@@ -22,14 +22,20 @@ pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
     }
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
-        "rs"                        => parser.set_language(&SupportLang::Rust.get_ts_language()),
-        "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
-        "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
-        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
-        _                           => return vec![],
+        "rs" => parser.set_language(&SupportLang::Rust.get_ts_language()),
+        "go" => parser.set_language(&SupportLang::Go.get_ts_language()),
+        "py" => parser.set_language(&SupportLang::Python.get_ts_language()),
+        "ts" | "tsx" | "js" | "jsx" => {
+            parser.set_language(&SupportLang::TypeScript.get_ts_language())
+        }
+        _ => return vec![],
     };
-    if ok.is_err() { return vec![]; }
-    let Some(tree) = parser.parse(source, None) else { return vec![] };
+    if ok.is_err() {
+        return vec![];
+    }
+    let Some(tree) = parser.parse(source, None) else {
+        return vec![];
+    };
     let mut errors = vec![];
     collect_errors(tree.root_node(), source, &mut errors);
     errors
@@ -61,16 +67,27 @@ fn zig_ast_check(source: &str) -> Vec<SyntaxError> {
     }
     // stderr format: <stdin>:LINE:COL: error: MESSAGE
     let stderr = String::from_utf8_lossy(&output.stderr);
-    stderr.lines().filter_map(|line| {
-        let after = line.strip_prefix("<stdin>:")?;
-        let mut parts = after.splitn(3, ':');
-        let line_num: u32 = parts.next()?.parse().ok()?;
-        let _col = parts.next();
-        let rest = parts.next()?.trim();
-        let text = rest.strip_prefix("error: ").unwrap_or(rest)
-            .chars().take(80).collect();
-        Some(SyntaxError { line: line_num, kind: "error".to_string(), text })
-    }).collect()
+    stderr
+        .lines()
+        .filter_map(|line| {
+            let after = line.strip_prefix("<stdin>:")?;
+            let mut parts = after.splitn(3, ':');
+            let line_num: u32 = parts.next()?.parse().ok()?;
+            let _col = parts.next();
+            let rest = parts.next()?.trim();
+            let text = rest
+                .strip_prefix("error: ")
+                .unwrap_or(rest)
+                .chars()
+                .take(80)
+                .collect();
+            Some(SyntaxError {
+                line: line_num,
+                kind: "error".to_string(),
+                text,
+            })
+        })
+        .collect()
 }
 
 // ── Post-patch syntax validation ──────────────────────────────────────────────
@@ -79,36 +96,37 @@ fn zig_ast_check(source: &str) -> Vec<SyntaxError> {
 /// Returns an empty vec if the language is unsupported or the file can't be read.
 fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     let full_path = root.join(file);
-    let Ok(source) = fs::read_to_string(&full_path) else { return vec![] };
+    let Ok(source) = fs::read_to_string(&full_path) else {
+        return vec![];
+    };
 
     use ast_grep_language::{LanguageExt, SupportLang};
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
-        "rs"                        => parser.set_language(&SupportLang::Rust.get_ts_language()),
-        "go"                        => parser.set_language(&SupportLang::Go.get_ts_language()),
-        "py"                        => parser.set_language(&SupportLang::Python.get_ts_language()),
-        "ts" | "tsx" | "js" | "jsx" => parser.set_language(&SupportLang::TypeScript.get_ts_language()),
-        _                           => return vec![],
+        "rs" => parser.set_language(&SupportLang::Rust.get_ts_language()),
+        "go" => parser.set_language(&SupportLang::Go.get_ts_language()),
+        "py" => parser.set_language(&SupportLang::Python.get_ts_language()),
+        "ts" | "tsx" | "js" | "jsx" => {
+            parser.set_language(&SupportLang::TypeScript.get_ts_language())
+        }
+        _ => return vec![],
     };
-    if ok.is_err() { return vec![]; }
+    if ok.is_err() {
+        return vec![];
+    }
 
-    let Some(tree) = parser.parse(&source, None) else { return vec![] };
+    let Some(tree) = parser.parse(&source, None) else {
+        return vec![];
+    };
     let mut errors = vec![];
     collect_errors(tree.root_node(), &source, &mut errors);
-    // For each supported language, run the compiler/checker to catch errors
-    // that tree-sitter cannot see (macros, type errors, import issues, etc.).
-    match ext {
-        "rs"                        => errors.extend(cargo_check_errors(root, file)),
-        "go"                        => errors.extend(go_build_errors(root, file)),
-        "py"                        => errors.extend(python_compile_errors(root, file)),
-        "ts" | "tsx" | "js" | "jsx" => errors.extend(tsc_errors(root, file)),
-        _ => {}
-    }
+    // For each supported language, run the compiler/interpreter checker to catch
+    // errors that tree-sitter cannot see (macros, type errors, import issues, etc.).
+    errors.extend(semantic_check_errors(root, &full_path, file));
 
     errors
 }
-
 
 /// Run `cargo check --message-format=json` in `root` and return compiler errors
 /// that mention `file`. Best-effort: returns empty vec on any failure.
@@ -129,24 +147,41 @@ fn cargo_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
     let file_norm = file.replace('\\', "/");
 
     for line in stdout.lines() {
-        let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") { continue; }
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if msg.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") {
+            continue;
+        }
 
         let message = &msg["message"];
-        if message.get("level").and_then(|l| l.as_str()) != Some("error") { continue; }
+        if message.get("level").and_then(|l| l.as_str()) != Some("error") {
+            continue;
+        }
 
-        let Some(spans) = message.get("spans").and_then(|s| s.as_array()) else { continue };
+        let Some(spans) = message.get("spans").and_then(|s| s.as_array()) else {
+            continue;
+        };
 
         for span in spans {
             let span_file = span.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
             let span_norm = span_file.replace('\\', "/");
             // Match if either path ends with the other (handles relative vs absolute).
-            if !span_norm.ends_with(&file_norm) && !file_norm.ends_with(&span_norm) { continue; }
+            if !span_norm.ends_with(&file_norm) && !file_norm.ends_with(&span_norm) {
+                continue;
+            }
 
             let line_num = span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
-            let raw = message.get("message").and_then(|m| m.as_str()).unwrap_or("");
+            let raw = message
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("");
             let text: String = raw.chars().take(120).collect();
-            errors.push(SyntaxError { line: line_num, kind: "cargo".to_string(), text });
+            errors.push(SyntaxError {
+                line: line_num,
+                kind: "cargo".to_string(),
+                text,
+            });
         }
     }
 
@@ -173,13 +208,21 @@ fn go_build_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
 
     let mut errors = vec![];
     for line in stderr.lines() {
-        if !line.contains(file_name) { continue; }
+        if !line.contains(file_name) {
+            continue;
+        }
         // Format: path/to/file.go:LINE:COL: message
         let parts: Vec<&str> = line.splitn(4, ':').collect();
-        if parts.len() < 4 { continue; }
+        if parts.len() < 4 {
+            continue;
+        }
         let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
         let text: String = parts[3].trim().chars().take(120).collect();
-        errors.push(SyntaxError { line: line_num, kind: "go".to_string(), text });
+        errors.push(SyntaxError {
+            line: line_num,
+            kind: "go".to_string(),
+            text,
+        });
     }
     errors
 }
@@ -194,56 +237,101 @@ fn zig_check_errors(file: &std::path::Path) -> Vec<SyntaxError> {
         .output();
 
     let Ok(output) = output else { return vec![] };
-    if output.status.success() { return vec![]; }
+    if output.status.success() {
+        return vec![];
+    }
 
     // zig ast-check writes to stderr: path:line:col: error: message
     let stderr = String::from_utf8_lossy(&output.stderr);
     let mut errors = vec![];
     for line in stderr.lines() {
-        if !line.contains("error:") { continue; }
+        if !line.contains("error:") {
+            continue;
+        }
         let parts: Vec<&str> = line.splitn(5, ':').collect();
-        if parts.len() < 5 { continue; }
+        if parts.len() < 5 {
+            continue;
+        }
         let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
         let text: String = parts[4].trim().chars().take(120).collect();
-        errors.push(SyntaxError { line: line_num, kind: "zig".to_string(), text });
+        errors.push(SyntaxError {
+            line: line_num,
+            kind: "zig".to_string(),
+            text,
+        });
     }
     errors
 }
 
-// Write new_text to full_path, run the compiler, restore original if errors.
-// Guarantees: if this returns Ok, the file on disk compiles cleanly.
-fn write_with_compiler_guard(
+fn semantic_check_errors(
     root: &PathBuf,
     full_path: &std::path::Path,
     file: &str,
-    new_text: &str,
-    ext: &str,
-) -> Result<()> {
-    let original = fs::read_to_string(full_path).unwrap_or_default();
-
-    fs::write(full_path, new_text)
-        .with_context(|| format!("Failed to write {}", file))?;
-
-    let errors: Vec<SyntaxError> = match ext {
-        "rs"  => cargo_check_errors(root, file),
-        "go"  => go_build_errors(root, file),
+) -> Vec<SyntaxError> {
+    let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    match ext {
+        "rs" => cargo_check_errors(root, file),
+        "go" => go_build_errors(root, file),
         "zig" => zig_check_errors(full_path),
-        _     => vec![],
-    };
+        "py" => python_compile_errors(root, file),
+        "ts" | "tsx" | "jsx" => tsc_errors(root, file),
+        "js" => node_check_errors(root, file),
+        "rb" => ruby_check_errors(root, file),
+        "php" => php_check_errors(root, file),
+        "sh" | "bash" => bash_check_errors(root, file),
+        _ => vec![],
+    }
+}
 
+fn restore_original_bytes(full_path: &std::path::Path, original: Option<&[u8]>) {
+    match original {
+        Some(bytes) => {
+            let _ = fs::write(full_path, bytes);
+        }
+        None => {
+            let _ = fs::remove_file(full_path);
+        }
+    }
+}
+
+// Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
+// Guarantees: if this returns Ok, the file on disk passed the configured guardrails.
+fn write_bytes_with_compiler_guard(
+    root: &PathBuf,
+    full_path: &std::path::Path,
+    file: &str,
+    new_bytes: &[u8],
+) -> Result<()> {
+    let original = fs::read(full_path).ok();
+
+    fs::write(full_path, new_bytes).with_context(|| format!("Failed to write {}", file))?;
+
+    let errors = semantic_check_errors(root, full_path, file);
     if !errors.is_empty() {
-        // Restore the original — file must not be left corrupted.
-        let _ = fs::write(full_path, original);
-        let summary: Vec<String> = errors.iter()
+        restore_original_bytes(full_path, original.as_deref());
+        let summary: Vec<String> = errors
+            .iter()
             .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
             .collect();
         return Err(anyhow!(
-            "patch rejected: compiler errors (file restored to original):\n{}",
+            "patch rejected: compiler/interpreter errors (file restored to original):\n{}",
             summary.join("\n")
         ));
     }
 
     Ok(())
+}
+
+// Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
+// Guarantees: if this returns Ok, the file on disk passed the configured guardrails.
+fn write_with_compiler_guard(
+    root: &PathBuf,
+    full_path: &std::path::Path,
+    file: &str,
+    new_text: &str,
+    _ext: &str,
+) -> Result<()> {
+    write_bytes_with_compiler_guard(root, full_path, file, new_text.as_bytes())
 }
 
 /// Run `python -m py_compile <file>` and return syntax errors. Best-effort.
@@ -256,7 +344,9 @@ fn python_compile_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
         .output();
 
     let Ok(output) = output else { return vec![] };
-    if output.status.success() { return vec![]; }
+    if output.status.success() {
+        return vec![];
+    }
 
     // py_compile writes to stderr: File "path", line N\n  SyntaxError: msg
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -269,9 +359,208 @@ fn python_compile_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
             if let Some(idx) = rest.rfind(", line ") {
                 line_num = rest[idx + 7..].trim().parse().unwrap_or(0);
             }
-        } else if ln.trim().starts_with("SyntaxError:") || ln.trim().starts_with("IndentationError:") {
+        } else if ln.trim().starts_with("SyntaxError:")
+            || ln.trim().starts_with("IndentationError:")
+        {
             let text: String = ln.trim().chars().take(120).collect();
-            errors.push(SyntaxError { line: line_num, kind: "python".to_string(), text });
+            errors.push(SyntaxError {
+                line: line_num,
+                kind: "python".to_string(),
+                text,
+            });
+        }
+    }
+    errors
+}
+
+/// Run `bash -n <file>` and return syntax errors. Best-effort.
+fn bash_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("bash")
+        .args(["-n", file])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() {
+        return vec![];
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut errors = vec![];
+    for ln in stderr.lines() {
+        if !ln.contains(file_name) {
+            continue;
+        }
+        let Some((_, rest)) = ln.split_once(": line ") else {
+            continue;
+        };
+        let Some((line_text, message)) = rest.split_once(':') else {
+            continue;
+        };
+        let line_num = line_text.trim().parse::<u32>().unwrap_or(0);
+        let text: String = message.trim().chars().take(120).collect();
+        errors.push(SyntaxError {
+            line: line_num,
+            kind: "bash".to_string(),
+            text,
+        });
+    }
+    errors
+}
+
+/// Run `node --check <file>` and return syntax errors. Best-effort.
+fn node_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("node")
+        .args(["--check", file])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() {
+        return vec![];
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut current_line = 0u32;
+    let mut errors = vec![];
+    for ln in stderr.lines() {
+        if let Some(rest) = ln.trim().strip_prefix(file_name).or_else(|| {
+            ln.trim()
+                .rsplit_once('/')
+                .and_then(|(_, tail)| tail.strip_prefix(file_name))
+        }) {
+            if let Some(line_text) = rest.strip_prefix(':') {
+                current_line = line_text.trim().parse::<u32>().unwrap_or(0);
+            }
+        } else if ln.trim().starts_with("SyntaxError:") {
+            let text: String = ln.trim().chars().take(120).collect();
+            errors.push(SyntaxError {
+                line: current_line,
+                kind: "node".to_string(),
+                text,
+            });
+        }
+    }
+    if errors.is_empty() {
+        if let Some(line) = stderr.lines().find(|line| !line.trim().is_empty()) {
+            errors.push(SyntaxError {
+                line: current_line,
+                kind: "node".to_string(),
+                text: line.trim().chars().take(120).collect(),
+            });
+        }
+    }
+    errors
+}
+
+/// Run `ruby -c <file>` and return syntax errors. Best-effort.
+fn ruby_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("ruby")
+        .args(["-c", file])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() {
+        return vec![];
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut errors = vec![];
+    for ln in stderr.lines() {
+        if !ln.contains(file_name) {
+            continue;
+        }
+        let parts: Vec<&str> = ln.splitn(3, ':').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
+        let text: String = parts[2].trim().chars().take(120).collect();
+        errors.push(SyntaxError {
+            line: line_num,
+            kind: "ruby".to_string(),
+            text,
+        });
+    }
+    if errors.is_empty() {
+        if let Some(line) = stderr.lines().find(|line| !line.trim().is_empty()) {
+            errors.push(SyntaxError {
+                line: 0,
+                kind: "ruby".to_string(),
+                text: line.trim().chars().take(120).collect(),
+            });
+        }
+    }
+    errors
+}
+
+/// Run `php -l <file>` and return syntax errors. Best-effort.
+fn php_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
+    use std::process::Command;
+
+    let output = Command::new("php")
+        .args(["-l", file])
+        .current_dir(root)
+        .output();
+
+    let Ok(output) = output else { return vec![] };
+    if output.status.success() {
+        return vec![];
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    let file_name = std::path::Path::new(file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(file);
+
+    let mut errors = vec![];
+    for ln in combined.lines() {
+        if !ln.contains(file_name) {
+            continue;
+        }
+        let line_num = ln
+            .rsplit_once(" on line ")
+            .and_then(|(_, n)| n.trim().parse::<u32>().ok())
+            .unwrap_or(0);
+        let text: String = ln.trim().chars().take(120).collect();
+        errors.push(SyntaxError {
+            line: line_num,
+            kind: "php".to_string(),
+            text,
+        });
+    }
+    if errors.is_empty() {
+        if let Some(line) = combined.lines().find(|line| !line.trim().is_empty()) {
+            errors.push(SyntaxError {
+                line: 0,
+                kind: "php".to_string(),
+                text: line.trim().chars().take(120).collect(),
+            });
         }
     }
     errors
@@ -307,7 +596,9 @@ fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
 
     let mut errors = vec![];
     for ln in combined.lines() {
-        if !ln.contains(file_name) { continue; }
+        if !ln.contains(file_name) {
+            continue;
+        }
         // Format: path/file.ts(LINE,COL): error TS####: message
         if let Some(paren) = ln.find('(') {
             let rest = &ln[paren + 1..];
@@ -315,7 +606,11 @@ fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
                 let line_num = rest[..comma].parse::<u32>().unwrap_or(0);
                 let text = ln.split(": ").skip(2).collect::<Vec<_>>().join(": ");
                 let text: String = text.chars().take(120).collect();
-                errors.push(SyntaxError { line: line_num, kind: "tsc".to_string(), text });
+                errors.push(SyntaxError {
+                    line: line_num,
+                    kind: "tsc".to_string(),
+                    text,
+                });
             }
         }
     }
@@ -325,9 +620,14 @@ fn tsc_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
 fn collect_errors(node: tree_sitter::Node, source: &str, errors: &mut Vec<SyntaxError>) {
     if node.is_error() || node.is_missing() {
         let line = node.start_position().row as u32 + 1;
-        let raw  = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
+        let raw = node.utf8_text(source.as_bytes()).unwrap_or("").trim();
         let text: String = raw.chars().take(80).collect();
-        let kind = if node.is_missing() { "missing" } else { "error" }.to_string();
+        let kind = if node.is_missing() {
+            "missing"
+        } else {
+            "error"
+        }
+        .to_string();
         errors.push(SyntaxError { line, kind, text });
     }
     let mut cursor = node.walk();
@@ -337,12 +637,7 @@ fn collect_errors(node: tree_sitter::Node, source: &str, errors: &mut Vec<Syntax
 }
 
 /// Public entrypoint for the `slice` tool: read a specific line range of a file.
-pub fn slice(
-    path: Option<String>,
-    file: String,
-    start: u32,
-    end: u32,
-) -> Result<String> {
+pub fn slice(path: Option<String>, file: String, start: u32, end: u32) -> Result<String> {
     let root = resolve_project_root(path)?;
     if start == 0 || end == 0 || end < start {
         return Err(anyhow!(
@@ -433,12 +728,15 @@ pub fn patch_string(
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let full_path = root.join(&file);
-    let content = fs::read_to_string(&full_path)
-        .with_context(|| format!("Failed to read {}", file))?;
+    let content =
+        fs::read_to_string(&full_path).with_context(|| format!("Failed to read {}", file))?;
 
-    let pos = content
-        .find(&old_string)
-        .ok_or_else(|| anyhow!("old_string not found in {}. Check exact whitespace and content.", file))?;
+    let pos = content.find(&old_string).ok_or_else(|| {
+        anyhow!(
+            "old_string not found in {}. Check exact whitespace and content.",
+            file
+        )
+    })?;
 
     let new_content = format!(
         "{}{}{}",
@@ -455,7 +753,8 @@ pub fn patch_string(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let pre_errors = ast_check_str(&new_content, ext);
     if !pre_errors.is_empty() {
-        let summary: Vec<String> = pre_errors.iter()
+        let summary: Vec<String> = pre_errors
+            .iter()
             .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
             .collect();
         return Err(anyhow!(
@@ -483,7 +782,6 @@ pub fn patch_string(
     Ok(serde_json::to_string_pretty(&payload)?)
 }
 
-
 /// Public entrypoint for the `patch` tool (by symbol name). Resolves the symbol from the bake
 /// index, then replaces its line range with `new_content`. Use `match_index` (0-based) when
 /// multiple symbols match the name; default 0.
@@ -504,7 +802,13 @@ pub fn patch_by_symbol(
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
-                Some((f.file.clone(), f.start_line, f.end_line, fname == needle, f.complexity))
+                Some((
+                    f.file.clone(),
+                    f.start_line,
+                    f.end_line,
+                    fname == needle,
+                    f.complexity,
+                ))
             } else {
                 None
             }
@@ -519,7 +823,10 @@ pub fn patch_by_symbol(
     });
 
     if matches.is_empty() {
-        return Err(anyhow!("No symbol match for name {:?}. Run `bake` and ensure the symbol exists.", name));
+        return Err(anyhow!(
+            "No symbol match for name {:?}. Run `bake` and ensure the symbol exists.",
+            name
+        ));
     }
 
     let idx = match_index.unwrap_or(0);
@@ -660,12 +967,17 @@ pub fn change(
 
     let mut payload = serde_json::Map::new();
     payload.insert("tool".to_string(), serde_json::json!("change"));
-    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert(
+        "version".to_string(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
     payload.insert("action".to_string(), serde_json::json!(action));
     payload.insert("next_hint".to_string(), serde_json::json!(next_hint));
     payload.extend(parsed);
 
-    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
+        payload,
+    ))?)
 }
 // ── Byte-level patch ─────────────────────────────────────────────────────────
 
@@ -681,7 +993,11 @@ pub fn patch_bytes(
     let root = resolve_project_root(path)?;
     let full_path = root.join(&file);
     let mut bytes = fs::read(&full_path).with_context(|| {
-        format!("Failed to read file {} (resolved to {})", file, full_path.display())
+        format!(
+            "Failed to read file {} (resolved to {})",
+            file,
+            full_path.display()
+        )
     })?;
     let file_len = bytes.len();
     if byte_start > byte_end || byte_end > file_len {
@@ -699,28 +1015,30 @@ pub fn patch_bytes(
     // Pre-write AST check — reject before touching disk.
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     match std::str::from_utf8(&bytes) {
-        Err(_) => return Err(anyhow!(
-            "patch_bytes rejected: result is invalid UTF-8 in {} (file not modified) — \
+        Err(_) => {
+            return Err(anyhow!(
+                "patch_bytes rejected: result is invalid UTF-8 in {} (file not modified) — \
              byte offsets likely split a multi-byte character",
-            file
-        )),
+                file
+            ))
+        }
         Ok(patched_str) => {
             let pre_errors = ast_check_str(patched_str, ext);
             if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors.iter()
+                let summary: Vec<String> = pre_errors
+                    .iter()
                     .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                     .collect();
                 return Err(anyhow!(
                     "patch_bytes rejected: syntax errors in {} (file not modified):\n{}",
-                    file, summary.join("\n")
+                    file,
+                    summary.join("\n")
                 ));
             }
         }
     }
 
-    fs::write(&full_path, &bytes).with_context(|| {
-        format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
-    })?;
+    write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes)?;
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
     let payload = PatchBytesPayload {
@@ -764,7 +1082,11 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
     for (file, mut file_edits) in by_file {
         let full_path = root.join(&file);
         let mut bytes = fs::read(&full_path).with_context(|| {
-            format!("Failed to read file {} (resolved to {})", file, full_path.display())
+            format!(
+                "Failed to read file {} (resolved to {})",
+                file,
+                full_path.display()
+            )
         })?;
         let file_len = bytes.len();
 
@@ -800,34 +1122,39 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
 
         // Apply edits bottom-up.
         for edit in &file_edits {
-            bytes.splice(edit.byte_start..edit.byte_end, edit.new_content.as_bytes().iter().copied());
+            bytes.splice(
+                edit.byte_start..edit.byte_end,
+                edit.new_content.as_bytes().iter().copied(),
+            );
         }
 
         // Pre-write AST check — reject before touching disk.
         let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match std::str::from_utf8(&bytes) {
-            Err(_) => return Err(anyhow!(
-                "multi_patch rejected: result is invalid UTF-8 in {} (file not modified) — \
+            Err(_) => {
+                return Err(anyhow!(
+                    "multi_patch rejected: result is invalid UTF-8 in {} (file not modified) — \
                  byte offsets likely split a multi-byte character",
-                file
-            )),
+                    file
+                ))
+            }
             Ok(patched_str) => {
                 let pre_errors = ast_check_str(patched_str, ext);
                 if !pre_errors.is_empty() {
-                    let summary: Vec<String> = pre_errors.iter()
+                    let summary: Vec<String> = pre_errors
+                        .iter()
                         .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
                         .collect();
                     return Err(anyhow!(
                         "multi_patch rejected: syntax errors in {} (file not modified):\n{}",
-                        file, summary.join("\n")
+                        file,
+                        summary.join("\n")
                     ));
                 }
             }
         }
 
-        fs::write(&full_path, &bytes).with_context(|| {
-            format!("Failed to write patched file {} (resolved to {})", file, full_path.display())
-        })?;
+        write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes)?;
     }
 
     let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
@@ -899,7 +1226,8 @@ fn apply_patch_to_range(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let pre_errors = ast_check_str(&new_text, ext);
     if !pre_errors.is_empty() {
-        let summary: Vec<String> = pre_errors.iter()
+        let summary: Vec<String> = pre_errors
+            .iter()
             .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
             .collect();
         return Err(anyhow!(
@@ -920,8 +1248,17 @@ mod tests {
 
     fn write_file(dir: &TempDir, rel: &str, content: &str) {
         let p = dir.path().join(rel);
-        if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).unwrap(); }
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         std::fs::write(p, content).unwrap();
+    }
+
+    fn command_available(cmd: &str, version_arg: &str) -> bool {
+        std::process::Command::new(cmd)
+            .arg(version_arg)
+            .output()
+            .is_ok()
     }
 
     // ── adversarial / puncture tests ─────────────────────────────────────────
@@ -948,17 +1285,24 @@ mod tests {
         // Verify the test precondition: result bytes are invalid UTF-8.
         let mut check = content.as_bytes().to_vec();
         check.splice(3..4, b"x".iter().copied());
-        assert!(std::str::from_utf8(&check).is_err(), "precondition: result must be invalid UTF-8");
+        assert!(
+            std::str::from_utf8(&check).is_err(),
+            "precondition: result must be invalid UTF-8"
+        );
 
-        let err = multi_patch(
-            Some(dir.path().to_string_lossy().into_owned()),
-            edits,
-        ).unwrap_err();
+        let err = multi_patch(Some(dir.path().to_string_lossy().into_owned()), edits).unwrap_err();
 
-        assert!(err.to_string().contains("invalid UTF-8") || err.to_string().contains("multi_patch rejected"),
-            "expected UTF-8 rejection, got: {}", err);
-        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), content,
-            "file must be untouched on rejection");
+        assert!(
+            err.to_string().contains("invalid UTF-8")
+                || err.to_string().contains("multi_patch rejected"),
+            "expected UTF-8 rejection, got: {}",
+            err
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(),
+            content,
+            "file must be untouched on rejection"
+        );
     }
 
     #[test]
@@ -983,7 +1327,12 @@ mod tests {
             "}\n",
         );
         let errors = ast_check_str(valid_zig, "zig");
-        assert!(errors.is_empty(), "valid zig should have no errors, got {} error(s): {:?}", errors.len(), errors);
+        assert!(
+            errors.is_empty(),
+            "valid zig should have no errors, got {} error(s): {:?}",
+            errors.len(),
+            errors
+        );
     }
 
     #[test]
@@ -998,14 +1347,18 @@ mod tests {
             byte_end: 11,
             new_content: "{{{".to_string(), // break the body
         }];
-        let err = multi_patch(
-            Some(dir.path().to_string_lossy().into_owned()),
-            edits,
-        ).unwrap_err();
+        let err = multi_patch(Some(dir.path().to_string_lossy().into_owned()), edits).unwrap_err();
 
-        assert!(err.to_string().contains("multi_patch rejected"), "got: {}", err);
+        assert!(
+            err.to_string().contains("multi_patch rejected"),
+            "got: {}",
+            err
+        );
         // File must be untouched.
-        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), "fn foo() {}\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(),
+            "fn foo() {}\n"
+        );
     }
 
     #[test]
@@ -1020,18 +1373,182 @@ mod tests {
             byte_end: 6,
             new_content: "bar".to_string(),
         }];
-        multi_patch(
-            Some(dir.path().to_string_lossy().into_owned()),
-            edits,
-        ).unwrap();
+        multi_patch(Some(dir.path().to_string_lossy().into_owned()), edits).unwrap();
 
-        assert_eq!(std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(), "fn bar() {}\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(),
+            "fn bar() {}\n"
+        );
+    }
+
+    #[test]
+    fn multi_patch_rejects_python_top_level_return() {
+        let dir = TempDir::new().unwrap();
+        let original = "x = 1\n";
+        write_file(&dir, "main.py", original);
+
+        let err = multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            vec![PatchEdit {
+                file: "main.py".to_string(),
+                byte_start: 0,
+                byte_end: 5,
+                new_content: "return 1".to_string(),
+            }],
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("python")
+                || err.to_string().contains("outside function"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(dir.path().join("main.py")).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_python_top_level_return() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        write_file(&dir, "main.py", "x = 1\n");
+
+        let err = write_with_compiler_guard(&root, &full_path, "main.py", "return 1\n", "py")
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("python")
+                || err.to_string().contains("outside function"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), "x = 1\n");
+    }
+
+    #[test]
+    fn write_bytes_with_compiler_guard_rejects_bash_syntax_error() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.sh");
+        let original = "#!/usr/bin/env bash\nif true; then\n  echo ok\nfi\n";
+        write_file(&dir, "main.sh", original);
+
+        let err = write_bytes_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.sh",
+            b"#!/usr/bin/env bash\nif true; then\n  echo ok\n",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("bash")
+                || err.to_string().contains("syntax"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_javascript_syntax_error() {
+        if !command_available("node", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.js");
+        let original = "const answer = 1;\n";
+        write_file(&dir, "main.js", original);
+
+        let err = write_with_compiler_guard(&root, &full_path, "main.js", "const = 1;\n", "js")
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("node")
+                || err.to_string().contains("SyntaxError"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_ruby_syntax_error() {
+        if !command_available("ruby", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.rb");
+        let original = "def greet\n  puts \"hi\"\nend\n";
+        write_file(&dir, "main.rb", original);
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.rb",
+            "def greet(\n  puts \"hi\"\nend\n",
+            "rb",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("ruby")
+                || err.to_string().contains("syntax"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_php_syntax_error() {
+        if !command_available("php", "-v") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.php");
+        let original = "<?php\nfunction greet() {\n    echo \"hi\";\n}\n";
+        write_file(&dir, "main.php", original);
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.php",
+            "<?php\nfunction greet( {\n    echo \"hi\";\n}\n",
+            "php",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("php")
+                || err.to_string().contains("Parse error"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
     }
 
     #[test]
     fn change_edit_by_symbol_wraps_patch_payload() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.rs", "fn greet() {\n    println!(\"hi\");\n}\n");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn greet() {\n    println!(\"hi\");\n}\n",
+        );
         crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
 
         let out = change(
@@ -1066,13 +1583,20 @@ mod tests {
             "Use inspect(file=...) or inspect(file,start_line,end_line) to verify the written code."
         );
         assert_eq!(v["file"], "src/lib.rs");
-        assert_eq!(v["patched_source"], "fn greet() {\n    println!(\"bye\");\n}");
+        assert_eq!(
+            v["patched_source"],
+            "fn greet() {\n    println!(\"bye\");\n}"
+        );
     }
 
     #[test]
     fn change_rename_wraps_graph_payload() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.rs", "pub fn greet() {}\nfn call() { greet(); }\n");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "pub fn greet() {}\nfn call() { greet(); }\n",
+        );
         crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
 
         let out = change(
@@ -1108,7 +1632,9 @@ mod tests {
         );
         assert_eq!(v["old_name"], "greet");
         assert_eq!(v["new_name"], "salute");
-        assert!(std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap().contains("salute"));
+        assert!(std::fs::read_to_string(dir.path().join("src/lib.rs"))
+            .unwrap()
+            .contains("salute"));
     }
 
     #[test]
@@ -1199,14 +1725,22 @@ mod tests {
         assert_eq!(v["action"], "move");
         assert_eq!(v["from_file"], "src/from.rs");
         assert_eq!(v["to_file"], "src/to.rs");
-        assert!(!std::fs::read_to_string(dir.path().join("src/from.rs")).unwrap().contains("greet"));
-        assert!(std::fs::read_to_string(dir.path().join("src/to.rs")).unwrap().contains("greet"));
+        assert!(!std::fs::read_to_string(dir.path().join("src/from.rs"))
+            .unwrap()
+            .contains("greet"));
+        assert!(std::fs::read_to_string(dir.path().join("src/to.rs"))
+            .unwrap()
+            .contains("greet"));
     }
 
     #[test]
     fn change_delete_wraps_graph_delete_payload() {
         let dir = TempDir::new().unwrap();
-        write_file(&dir, "src/lib.rs", "fn target() {}\nfn caller() { target(); }\n");
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "fn target() {}\nfn caller() { target(); }\n",
+        );
         crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
 
         let out = change(
@@ -1237,7 +1771,9 @@ mod tests {
         assert_eq!(v["tool"], "change");
         assert_eq!(v["action"], "delete");
         assert_eq!(v["name"], "target");
-        assert!(!std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap().contains("fn target"));
+        assert!(!std::fs::read_to_string(dir.path().join("src/lib.rs"))
+            .unwrap()
+            .contains("fn target"));
     }
 
     #[test]
@@ -1264,7 +1800,10 @@ mod tests {
             None,
             None,
             Some("rust".into()),
-            Some(vec![crate::engine::Param { name: "value".into(), type_str: "i32".into() }]),
+            Some(vec![crate::engine::Param {
+                name: "value".into(),
+                type_str: "i32".into(),
+            }]),
             Some("i32".into()),
             None,
         )
@@ -1300,7 +1839,10 @@ mod tests {
             Some("fn".into()),
             None,
             Some("rust".into()),
-            Some(vec![crate::engine::Param { name: "value".into(), type_str: "i32".into() }]),
+            Some(vec![crate::engine::Param {
+                name: "value".into(),
+                type_str: "i32".into(),
+            }]),
             Some("i32".into()),
             Some("Greeter".into()),
         )
