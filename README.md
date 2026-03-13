@@ -14,6 +14,8 @@ The core product is not generic search. It is a smaller and more reliable interf
 - `inspect` for cheap structured reads like signatures, type surfaces, file structure, and exact excerpts
 - `change` for error-bounded writes through one task-shaped surface
 
+Essay: [Why Recursive Language Models point in the same direction as yoyo](./docs/rlm-and-yoyo.html)
+
 ## Current status
 
 Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used `yoyo` for `22/22` tool calls.

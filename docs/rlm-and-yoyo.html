@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Why Recursive Language Models point in the same direction as yoyo</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --paper: #fbf8f2;
+      --ink: #171512;
+      --muted: #5f5a53;
+      --line: #d8d1c6;
+      --accent: #2f5e4e;
+      --warm: #8b4b2f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.68;
+    }
+
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(23, 21, 18, 0.22);
+    }
+
+    a:hover {
+      border-bottom-color: rgba(23, 21, 18, 0.55);
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    .page {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 24px 24px 80px;
+    }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 20px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .brand span {
+      color: var(--warm);
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 0.94rem;
+      color: var(--muted);
+    }
+
+    header {
+      padding: 54px 0 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin-bottom: 14px;
+      color: var(--warm);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2 {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(2.5rem, 6vw, 4.2rem);
+      line-height: 0.98;
+    }
+
+    .deck {
+      max-width: 42rem;
+      color: var(--muted);
+      font-size: 1.08rem;
+      margin: 0 0 12px;
+    }
+
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    main {
+      padding-top: 26px;
+    }
+
+    section {
+      padding: 26px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    section:last-of-type {
+      border-bottom: 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.85rem;
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0 0 14px;
+      font-size: 1rem;
+    }
+
+    .note {
+      padding: 18px 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      margin: 18px 0;
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.96rem;
+    }
+
+    ul {
+      margin: 0 0 14px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 8px;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    @media (max-width: 720px) {
+      .nav {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .page {
+        padding: 18px 18px 64px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <div class="brand">yo<span>yo</span></div>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="README.md">Docs</a>
+        <a href="https://github.com/avirajkhare00/yoyo">GitHub</a>
+      </div>
+    </nav>
+
+    <header>
+      <div class="eyebrow">Essay</div>
+      <h1>Why Recursive Language Models point in the same direction as yoyo</h1>
+      <p class="deck">
+        The strongest idea in the RLM paper is not “give the model more tokens.” It is “stop treating the prompt as the place where all work must happen.” That is also the right direction for <code>yoyo</code>.
+      </p>
+      <p class="meta">
+        Based on <em>Recursive Language Models</em> by Omar Khattab, Tim Kraska, and Alex L. Zhang.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>The paper’s real move</h2>
+        <p>
+          The paper argues that very long inputs should be treated as part of an external environment instead of being stuffed directly into the model context. Their Recursive Language Model loads the input into a Python REPL, lets the model inspect pieces of it with code, and lets it recursively call itself on smaller subproblems.
+        </p>
+        <p>
+          That is the important shift. The gain is not just “more context.” The gain is moving from prompt stuffing to environment interaction.
+        </p>
+      </section>
+
+      <section>
+        <h2>What the REPL part actually means</h2>
+        <p>
+          A REPL is just an interactive programming session. In the paper, the full prompt becomes a variable in that session. The model can ask for slices, search with code, decompose the input, and recurse on smaller chunks instead of trying to hold the whole thing in token memory at once.
+        </p>
+        <div class="note">
+          <strong>Why that matters</strong>
+          The prompt stops being “all the text the model must read now” and becomes “data in an environment the model can inspect when needed.”
+        </div>
+      </section>
+
+      <section>
+        <h2>Why this matches yoyo</h2>
+        <p>
+          <code>yoyo</code> is not building a Python REPL for source code, but it is pushing toward the same abstraction. A repository should be treated as an external environment with grounded interfaces, not as a giant prompt.
+        </p>
+        <p>
+          That is what <code>boot</code>, <code>index</code>, <code>judge_change</code>, <code>inspect</code>, and <code>change</code> are trying to do. They make the repo queryable in smaller, more reliable pieces. The model should not need to drag full files or entire subsystems into context just to answer one ownership or invariant question.
+        </p>
+      </section>
+
+      <section>
+        <h2>Why search is not the moat</h2>
+        <p>
+          The paper makes one thing clearer: the moat is not raw retrieval. If all you have is better grep, the model still has to do the real work in its own prompt state. That is fragile and easy to replace.
+        </p>
+        <p>
+          The deeper value is giving the model a grounded way to ask higher-level questions about the codebase:
+        </p>
+        <ul>
+          <li>Where should this fix live?</li>
+          <li>What must remain true?</li>
+          <li>What else touches this?</li>
+          <li>What is the minimal safe write surface?</li>
+        </ul>
+        <p>
+          That is why <code>judge_change</code> matters more than trying to win a search benchmark.
+        </p>
+      </section>
+
+      <section>
+        <h2>Read first, then write</h2>
+        <p>
+          The paper’s results are strongest on tasks where the model must manage dense, multi-hop information without collapsing into lossy summaries. That maps directly to the most honest product statement for <code>yoyo</code>:
+        </p>
+        <div class="note">
+          <strong>Current product takeaway</strong>
+          <code>yoyo</code> is strongest when read judgment narrows the surface first, then <code>change</code> executes the write cleanly.
+        </div>
+        <p>
+          That is also what our recent directed evals are showing. The read side matters because the write should happen only after the correct ownership layer and invariants are grounded.
+        </p>
+      </section>
+
+      <section>
+        <h2>Where yoyo should differ from an RLM</h2>
+        <p>
+          The paper uses a very flexible REPL. For general long-context reasoning, that makes sense. For software engineering, a more structured surface is often better.
+        </p>
+        <p>
+          A coding system needs:
+        </p>
+        <ul>
+          <li>less hallucination, not just more freedom</li>
+          <li>safe writes, not arbitrary code execution</li>
+          <li>repeatable interfaces over repository truth</li>
+          <li>clear boundaries between read judgment and write execution</li>
+        </ul>
+        <p>
+          So the lesson is not “turn <code>yoyo</code> into a Python REPL.” The lesson is “keep moving toward repo-as-environment, but keep the interface opinionated and safe.”
+        </p>
+      </section>
+
+      <section>
+        <h2>What this suggests for yoyo next</h2>
+        <p>
+          If the paper is directionally right for <code>yoyo</code>, then the next work should keep compressing repo understanding into grounded read surfaces.
+        </p>
+        <ul>
+          <li>Make ownership and invariant judgment cheaper and more reliable.</li>
+          <li>Keep strengthening cheap structured reads over dumping source text.</li>
+          <li>Treat writes as the second step, not the first instinct.</li>
+          <li>Avoid competing on generic search when the real value is judgment plus constrained execution.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Bottom line</h2>
+        <p>
+          The RLM paper is a strong validation of the direction <code>yoyo</code> is already moving toward. The future is not a bigger prompt. The future is a smaller, more truthful interface to an external environment.
+        </p>
+        <p>
+          For long documents, that environment might be a REPL over text. For codebases, it should be grounded repository tools. That is why the paper feels aligned with <code>yoyo</code>: both are trying to move work out of token memory and into structured interaction with what is actually there.
+        </p>
+      </section>
+
+      <div class="footer">
+        <a href="index.html">Back to yoyo</a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

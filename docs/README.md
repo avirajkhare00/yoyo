@@ -2,6 +2,8 @@
 
 yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST, not model memory. The product goal is more truthful, more grounded codebase answers with less hallucination. No API keys, no SaaS, no telemetry.
 
+Essay: [Why Recursive Language Models point in the same direction as yoyo](./rlm-and-yoyo.html)
+
 **Current eval status:** still being redesigned.
 Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used `yoyo` for `22/22` tool calls.
 That run asked three explicit engineer questions: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks without making edits.
