@@ -3,758 +3,424 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>yoyo – Grounded codebase answers for AI coding agents</title>
+  <title>yoyo - Grounded codebase answers for AI coding agents</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --border: #30363d;
-      --accent: #58a6ff;
-      --accent2: #3fb950;
-      --warn: #d29922;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --code-bg: #1f2937;
-      --radius: 8px;
+      --bg: #f4f1ea;
+      --paper: #fbf8f2;
+      --ink: #171512;
+      --muted: #5f5a53;
+      --line: #d8d1c6;
+      --accent: #2f5e4e;
+      --accent-soft: #e7efe9;
+      --warm: #8b4b2f;
+      --code: #1d1a17;
+    }
+
+    * {
+      box-sizing: border-box;
     }
 
     body {
+      margin: 0;
       background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      font-size: 16px;
-      line-height: 1.6;
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.62;
     }
 
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    .container { max-width: 900px; margin: 0 auto; padding: 0 24px; }
-
-    nav {
-      border-bottom: 1px solid var(--border);
-      padding: 14px 0;
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(23, 21, 18, 0.22);
     }
-    nav .inner {
-      max-width: 900px;
+
+    a:hover {
+      border-bottom-color: rgba(23, 21, 18, 0.55);
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    .page {
+      max-width: 780px;
       margin: 0 auto;
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 24px 24px 80px;
     }
-    .logo { font-weight: 700; font-size: 1.1rem; letter-spacing: -0.5px; color: var(--text); }
-    .logo span { color: var(--accent); }
-    nav ul { list-style: none; display: flex; gap: 24px; }
-    nav ul a { color: var(--muted); font-size: 0.9rem; }
-    nav ul a:hover { color: var(--text); text-decoration: none; }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 20px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .brand span {
+      color: var(--warm);
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 0.94rem;
+      color: var(--muted);
+    }
 
     .hero {
-      padding: 80px 0 60px;
-      text-align: center;
+      padding: 54px 0 40px;
     }
-    h1 {
-      font-size: clamp(2rem, 5vw, 3.2rem);
-      font-weight: 800;
-      line-height: 1.15;
-      letter-spacing: -1px;
-      margin-bottom: 20px;
+
+    .eyebrow {
+      margin-bottom: 14px;
+      color: var(--warm);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }
-    h1 em { color: var(--accent); font-style: normal; }
-    .subtitle {
-      font-size: 1.15rem;
-      color: var(--muted);
-      max-width: 580px;
-      margin: 0 auto 36px;
-      line-height: 1.65;
-    }
-    .cta-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 22px;
-      border-radius: var(--radius);
-      font-size: 0.95rem;
+
+    h1,
+    h2 {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
       font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      transition: opacity 0.15s;
+      letter-spacing: -0.03em;
     }
-    .btn:hover { opacity: 0.85; text-decoration: none; }
-    .btn-primary { background: var(--accent); color: #0d1117; }
-    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
 
-    .stat-bar {
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      padding: 28px 0;
+    h1 {
+      margin: 0 0 18px;
+      font-size: clamp(2.8rem, 6vw, 4.6rem);
+      line-height: 0.96;
     }
-    .stat-bar .inner {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 0 24px;
+
+    .lead {
+      max-width: 42rem;
+      color: var(--muted);
+      font-size: 1.08rem;
+      margin: 0 0 14px;
+    }
+
+    .hero-links {
       display: flex;
-      justify-content: space-around;
       flex-wrap: wrap;
-      gap: 24px;
+      gap: 18px;
+      margin-top: 26px;
+      font-size: 0.95rem;
     }
-    .stat { text-align: center; }
-    .stat-num { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; }
-    .stat-label { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
 
-    section { padding: 64px 0; }
-    h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.4px; }
-    .section-sub { color: var(--muted); margin-bottom: 36px; font-size: 0.97rem; }
+    .hero-links a.primary {
+      color: var(--accent);
+      border-bottom-color: rgba(47, 94, 78, 0.28);
+    }
 
-    .two-col {
+    .facts {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 40px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin: 38px 0 0;
+      padding: 22px 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .fact {
+      min-width: 0;
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+
+    .fact span {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    section {
+      padding: 34px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 2rem;
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0 0 14px;
+      font-size: 1rem;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 28px;
       align-items: start;
     }
-    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
 
-    .problem-list, .benefit-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+    .note {
+      padding: 18px 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
     }
-    .problem-list li, .benefit-list li {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px 18px;
-      font-size: 0.92rem;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-    .problem-list li strong, .benefit-list li strong {
+
+    .note strong {
       display: block;
-      color: var(--text);
+      margin-bottom: 8px;
+      font-size: 0.96rem;
+    }
+
+    .steps {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .step {
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .step:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .step strong {
+      display: block;
       margin-bottom: 4px;
+      font-size: 0.98rem;
+    }
+
+    .tool-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+      color: var(--muted);
       font-size: 0.95rem;
     }
-    .benefit-list li { border-color: rgba(63,185,80,0.3); }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 16px;
+    .tool-line code {
+      color: var(--ink);
+      background: var(--paper);
+      padding: 2px 7px;
+      border: 1px solid var(--line);
     }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 24px;
-    }
-    .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
-    .card p { font-size: 0.88rem; color: var(--muted); line-height: 1.55; }
 
-    pre, code {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    .status {
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+      padding: 18px 20px;
+      margin-top: 16px;
     }
+
+    .status p:last-child,
+    .note p:last-child {
+      margin-bottom: 0;
+    }
+
     pre {
-      background: var(--code-bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
+      margin: 18px 0 0;
       padding: 18px 20px;
       overflow-x: auto;
-      font-size: 0.88rem;
-      line-height: 1.6;
-      margin-bottom: 12px;
-    }
-    code { font-size: 0.88em; }
-    .comment { color: var(--muted); }
-    .cmd { color: var(--accent2); }
-    .kw  { color: var(--accent); }
-
-    .mcp-block {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px;
-      display: flex;
-      gap: 32px;
-      flex-wrap: wrap;
-      align-items: flex-start;
-    }
-    .mcp-text { flex: 1; min-width: 200px; }
-    .mcp-text h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
-    .mcp-text p { font-size: 0.9rem; color: var(--muted); margin-bottom: 14px; }
-    .mcp-code { flex: 2; min-width: 280px; }
-
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-    td { padding: 9px 12px; border-bottom: 1px solid rgba(48,54,61,0.5); vertical-align: top; }
-    tr:last-child td { border-bottom: none; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
-    .pill-green { background: rgba(63,185,80,0.15); color: var(--accent2); }
-    .pill-yellow { background: rgba(210,153,34,0.15); color: var(--warn); }
-
-    .section-divider {
-      border: none;
-      border-top: 1px solid var(--border);
-    }
-
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 28px 0;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-
-    @media (max-width: 600px) {
-      .hero { padding: 48px 0 40px; }
-      h1 { font-size: 1.9rem; }
-    }
-
-    /* Blog */
-    .blog-post {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 36px 40px;
-      max-width: 720px;
-    }
-    .blog-meta {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-bottom: 20px;
-      letter-spacing: 0.03em;
-    }
-    .blog-post h3 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-      margin-bottom: 6px;
-    }
-    .blog-post p {
+      background: var(--code);
+      color: #f7f2ea;
       font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+      padding-top: 22px;
       color: var(--muted);
-      margin-bottom: 16px;
-      line-height: 1.7;
+      font-size: 0.92rem;
+      border-top: 1px solid var(--line);
     }
-    .blog-post p:last-child { margin-bottom: 0; }
-    .blog-post code {
-      background: var(--code-bg);
-      padding: 1px 5px;
-      border-radius: 4px;
-      font-size: 0.85em;
-      color: var(--text);
-    }
-    .blog-post pre {
-      margin: 20px 0;
+
+    @media (max-width: 760px) {
+      .facts,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 2.9rem;
+      }
     }
   </style>
 </head>
 <body>
-
-<nav>
-  <div class="inner">
-    <span class="logo">yo<span>yo</span></span>
-    <ul>
-      <li><a href="#how">How it works</a></li>
-      <li><a href="#claude">How agents work</a></li>
-      <li><a href="#tools">Tools</a></li>
-      <li><a href="#install">Install</a></li>
-      <li><a href="#blog">Blog</a></li>
-      <li><a href="https://github.com/avirajkhare00/yoyo">GitHub</a></li>
-    </ul>
-  </div>
-</nav>
-
-<section class="hero">
-  <div class="container">
-    <h1>Your AI reads your<br><em>actual code.</em></h1>
-    <p class="subtitle">
-      yoyo parses your codebase into a grounded index and gives Claude, Codex, Cursor, Gemini, or OpenCode a curated MCP surface to read and change it.
-      Less hallucination. More truthful answers from the code that actually exists.
-    </p>
-    <div class="cta-group">
-      <a class="btn btn-primary" href="#install">Install</a>
-      <a class="btn btn-ghost" href="https://github.com/avirajkhare00/yoyo">View on GitHub</a>
-    </div>
-  </div>
-</section>
-
-<div class="stat-bar">
-  <div class="inner">
-    <div class="stat">
-      <div class="stat-num">13</div>
-      <div class="stat-label">task-shaped MCP tools</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">4</div>
-      <div class="stat-label">primary languages: Rust, Go, Zig, TypeScript</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">Rust + Go</div>
-      <div class="stat-label">indexed structured signatures in inspect</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">6/6 ties</div>
-      <div class="stat-label">current compare smoke runs across v1.8.5 and v1.7.3</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">0</div>
-      <div class="stat-label">API keys, SaaS, or telemetry</div>
-    </div>
-  </div>
-</div>
-
-<section id="how">
-  <div class="container">
-    <h2>The problem it solves</h2>
-    <p class="section-sub">Without a tool to read your code, AI assistants guess. yoyo stops the guessing.</p>
-    <div class="two-col">
-      <div>
-        <p style="font-size:0.82rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px;">Without yoyo</p>
-        <ul class="problem-list">
-          <li><strong>Wrong file paths</strong>AI assistants invent plausible-sounding paths that don't exist in your project.</li>
-          <li><strong>Stale function names</strong>Answers come from training data, not your current code on disk.</li>
-          <li><strong>Guessed ownership</strong>It knows something is wrong, but not where the fix should actually live.</li>
-          <li><strong>Context bloat</strong>To answer a small API-shape question, it drags full file bodies into context.</li>
-          <li><strong>Missed call chains</strong>Without structural analysis, the AI can't tell you what breaks when you rename a function.</li>
-        </ul>
+  <main class="page">
+    <nav class="nav">
+      <div class="brand">yo<span>yo</span></div>
+      <div class="nav-links">
+        <a href="README.md">Docs</a>
+        <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/README.md">Evals</a>
+        <a href="https://github.com/avirajkhare00/yoyo/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/avirajkhare00/yoyo">GitHub</a>
       </div>
-      <div>
-        <p style="font-size:0.82rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px;">With yoyo</p>
-        <ul class="benefit-list">
-          <li><strong>Exact file paths and line numbers</strong>Every answer comes from the AST. File, line, and byte offset are exact.</li>
-          <li><strong>Current function names</strong>yoyo reads your files on disk. The index is always in sync after every edit.</li>
-          <li><strong>Explicit ownership and invariants</strong><code>judge_change</code> answers where the fix belongs and what must stay true before any edit.</li>
-          <li><strong>Cheap structured reads</strong><code>inspect</code> can return signatures, type surfaces, and file structure without pulling full bodies.</li>
-          <li><strong>Structural impact in one step</strong><code>impact</code> shows who calls this, what breaks, and how a request path lands.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
+    </nav>
 
-<hr class="section-divider">
-
-<section>
-  <div class="container">
-    <h2>What it does</h2>
-      <p class="section-sub">yoyo runs one command to parse your project, stores a grounded SQLite index, then serves the results over MCP.</p>
-    <div class="grid">
-
-      <div class="card">
-        <h3>Builds a grounded SQLite index</h3>
-        <p>Parses your code into <code>bakes/latest/bake.db</code> with functions, types, routes, call edges, and signature facts. The read path comes from indexed structure, not model memory.</p>
-      </div>
-
-      <div class="card">
-        <h3>Gives agents exact read surfaces</h3>
-        <p><code>inspect</code> returns the exact symbol, signature-only API shape, type surface, file outline, or line range you need. <code>search</code> finds call sites and identifiers across hundreds of files. No guessing.</p>
-      </div>
-
-      <div class="card">
-        <h3>Judges where the fix belongs</h3>
-        <p><code>judge_change</code> surfaces the likely ownership layer, candidate symbols/files, invariants, regression risks, and verification commands before an edit happens.</p>
-      </div>
-
-      <div class="card">
-        <h3>Traces call chains</h3>
-        <p><code>impact</code> finds everything that touches a symbol or traces an endpoint into its downstream call chain (Rust + Go today for deep endpoint chains).</p>
-      </div>
-
-      <div class="card">
-        <h3>Vertical slice in one call</h3>
-        <p><code>impact(endpoint=...)</code> resolves an HTTP endpoint to its handler, then traces the call chain to db/http/queue boundaries — replacing several sequential tool calls with one. Handler source optional.</p>
-      </div>
-
-      <div class="card">
-        <h3>Edits code safely</h3>
-        <p><code>change</code> routes edits, renames, moves, deletes, creates, and adds through one task-shaped write verb. Reindexes automatically so the next read is always fresh.</p>
-      </div>
-
-      <div class="card">
-        <h3>Audits dead code</h3>
-        <p><code>health</code> reports functions that are never called, functions with high complexity and high fan-out, and functions with duplicate names across files. Public API is excluded — only genuinely unreachable code is flagged.</p>
-      </div>
-
-      <div class="card">
-        <h3>Semantic search — no API key</h3>
-        <p><code>ask</code> finds functions by intent: "semaphore acquisition", "spawn blocking task", "async runtime builder". Powered by local ONNX embeddings (fastembed AllMiniLML6V2). No network, no key.</p>
-      </div>
-
-      <div class="card">
-        <h3>Runs entirely on your machine</h3>
-        <p>Single binary. No network requests, no API keys, no telemetry. The index is a local SQLite database in your project root.</p>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="claude">
-  <div class="container">
-    <h2>How agents work with yoyo</h2>
-    <p class="section-sub">Claude, Codex, Cursor, and Gemini can treat yoyo as their grounded interface to the codebase. You don't manage the tool calls manually.</p>
-    <div class="grid">
-      <div class="card">
-        <h3>1. Bootstrap</h3>
-        <p>The agent calls <code>boot</code> and <code>index</code> on first contact — lean catalog, task routing, and concurrency rules up front. Calls deeper guidance only on demand.</p>
-      </div>
-      <div class="card">
-        <h3>2. Read</h3>
-        <p><code>inspect</code>, <code>search</code>, and <code>ask</code> replace grep and ad hoc file reads. Structured data from the index, including cheap signature/type reads, not line matches from raw source.</p>
-      </div>
-      <div class="card">
-        <h3>3. Judge</h3>
-        <p><code>judge_change</code> answers the high-level pre-edit question: where should this fix live, what must stay true, and what is the likely blast radius?</p>
-      </div>
-      <div class="card">
-        <h3>4. Understand</h3>
-        <p><code>impact</code>, <code>routes</code>, and <code>health</code> answer structural questions no text tool can: who calls this? what does this touch? is this dead?</p>
-      </div>
-      <div class="card">
-        <h3>5. Write</h3>
-        <p><code>change</code> mutates code and auto-reindexes. One write verb, many actions. No direct file edits when a yoyo write path applies.</p>
-      </div>
-    </div>
-    <p style="margin-top:24px; font-size:0.9rem; color:var(--muted);">Result: agents answer from facts, not memory. Fewer hallucinated file paths. More grounded ownership and API-shape reads.</p>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="tools">
-  <div class="container">
-    <h2>Tools</h2>
-    <p class="section-sub">Every tool is callable over MCP. The agent picks the right ones — you don't manage this manually.</p>
-    <table>
-      <thead>
-        <tr><th>Tool</th><th>Status</th><th>What it returns</th></tr>
-      </thead>
-      <tbody>
-        <tr><td><code>boot</code></td><td><span class="pill pill-green">Stable</span></td><td>Lean bootstrap: task-shaped capability families, common-task routing, and concurrency rules.</td></tr>
-        <tr><td><code>index</code></td><td><span class="pill pill-green">Stable</span></td><td>Parses the project and writes the index. Run this first.</td></tr>
-        <tr><td><code>help</code></td><td><span class="pill pill-green">Stable</span></td><td>On-demand tool and task guidance: params, output shape, examples, and limitations.</td></tr>
-        <tr><td><code>inspect</code></td><td><span class="pill pill-green">Stable</span></td><td>One read surface for symbol lookup, signature-only API reads, type surfaces, file outlines, and exact line ranges.</td></tr>
-        <tr><td><code>search</code></td><td><span class="pill pill-green">Stable</span></td><td>AST-aware search. Finds call sites, assignments, and identifiers across all files.</td></tr>
-        <tr><td><code>ask</code></td><td><span class="pill pill-green">Stable</span></td><td>Find functions by intent using local ONNX embeddings. No API key required.</td></tr>
-        <tr><td><code>judge_change</code></td><td><span class="pill pill-green">Stable</span></td><td>High-level grounded read surface for ownership, candidate files/symbols, invariants, regression risks, and verification commands.</td></tr>
-        <tr><td><code>map</code></td><td><span class="pill pill-green">Stable</span></td><td>Directory tree with inferred roles such as routes, services, and models.</td></tr>
-        <tr><td><code>routes</code></td><td><span class="pill pill-yellow">Major frameworks</span></td><td>All detected HTTP routes (Express, Actix, Flask, FastAPI, gin, echo, net/http).</td></tr>
-        <tr><td><code>impact</code></td><td><span class="pill pill-green">Stable</span></td><td>Task-shaped impact analysis for a symbol or endpoint. Wraps caller and route-chain analysis.</td></tr>
-        <tr><td><code>health</code></td><td><span class="pill pill-green">Stable</span></td><td>Dead code, high-complexity large functions, and duplicate function name hints.</td></tr>
-        <tr><td><code>change</code></td><td><span class="pill pill-green">Stable</span></td><td>Task-shaped write verb for edit, bulk_edit, rename, move, delete, create, and add.</td></tr>
-        <tr><td><code>script</code></td><td><span class="pill pill-green">Stable</span></td><td>Execute a Rhai script over the same task-shaped yoyo functions exposed in MCP.</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="philosophy">
-  <div class="container">
-    <h2>🪀 Philosophy</h2>
-    <p class="section-sub">One tool is fine. Combinations are deadly.</p>
-    <p>In yoyo tournaments, a yoyo is just a spinning disk on a string. The magic is in the combinations — string wraps, body movements, timing layered together. A single trick is fine. Fifty moves chained in sequence is something else entirely.</p>
-    <p>yoyo works the same way. Each tool does one thing cleanly. The power is in how your agent orchestrates them:</p>
-    <table class="tools-table" style="margin-top:24px;">
-      <thead><tr><th>Combination</th><th>What it does</th></tr></thead>
-      <tbody>
-        <tr><td><code>search</code> → <code>inspect</code> → <code>change</code></td><td>Find it, read it, change it ⚡</td></tr>
-        <tr><td><code>impact</code> → <code>health</code> → <code>change</code></td><td>Who calls this? Is it dead? Remove it safely.</td></tr>
-        <tr><td><code>impact</code> → <code>change</code></td><td>Trace the full request path, fix it end-to-end in one shot.</td></tr>
-        <tr><td><code>index</code> → <code>ask</code> → <code>map</code></td><td>Where does this new function belong?</td></tr>
-        <tr><td><code>map</code> → <code>routes</code> → <code>change</code></td><td>Understand the shape, find the gap, fill it.</td></tr>
-      </tbody>
-    </table>
-    <p style="margin-top:24px;">No single tool is the point. The orchestration is.</p>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="install">
-  <div class="container">
-    <h2>Installation</h2>
-    <p class="section-sub">One binary, no runtime dependencies.</p>
-
-    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:12px;">macOS — Apple Silicon</p>
-
-    <pre><span class="cmd">brew tap</span> avirajkhare00/yoyo
-<span class="cmd">brew install</span> yoyo</pre>
-
-    <p style="margin-top:8px; font-size:0.92rem; color:var(--muted);">Homebrew handles signing and PATH automatically. No <code>codesign</code>, no <code>sudo mv</code>.</p>
-
-    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Linux (x86_64)</p>
-
-    <pre><span class="cmd">curl</span> -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz \
-  | tar xz
-<span class="cmd">sudo mv</span> yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo</pre>
-
-    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Build from source</p>
-
-    <pre><span class="cmd">git</span> clone https://github.com/avirajkhare00/yoyo.git
-<span class="cmd">cd</span> yoyo && <span class="cmd">cargo build</span> --release
-<span class="cmd">sudo cp</span> target/release/yoyo /usr/local/bin/yoyo</pre>
-
-    <p style="font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:28px 0 12px;">Quick start</p>
-
-    <pre><span class="comment"># index your project</span>
-<span class="cmd">yoyo bake</span> --path /path/to/your/project
-
-<span class="comment"># find a function by name</span>
-<span class="cmd">yoyo inspect</span> --path /path/to/your/project --name myFunction
-
-<span class="comment"># search across all files</span>
-<span class="cmd">yoyo search</span> --path /path/to/your/project --query myFunction</pre>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="mcp">
-  <div class="container">
-    <h2>Connect yoyo to your agent</h2>
-    <p class="section-sub">Add yoyo as an MCP server. Claude, Codex, Cursor, Gemini, or OpenCode can then call the tools automatically.</p>
-    <div class="mcp-block">
-      <div class="mcp-text">
-        <h3>Claude Code</h3>
-        <p>Add to <code>~/.claude/settings.json</code>:</p>
-        <h3 style="margin-top:20px;">Cursor</h3>
-        <p>Add to your Cursor MCP settings file using the same JSON block.</p>
-        <p>Once added, restart the editor. Claude will call <code>boot</code> and <code>index</code> on first contact, then pick tools as needed.</p>
-      </div>
-      <div class="mcp-code">
-        <pre>{
-  <span class="kw">"mcpServers"</span>: {
-    <span class="kw">"yoyo"</span>: {
-      <span class="kw">"type"</span>: <span class="cmd">"stdio"</span>,
-      <span class="kw">"command"</span>: <span class="cmd">"/usr/local/bin/yoyo"</span>,
-      <span class="kw">"args"</span>: [<span class="cmd">"--mcp-server"</span>]
-    }
-  }
-}</pre>
-      </div>
-    </div>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="matrix">
-  <div class="container">
-    <h2>Language support matrix</h2>
-    <p class="section-sub">What works in each language. All 15 languages index functions and support AST-aware search.</p>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Language</th>
-          <th>Functions</th>
-          <th>Types</th>
-          <th>Endpoints</th>
-          <th>Import graph</th>
-          <th>AST search</th>
-          <th>deep chain</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td><strong>Rust</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-        <tr><td><strong>Go</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-        <tr><td><strong>Python</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>TypeScript</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>JavaScript</strong></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>C</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>C++</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>C#</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Java</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Kotlin</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>PHP</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Ruby</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Swift</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Bash</strong></td><td>✅</td><td>—</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-        <tr><td><strong>Zig</strong></td><td>✅</td><td>✅</td><td>—</td><td>—</td><td>✅</td><td>—</td></tr>
-      </tbody>
-    </table>
-
-    <p style="font-size:0.85rem; color:var(--muted); margin-top:16px;">
-      <strong>Endpoints</strong> — HTTP route detection via <code>routes</code>; deep request tracing via <code>impact(endpoint=...)</code>.<br>
-      <strong>Import graph</strong> — <code>impact(symbol=...)</code> uses caller/import expansion to widen affected files.<br>
-      <strong>Deep chain</strong> — endpoint call-chain tracing to db/http/queue boundaries (Rust + Go only).<br>
-      <strong>Compiler guard</strong> — the underlying write path used by <code>change</code> compiles after supported writes and rolls back if rejected (Rust, Go, Zig).
-    </p>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section>
-  <div class="container">
-    <h2>Eval results</h2>
-    <p class="section-sub">yoyo has a strong legacy structural benchmark, but current eval work is moving toward more realistic directed tool-use tasks.</p>
-
-    <div class="card">
-      <h3>Current eval status</h3>
-      <p>The old <code>119/120</code> tool-accuracy number still exists as a legacy regression report, but it is not the product benchmark anymore.</p>
-      <p>The current compare smoke runs are <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code> on three puncture tasks. That is useful for harness sanity checks, not for product truth.</p>
-      <p>The benchmark we actually care about now is directed tool-use on real codebase work, and that eval is still under construction. See <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/README.md">evals/README.md</a> for the current plan and <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/REPORT.md">evals/REPORT.md</a> for the legacy report.</p>
-    </div>
-  </div>
-</section>
-
-<hr class="section-divider">
-
-<section id="blog">
-  <div class="container">
-    <h2>Blog</h2>
-    <p class="section-sub">Design decisions, trade-offs, and things learned building yoyo.</p>
-
-    <div class="blog-post" style="margin-bottom: 32px;">
-      <div class="blog-meta">March 9, 2026 &bull; Release &bull; v1.3.8</div>
-      <h3>The compiler guard: <code>patch</code> now proves it compiles</h3>
-
-      <p>
-        Before v1.3.8, <code>patch</code> had a pre-write AST check. It would parse the new content
-        with tree-sitter before touching the file — catching syntax errors before they landed on disk.
-        That was good. It was not enough.
+    <header class="hero">
+      <div class="eyebrow">Grounded codebase work</div>
+      <h1>Your agent should read the code that is there, not the code it imagines.</h1>
+      <p class="lead">
+        yoyo is a local MCP server for codebase reading and change work. It exists to make coding agents
+        less hallucinated, more grounded, and more truthful when they answer questions about a real repository.
       </p>
-
-      <p>
-        Syntax is the easy case. The harder failures — wrong identifiers, mismatched signatures,
-        undefined types, moved imports — all pass the AST check and only surface when the compiler
-        runs. In a session where an AI agent patches ten functions, one type error in the middle means
-        the project no longer builds. The agent has to backtrack, find the bad patch, fix it, and
-        rebuild — often losing context along the way.
+      <p class="lead">
+        The core product is not a bag of search tricks. It is a smaller and more reliable interface to the codebase:
+        <code>judge_change</code> for ownership and invariants, <code>inspect</code> for cheap structured reads,
+        and <code>change</code> for error-bounded writes.
       </p>
+      <div class="hero-links">
+        <a class="primary" href="https://github.com/avirajkhare00/yoyo">View on GitHub</a>
+        <a href="README.md">Read the docs</a>
+        <a href="https://github.com/avirajkhare00/yoyo/blob/main/evals/README.md">See the eval plan</a>
+      </div>
 
+      <div class="facts">
+        <div class="fact">
+          <strong>13</strong>
+          <span>task-shaped MCP tools</span>
+        </div>
+        <div class="fact">
+          <strong>4</strong>
+          <span>primary languages: Rust, Go, Zig, TypeScript</span>
+        </div>
+        <div class="fact">
+          <strong>Rust + Go</strong>
+          <span>indexed structured signatures in <code>inspect</code></span>
+        </div>
+        <div class="fact">
+          <strong>0</strong>
+          <span>telemetry, SaaS, or API keys</span>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <div class="split">
+        <div>
+          <h2>Why this exists</h2>
+          <p>
+            Coding agents are strong at local editing and weak at repository truth. They guess ownership layers,
+            invent paths, over-read source files, and lose the actual invariants of the system. That is tolerable
+            for toy projects and dangerous for real ones.
+          </p>
+          <p>
+            yoyo narrows that gap. It gives the model a grounded index, a judgment surface before edits, a cheaper
+            read surface for signatures and types, and a structured write path when a direct file mutation is the wrong tool.
+          </p>
+          <div class="tool-line">
+            <span>Core tools:</span>
+            <code>boot</code>
+            <code>index</code>
+            <code>inspect</code>
+            <code>judge_change</code>
+            <code>impact</code>
+            <code>change</code>
+          </div>
+        </div>
+
+        <aside class="note">
+          <strong>Local by default</strong>
+          <p class="muted">
+            The index lives in <code>bakes/latest/bake.db</code>. It is a local SQLite database in the repository.
+            No hosted service. No hidden agent memory. No outbound API dependency.
+          </p>
+        </aside>
+      </div>
+    </section>
+
+    <section>
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <strong>1. Bootstrap and index</strong>
+          <span class="muted">Call <code>boot</code> and <code>index</code> first. yoyo returns the tool surface and builds the repository index.</span>
+        </div>
+        <div class="step">
+          <strong>2. Judge the change before making it</strong>
+          <span class="muted"><code>judge_change</code> answers where a fix should live, what must remain true, and what the likely regression risks are.</span>
+        </div>
+        <div class="step">
+          <strong>3. Read without dragging full files into context</strong>
+          <span class="muted"><code>inspect</code> can return signatures, type surfaces, file structure, or exact excerpts. Rust and Go signatures are now indexed structurally.</span>
+        </div>
+        <div class="step">
+          <strong>4. Change through one write surface</strong>
+          <span class="muted"><code>change</code> routes edits, renames, moves, creates, and deletes through a structured path and reindexes after the write.</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Current status</h2>
       <p>
-        v1.3.8 adds a compiler guard. The sequence is now: write → compile → roll back on error.
-        If the compiler rejects the change, the file is restored to its original content and
-        <code>patch</code> returns an error. A successful <code>patch</code> call is a guarantee:
-        the file compiles.
+        The old <code>119/120</code> tool-accuracy number still exists, but it is a legacy regression benchmark and it should not be the headline for the product.
+        The benchmark we care about now is directed tool-use on real codebase work.
       </p>
+      <div class="status">
+        <p>
+          The current compare smoke runs are <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code> on three puncture tasks.
+          That is useful for harness sanity checks and version-to-version comparison. It is not product truth.
+        </p>
+        <p>
+          The eval stack is being rebuilt around groundedness, less hallucination, and directed engineering work on real repositories.
+          The honest status today is: the benchmark is still under construction. But we now have one clean directed <code>read_only</code> treatment run on the ripgrep global gitignore bug.
+          Under three explicit engineer questions, <code>yoyo</code> localized the bug to <code>hiargs.rs</code>, <code>walk.rs</code>, and <code>gitignore.rs</code>, placed ownership in <code>crates/ignore</code>, and surfaced the key invariants and regression risks.
+        </p>
+        <p>
+          That run used <strong>22 yoyo MCP calls</strong>, <strong>0 shell calls</strong>, and made no edits. The three questions were: find the <code>3</code> most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius.
+          It is groundedness evidence, not yet a broad with-vs-without benchmark.
+        </p>
+      </div>
+    </section>
 
-      <pre><span class="comment">// what happens inside patch now</span>
-<span class="kw">1.</span> write new content to file
-<span class="kw">2.</span> run compiler (<span class="cmd">cargo check</span> / <span class="cmd">go build</span> / <span class="cmd">zig ast-check</span>)
-<span class="kw">3a.</span> compiler passes → reindex, return success
-<span class="kw">3b.</span> compiler fails → restore original file, return error</pre>
+    <section>
+      <h2>Install</h2>
+      <p class="muted">
+        One binary. Add it as MCP. Bake the project once.
+      </p>
+      <pre>brew tap avirajkhare00/yoyo
+brew install yoyo
 
+codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
+yoyo bake --path /path/to/project</pre>
       <p>
-        Languages covered: Rust (<code>cargo check</code>), Go (<code>go build</code>),
-        Zig (<code>zig ast-check</code>). For other languages, the AST pre-check still runs —
-        syntax errors are caught, type errors are not. Extending the guard to more languages
-        means finding a fast, zero-config compile check for each one.
+        Full setup, agent config, and tool reference live in <a href="README.md">docs/README.md</a>.
       </p>
+    </section>
 
-      <p>
-        The design principle here is the same as <code>graph_delete</code> blocking on live callers:
-        make the unsafe case structurally impossible, not just documented. An agent that patches Rust
-        code cannot leave the project in a broken state — not because of a rule, but because
-        <code>patch</code> won't let the bad write stand.
-      </p>
-    </div>
-
-    <div class="blog-post">
-      <div class="blog-meta">March 10, 2026 &bull; Design</div>
-      <h3>Why <code>script</code> replaced <code>pipeline</code></h3>
-
-      <p>
-        <code>pipeline</code> was a tool that accepted a JSON spec — an ordered list of steps, each naming a yoyo tool
-        and its arguments — and executed them sequentially. Steps could reference earlier results via
-        <code>{{step_id.field}}</code> template refs. Conditions (<code>if</code>) could skip steps when false.
-        The intent was sound: encode multi-step workflows as data rather than prose, so agents could run them
-        atomically without back-and-forth.
-      </p>
-
-      <p>
-        In practice, pipeline had a ceiling. It could sequence. It could skip. It could not loop, filter, accumulate,
-        or branch on anything more complex than a single boolean condition. The moment a workflow needed "for each
-        dead function, check its callers, then delete if zero" — pipeline couldn't express it. You needed a loop.
-        Pipeline had no loop.
-      </p>
-
-      <p>
-        The patch: add loop syntax to the spec. The counter-argument: we're now designing a programming language
-        inside JSON. Every new construct (loop, map, filter, early return) requires a new spec key, a new parser
-        branch, and a new set of edge cases. JSON is a fine data format. It is a terrible programming language substrate.
-      </p>
-
-      <p>
-        <code>script</code> takes a different approach. Instead of a JSON spec, it accepts a
-        <a href="https://rhai.rs">Rhai</a> script — a small, fast scripting language embedded directly in Rust.
-        Rhai gives you real loops, real conditionals, closures, map and filter, early returns.
-        The same task-shaped MCP tools (<code>inspect</code>, <code>search</code>, <code>ask</code>, <code>map</code>,
-        <code>routes</code>, <code>impact</code>, <code>health</code>, <code>change</code>, plus <code>boot</code>, <code>index</code>, and <code>help</code>)
-        are exposed as plain functions. The last expression in the script is the result.
-      </p>
-
-      <pre><span class="comment">// find all dead functions, return the ones with zero callers</span>
-<span class="kw">let</span> dead = health().dead_code;
-dead.filter(|f| {
-    <span class="kw">let</span> r = impact(#{symbol: f.name});
-    r.callers.len() == 0
-})</pre>
-
-      <p>
-        This replaces a multi-turn conversation. No back-and-forth: one tool call, one structured result.
-      </p>
-
-      <p>
-        Scripts no longer expose hidden mechanism tools. They compose the same task-shaped surface the model sees
-        everywhere else. That keeps MCP recall stable over long sessions instead of giving scripts a separate internal dialect.
-      </p>
-
-      <p>
-        The important distinction is not "script vs no script". It is task verbs vs mechanism leakage.
-        A script should still say <code>impact</code>, <code>inspect</code>, and <code>change</code>, because that is the product surface
-        the agent is supposed to remember.
-      </p>
-
-      <p>
-        That still leaves room for orchestration. A script can iterate over dead code candidates,
-        confirm zero callers with <code>impact</code>, and then call <code>change(#{action: "delete", ...})</code>.
-        The safety property stays structural because the underlying delete path still blocks when callers exist.
-      </p>
-
-      <p>
-        The reason pipeline was kept for as long as it was: the idea of executable specs as project memory
-        is genuinely good. A JSON pipeline is inspectable, serialisable, and diffable in a way a script is not.
-        The right answer may eventually be a spec format that compiles to Rhai — declarative at the surface,
-        expressive underneath. For now, script is strictly more useful and pipeline is gone.
-      </p>
-
-      <p>
-        Net effect: fewer top-level MCP tools, more task completion per tool, and no special hidden mechanism dialect inside scripts.
-        Fewer is better when each tool pulls more weight.
-      </p>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <div class="card">
-      <h2>Contributors</h2>
-      <ul>
-        <li><a href="https://github.com/avirajkhare00">Aviraj Khare</a> &bull; <a href="https://x.com/avirajkhare00">X</a></li>
-        <li><a href="https://github.com/sauravtom">Saurav Kumar</a> &bull; <a href="https://x.com/hackposthq">X</a></li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<footer>
-  <div class="container">
-    <p>yoyo — runs locally, no telemetry &bull; <a href="https://github.com/avirajkhare00/yoyo">github.com/avirajkhare00/yoyo</a> &bull; Apache 2.0</p>
-  </div>
-</footer>
-
+    <footer class="footer">
+      <span>yoyo runs locally. Grounded reads. Safer writes. Less hallucination.</span>
+      <span>
+        <a href="https://github.com/avirajkhare00">Aviraj Khare</a> ·
+        <a href="https://github.com/sauravtom">Saurav Kumar</a>
+      </span>
+    </footer>
+  </main>
 </body>
 </html>

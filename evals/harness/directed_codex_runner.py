@@ -18,7 +18,17 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from codex_runner import build_prompt, load_task, parse_codex_jsonl, prepare_codex_home, run_codex
+from codex_runner import load_task, parse_codex_jsonl, prepare_codex_home, run_codex
+
+
+def command_is_read_only(command: str) -> bool:
+    lowered = command.lower()
+    return (
+        "do not edit" in lowered
+        or "don't edit" in lowered
+        or "read-only" in lowered
+        or "do not change" in lowered
+    )
 
 
 def load_commands(path: Path) -> list[dict[str, Any]]:
@@ -51,18 +61,75 @@ def build_step_prompt(
     total_steps: int,
     prior_result: str | None,
 ) -> str:
-    base = build_prompt(task, mode, None)
+    read_only = command_is_read_only(command)
     lines = [
-        base,
+        "You are working inside a directed tool-use eval on a real repository fixture.",
+        "This run evaluates how well you follow a bounded engineer command on the current codebase.",
         "",
-        "This is a directed tool-use eval.",
-        f"Step {step_index} of {total_steps}.",
-        "Follow the current engineer command exactly.",
-        "If the command says not to edit, do not edit.",
-        "Do not ask the evaluator what to do next; make the best reasonable assumption and continue.",
-        "Do not inspect git history or hidden oracle material.",
-        "Do not run git log, git show, git blame, git diff against other commits, or search for the upstream fix commit/PR.",
+        f"Task ID: {task['id']}",
+        f"Task name: {task['name']}",
+        f"Language: {task['language']}",
     ]
+    hints = task.get("hints") or []
+    if hints:
+        lines.extend(["Hints:"])
+        lines.extend(f"- {hint}" for hint in hints)
+    if mode == "control":
+        lines.extend(
+            [
+                "",
+                "Use Codex built-in tools only. No MCP servers are configured for this run.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "yoyo MCP is configured for this run.",
+                "Before any repo exploration, call boot and index in parallel.",
+                "Prefer yoyo search/inspect/impact/change over built-in repo exploration and edit tools when they fit.",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "This is a directed tool-use eval.",
+            f"Step {step_index} of {total_steps}.",
+            "Follow the current engineer command exactly.",
+            "Do not ask the evaluator what to do next; make the best reasonable assumption and continue.",
+            "Do not inspect git history or hidden oracle material.",
+            "Do not run git log, git show, git blame, git diff against other commits, or search for the upstream fix commit/PR.",
+            "Do not continue exploring after you have enough evidence to answer this step.",
+        ]
+    )
+    if read_only:
+        lines.extend(
+            [
+                "This step is read-only.",
+                "Do not edit files, apply patches, or try to repair the repo in this step.",
+                "Do not try to make the task test command pass in this step.",
+                "Budget: use at most 8 tool calls for this step, including boot/index.",
+                "If the previous engineer-command result already gives enough evidence, answer directly instead of reopening the whole area.",
+                "If you run commands, keep them narrowly tied to answering the current question.",
+                "Prefer one or two confirming reads over a broad repo sweep.",
+                "Do not end with a plan for more work; end with the answer itself.",
+                "When you have the answer, stop immediately and report only the result for this step.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "This step may include edits if the engineer command asks for them.",
+                f"Task test command: {' '.join(task['test_cmd'])}",
+                "If you edit code, keep the patch minimal and verify with the narrowest relevant command before stopping.",
+                "After completing the command, stop and report only the result for this step.",
+            ]
+        )
+    lines.extend(
+        [
+        "",
+        ]
+    )
     if prior_result:
         lines.extend(
             [
@@ -73,8 +140,6 @@ def build_step_prompt(
         )
     lines.extend(
         [
-            "",
-            "After completing the command, stop and report only the result for that command.",
             "",
             f"Engineer command: {command}",
         ]

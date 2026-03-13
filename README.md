@@ -4,92 +4,78 @@
 
 # yoyo
 
-<a href="https://peerlist.io/avirajkhare00/project/yoyo" target="_blank" rel="noreferrer">
-				<img
-					src="https://peerlist.io/api/v1/projects/embed/PRJHDNDNMEQQ6O87M2NQQKM9BO8JNG?showUpvote=true&theme=dark"
-					alt="YoYo"
-					style="width: auto; height: 72px;"
-				/>
-			</a>
-
 **Grounded codebase answers for AI coding agents.**
 
-yoyo is an MCP server that gives your agent a curated, task-shaped set of AST-grounded tools to read, understand, and edit code. Less hallucination. More grounded answers. Facts from the source.
+yoyo is a local MCP server for repository reading and change work. It exists to make coding agents less hallucinated, more grounded, and more truthful when they answer questions about a real codebase.
 
-**Current eval status:** still being redesigned.
-The old `119/120` tool-accuracy benchmark exists as a legacy regression report, but it is not the product benchmark anymore. The current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, and the directed tool-use benchmark is still under construction. See [`evals/README.md`](./evals/README.md).
+The core product is not generic search. It is a smaller and more reliable interface to the repository:
 
----
+- `judge_change` for ownership, invariants, and regression risk before edits
+- `inspect` for cheap structured reads like signatures, type surfaces, file structure, and exact excerpts
+- `change` for error-bounded writes through one task-shaped surface
 
-## Why
+## Current status
 
-Your AI agent reads code like a human with no IDE: grep, cat, hope. It hallucinates function names. It misses callers. It patches the wrong file.
+The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, but it is not the product benchmark anymore.
 
-yoyo gives it what it was missing: a structured interface to the codebase. The agent calls `judge_change` to answer ownership, invariants, and regression-risk questions before it edits. It calls `inspect` instead of raw file reads. It calls `impact` before deleting or renaming. It edits through `change`, the error-bounded write surface, not line-number roulette.
+The benchmark that matters now is directed tool-use on real codebase work. That eval is still under construction. Current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, which is useful for harness sanity checks, not for product truth.
 
-On the read side, `inspect` now covers cheap API and structure reads directly: signature-only symbol lookups, type surfaces, and depth-controlled file structure. That keeps answers grounded without dragging full file bodies into context.
+We now have one clean directed `read_only` treatment run on the ripgrep global gitignore bug. Under three explicit engineer questions, `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks. That run used `22` `yoyo` MCP calls, `0` shell calls, and made no edits. It is groundedness evidence, not yet a broad with-vs-without benchmark.
 
-The point is not to make trivial tasks look marginally faster. The point is to make answers more truthful and more grounded in the code that actually exists.
+The three directed questions were: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. The full result is in [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](./evals/results/directed-ripgrep-read-only-2026-03-13.md).
 
----
+See [`evals/README.md`](./evals/README.md) for the current eval direction.
+
+## Why it exists
+
+Coding agents are strong at local editing and weak at repository truth. They guess ownership layers, invent file paths, over-read source files, and lose the actual invariants of the system.
+
+yoyo narrows that gap. It gives the model:
+
+- a grounded repository index in `bakes/latest/bake.db`
+- a judgment surface before edits
+- a cheaper read surface for signatures and types
+- a structured write path when direct file mutation is the wrong tool
+
+The point is not to make toy tasks look slightly faster. The point is to make answers more truthful and more grounded in the code that actually exists.
 
 ## Language focus
 
-> **Rust · Go · Zig · TypeScript — four languages, done deep.**
+yoyo is opinionated about depth. The primary languages are:
 
-| Language | index | inspect | impact trace | routes | change |
-|---|---|---|---|---|---|
-| Rust | ✅ | ✅ | ✅ | ✅ actix/rocket | ✅ |
-| Go | ✅ | ✅ | ✅ | ✅ gin/echo/net-http | ✅ |
-| Zig | ✅ | ✅ | — | — | ✅ |
-| TypeScript | ✅ | ✅ | partial | ✅ express | ✅ |
+- Rust
+- Go
+- Zig
+- TypeScript
 
-Not every language. The four where systems-level code intelligence matters most.
+Rust and Go currently have the strongest read surface, including indexed structured signatures in `inspect`.
 
----
+## Install
 
-## The combinations are the point
+macOS (Apple Silicon):
 
-One trick is fine. Fifty moves chained is transcendent.
-
-| Combination | What it does |
-|---|---|
-| `search` → `inspect` → `change` | find it, read it, change it |
-| `judge_change` → `inspect` → `change` | decide where the fix belongs, confirm it, patch it safely |
-| `impact` → `health` → `change` | what breaks if I touch this? is it dead? change it safely |
-| `impact` → `change` | trace the full request path, fix it end-to-end in one shot |
-| `index` → `ask` → `map` | where does this new function belong? |
-| `map` → `routes` → `change` | understand the shape, find the gap, fill it |
-
-No single tool is the point. The orchestration is.
-
----
-
-## Setup (4 steps)
-
-### 1. Install
-
-**macOS (Apple Silicon)**
 ```bash
 brew tap avirajkhare00/yoyo
 brew install yoyo
 ```
 
-**Linux (x86_64)**
+Linux (x86_64):
+
 ```bash
 curl -L https://github.com/avirajkhare00/yoyo/releases/latest/download/yoyo-x86_64-unknown-linux-gnu.tar.gz | tar xz
 sudo mv yoyo-x86_64-unknown-linux-gnu /usr/local/bin/yoyo
 ```
 
+Check:
+
 ```bash
 yoyo --version
 ```
 
----
+## Add as MCP
 
-### 2. Add to your agent's MCP config
+Claude Code or Cursor:
 
-**Claude Code** — add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -102,136 +88,73 @@ yoyo --version
 }
 ```
 
-**Codex CLI**
+Codex CLI:
+
 ```bash
 codex mcp add yoyo -- /usr/local/bin/yoyo --mcp-server
 ```
 
-**Gemini CLI**
+Gemini CLI:
+
 ```bash
 gemini mcp add yoyo /usr/local/bin/yoyo --mcp-server
 ```
 
-**OpenCode** — run `opencode mcp add` → Local (stdio) → name `yoyo` → command `/usr/local/bin/yoyo` → args `--mcp-server`.
-
-**Cursor** — same JSON block as Claude Code, in your Cursor MCP config.
-
----
-
-### 3. Index your project
+Then index the project once:
 
 ```bash
 yoyo bake --path /path/to/your/project
 ```
 
-Run once per project, again after large changes.
+## Teach the agent to use it
 
----
+For Codex, add this to `AGENTS.md`:
 
-### 4. Teach your agent to prefer yoyo
-
-**Claude Code** — add to `.claude/settings.local.json`:
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '[yoyo] Use mcp__yoyo__search instead of Grep. Use mcp__yoyo__inspect for code reads. Use mcp__yoyo__impact for caller and route tracing. Use mcp__yoyo__change for code changes.'"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Codex** — add to `AGENTS.md`:
 ```md
 ## yoyo
 Call `boot` and `index` first.
-Prefer `search` over grep, `inspect` for code reads, `change` for code changes.
-Prefer `impact` for relation/trace questions.
-Prefer `judge_change` for ownership, invariants, and regression-risk questions before edits.
+Prefer `inspect` for code reads, `search` over grep, and `change` for code changes.
+Prefer `judge_change` before edits when ownership, invariants, or regression risk are unclear.
+Prefer `impact` for relation and blast-radius questions.
 ```
 
-Without this, your agent sees yoyo but won't reach for it first.
+Without this, the agent may see yoyo and still fall back to its default habits.
 
----
+## MCP tools
 
-## Tools (13 MCP tools)
+yoyo currently exposes 13 MCP tools:
 
-### Bootstrap
-| Tool | What it does |
-|---|---|
-| `boot` | Lean bootstrap: tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. Call first. |
-| `index` | Parse the project, write the AST index. Run before any read-indexed tool. |
-| `help` | Progressive discovery: params, output shape, example, and limitations for any tool. |
+- Bootstrap: `boot`, `index`
+- Discovery: `help`
+- Read: `inspect`, `search`, `ask`
+- Judge: `judge_change`
+- Relate: `map`, `impact`, `routes`, `health`
+- Write: `change`
+- Orchestration: `script`
 
-### Locate
-| Tool | What it does |
-|---|---|
-| `inspect` | Inspect a symbol, signature, type surface, file outline, or line range from one entrypoint. |
-| `search` | AST-aware search across all files. Replaces grep. |
-| `ask` | Find functions by intent. Local ONNX embeddings, no API key. |
+The MCP surface is intentionally smaller than the CLI surface. Humans still have broader CLI commands for debugging and direct use.
 
-### Judge
-| Tool | What it does |
-|---|---|
-| `judge_change` | High-level read surface for ownership, candidate symbols/files, invariants, regression risks, and verification commands before editing. |
+## Why not just LSP
 
-### Relate
-| Tool | What it does |
-|---|---|
-| `map` | Directory tree with inferred roles. |
-| `impact` | Task-shaped impact analysis for a symbol or endpoint. |
-| `routes` | All detected HTTP routes. |
-| `health` | Dead code, large functions, duplicate names. |
+LSP is for humans inside an editor. yoyo is for agents working over MCP.
 
-### Write
-| Tool | What it does |
-|---|---|
-| `change` | Task-shaped write entrypoint over edit, bulk_edit, rename, move, delete, create, and add. |
-
-### Orchestration
-| Tool | What it does |
-|---|---|
-| `script` | Run a Rhai script over the same task-shaped yoyo functions exposed in MCP. |
-
-### CLI-only mechanisms
-
-These remain available in `yoyo <command>` for humans, but are not exposed through MCP:
-
-`read`, `symbol`, `outline`, `flow`, `callers`, `edit`, `bulk_edit`, `rename`, `create`, `add`, `move`, `delete`
-
-CLI still exposes broader engine capabilities for humans and debugging. MCP stays intentionally small and task-first.
-
----
-
-## Why not just LSP?
-
-LSP is for humans in an editor. yoyo is for AI agents understanding codebases.
-
-| | LSP | yoyo |
-|---|---|---|
-| Consumer | Editor (VS Code, Neovim…) | AI agent (Claude, Codex, Cursor…) |
-| Protocol | JSON-RPC to editor buffers | MCP stdio — agent calls tools directly |
-| Scope | Per-file, cursor-aware | Whole codebase in one call |
-| Setup | One server per language | One binary for all languages |
-| "Where should new code go?" | No equivalent | `map` + `ask` + `change` |
-| Edit by intent | No equivalent | `change` |
+- LSP is cursor- and file-oriented
+- yoyo is repository-oriented
+- LSP does not answer ownership or blast-radius questions
+- yoyo is designed to answer those questions before the edit happens
 
 Use both. LSP while you write. yoyo when your agent needs to understand or change code it has never seen.
-
----
 
 ## Contributors
 
 - [Aviraj Khare](https://github.com/avirajkhare00) — [X](https://x.com/avirajkhare00)
 - [Saurav Kumar](https://github.com/sauravtom) — [X](https://x.com/hackposthq)
 
----
+## Links
 
-Full docs: [`docs/README.md`](./docs/README.md) · [Eval report](./evals/REPORT.md) · [Metrics](./METRICS.md) · [Changelog](./CHANGELOG.md) · Apache 2.0
+- [Full docs](./docs/README.md)
+- [Eval strategy](./evals/README.md)
+- [Legacy eval report](./evals/REPORT.md)
+- [Metrics](./METRICS.md)
+- [Changelog](./CHANGELOG.md)
+- Apache 2.0

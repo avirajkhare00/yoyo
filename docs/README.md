@@ -4,6 +4,8 @@ yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, 
 
 **Current eval status:** still being redesigned.
 The old `119/120` tool-accuracy benchmark remains as a legacy regression report, but it is not the product benchmark anymore. The current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, and the directed tool-use benchmark is still under construction. See [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md).
+We now have one clean directed `read_only` treatment run on the ripgrep global gitignore bug. Under three explicit engineer questions, `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks. That run used `22` `yoyo` MCP calls, `0` shell calls, and made no edits. It is evidence for groundedness under direction, not yet a general benchmark win.
+The three questions were: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. The full result is in [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/results/directed-ripgrep-read-only-2026-03-13.md).
 
 For current eval tiers and the realistic daily-engineering suite plan, see [`evals/README.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/README.md).
 

@@ -321,6 +321,44 @@ Disallowed evaluator behavior:
 
 The evaluator should be allowed to steer the workflow with commands, because that is the intended operating model for `yoyo`.
 
+## Latest published directed result
+
+We now have one clean directed treatment result worth keeping:
+
+- task: `ripgrep-global-gitignore-rust-001`
+- mode: `read_only`
+- repo: `BurntSushi/ripgrep`
+- treatment only: Codex with `yoyo`
+
+Questions used in the run:
+
+1. `Find the 3 most likely files or symbols involved in this bug. Do not edit anything.`
+2. `Which layer should own this fix and why? Answer in terms of CLI argument handling, walker construction, and ignore matching internals. Do not edit anything.`
+3. `State the key invariants that must remain true if we fix this bug, and name the main regression risks or blast radius. Do not edit anything.`
+
+What the run showed:
+
+- the model localized the bug to the expected CLI -> walker -> ignore seam
+- it placed ownership in `crates/ignore`, not in CLI path rewriting
+- it surfaced the important invariants and regression risks without editing code
+
+Metrics:
+
+- `22` total tool calls
+- `22` `yoyo` MCP calls
+- `0` shell calls
+- `16` retries
+
+Artifact:
+
+- [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/results/directed-ripgrep-read-only-2026-03-13.md)
+
+Interpretation:
+
+- this is evidence for groundedness under direction
+- it is not yet a broad with-vs-without benchmark
+- it is not yet a write benchmark
+
 ## What the directed benchmark should simulate
 
 The target workflow is:
