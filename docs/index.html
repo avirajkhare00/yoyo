@@ -379,22 +379,15 @@
     <section>
       <h2>Current status</h2>
       <p>
-        The old <code>119/120</code> tool-accuracy number still exists, but it is a legacy regression benchmark and it should not be the headline for the product.
-        The benchmark we care about now is directed tool-use on real codebase work.
+        <strong>Headline WIP result:</strong> in one clean directed ripgrep <code>read_only</code> eval, Codex used <code>yoyo</code> for <strong>22/22 tool calls</strong>.
       </p>
       <div class="status">
         <p>
-          The current compare smoke runs are <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code> on three puncture tasks.
-          That is useful for harness sanity checks and version-to-version comparison. It is not product truth.
+          That run asked three explicit engineer questions: find the <code>3</code> most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius.
+          <code>yoyo</code> localized the bug to <code>hiargs.rs</code>, <code>walk.rs</code>, and <code>gitignore.rs</code>, placed ownership in <code>crates/ignore</code>, and surfaced the key invariants and regression risks without making edits.
         </p>
         <p>
-          The eval stack is being rebuilt around groundedness, less hallucination, and directed engineering work on real repositories.
-          The honest status today is: the benchmark is still under construction. But we now have one clean directed <code>read_only</code> treatment run on the ripgrep global gitignore bug.
-          Under three explicit engineer questions, <code>yoyo</code> localized the bug to <code>hiargs.rs</code>, <code>walk.rs</code>, and <code>gitignore.rs</code>, placed ownership in <code>crates/ignore</code>, and surfaced the key invariants and regression risks.
-        </p>
-        <p>
-          That run used <strong>22 yoyo MCP calls</strong>, <strong>0 shell calls</strong>, and made no edits. The three questions were: find the <code>3</code> most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius.
-          It is groundedness evidence, not yet a broad with-vs-without benchmark.
+          This is groundedness evidence, not yet a broad with-vs-without benchmark. The old <code>119/120</code> number is still a legacy regression report, and the current compare smoke runs are still <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code>.
         </p>
       </div>
     </section>

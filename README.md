@@ -16,13 +16,13 @@ The core product is not generic search. It is a smaller and more reliable interf
 
 ## Current status
 
-The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, but it is not the product benchmark anymore.
+Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used `yoyo` for `22/22` tool calls.
 
-The benchmark that matters now is directed tool-use on real codebase work. That eval is still under construction. Current compare smoke runs are `6/6` ties across `v1.8.5` and `v1.7.3`, which is useful for harness sanity checks, not for product truth.
+That run asked three explicit engineer questions: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks without making edits.
 
-We now have one clean directed `read_only` treatment run on the ripgrep global gitignore bug. Under three explicit engineer questions, `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks. That run used `22` `yoyo` MCP calls, `0` shell calls, and made no edits. It is groundedness evidence, not yet a broad with-vs-without benchmark.
+This is groundedness evidence, not yet a broad with-vs-without benchmark. The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, and the current compare smoke runs are still `6/6` ties across `v1.8.5` and `v1.7.3`.
 
-The three directed questions were: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. The full result is in [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](./evals/results/directed-ripgrep-read-only-2026-03-13.md).
+The full directed result is in [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](./evals/results/directed-ripgrep-read-only-2026-03-13.md).
 
 See [`evals/README.md`](./evals/README.md) for the current eval direction.
 
