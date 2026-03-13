@@ -158,6 +158,21 @@ fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<S
             .join(", ")
     };
 
+    let ts_params = || {
+        function
+            .params
+            .iter()
+            .map(|p| match (p.name.is_empty(), p.type_str.trim().is_empty()) {
+                (false, false) => format!("{}: {}", p.name, p.type_str),
+                (false, true) => p.name.clone(),
+                (true, false) => p.type_str.clone(),
+                (true, true) => String::new(),
+            })
+            .filter(|p| !p.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
     match function.language.as_str() {
         "rust" => {
             let params = rust_params();
@@ -186,6 +201,21 @@ fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<S
                 .map(|r| format!(" {}", r))
                 .unwrap_or_default();
             Some(format!("func {}{}({}){}", receiver, function.name, params, ret))
+        }
+        "typescript" => {
+            let params = ts_params();
+            let ret = function
+                .return_type
+                .as_deref()
+                .filter(|r| !r.trim().is_empty())
+                .map(|r| format!(": {}", r))
+                .unwrap_or_default();
+            let prefix = if function.parent_type.is_some() {
+                ""
+            } else {
+                "function "
+            };
+            Some(format!("{}{}({}){}", prefix, function.name, params, ret))
         }
         _ => None,
     }
@@ -983,7 +1013,9 @@ mod tests {
     fn fallback_supersearch_queries_drops_stopwords() {
         let queries = fallback_supersearch_queries("find all call sites of the helper");
         assert!(
-            !queries.iter().any(|q| q == "call" || q == "sites" || q == "helper"),
+            !queries
+                .iter()
+                .any(|q| q == "call" || q == "sites" || q == "helper"),
             "expected stopwords to be removed, got {:?}",
             queries
         );
@@ -995,12 +1027,13 @@ mod tests {
         let matches = vec![super::SupersearchMatch {
             file: "src/engine/util.rs".into(),
             line: 64,
-            snippet: "pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {".into(),
+            snippet:
+                "pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {"
+                    .into(),
         }];
         assert!(should_prefer_fallback_supersearch_results(
             "call sites of resolve_project_root",
-            &fallback
-            ,
+            &fallback,
             &matches
         ));
     }
@@ -1011,8 +1044,7 @@ mod tests {
         let matches = Vec::new();
         assert!(!should_prefer_fallback_supersearch_results(
             "call sites of resolve_project_root",
-            &fallback
-            ,
+            &fallback,
             &matches
         ));
     }
@@ -1266,6 +1298,80 @@ mod semantic_note_tests {
     }
 
     #[test]
+    fn inspect_signature_only_uses_indexed_typescript_signature() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("calc.ts"),
+            "export function add(left: number, right: number): number {\n  return left + right;\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("add".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let first = &v["matches"][0];
+        assert_eq!(
+            first["signature"],
+            "function add(left: number, right: number): number"
+        );
+        assert!(first.get("source").is_none());
+    }
+
+    #[test]
+    fn inspect_type_only_groups_typescript_methods_under_class() {
+        let dir = TempDir::new().unwrap();
+        let src_dir = dir.path().join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::write(
+            src_dir.join("counter.ts"),
+            "export class Counter {\n  value(input: number): number {\n    return input;\n  }\n}\n",
+        )
+        .unwrap();
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+
+        let out = crate::engine::inspect(
+            Some(dir.path().to_string_lossy().into_owned()),
+            Some("Counter".into()),
+            None,
+            None,
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            Some(true),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let first = &v["matches"][0];
+        assert_eq!(v["mode"], "type");
+        assert_eq!(first["name"], "Counter");
+        assert_eq!(first["methods"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            first["methods"][0]["signature"],
+            "value(input: number): number"
+        );
+    }
+
+    #[test]
     fn inspect_type_only_groups_go_methods_under_receiver_type() {
         let dir = TempDir::new().unwrap();
         let src_dir = dir.path().join("pkg");
@@ -1297,7 +1403,10 @@ mod semantic_note_tests {
         assert_eq!(v["mode"], "type");
         assert_eq!(first["name"], "Counter");
         assert_eq!(first["methods"][0]["name"], "Value");
-        assert_eq!(first["methods"][0]["signature"], "func (c *Counter) Value() int");
+        assert_eq!(
+            first["methods"][0]["signature"],
+            "func (c *Counter) Value() int"
+        );
     }
 
     #[test]
