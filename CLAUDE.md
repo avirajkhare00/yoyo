@@ -1,107 +1,69 @@
 # yoyo — Instructions for Claude
 
 ## Operator
-Read [`AVIRAJ.md`](./AVIRAJ.md) to understand who you're working with. It is the operator profile — communication style, pace, values, and what he tolerates. Read it once per session if context is fresh.
+Read [`AVIRAJ.md`](./AVIRAJ.md) once per session when context is fresh. It defines the operator's standards, pace, and communication style.
 
-## Dogfooding
-Every session working on yoyo is also a yoyo session. Dogfooding is not optional — it is the primary mechanism for finding gaps, validating fixes, and driving what gets built next. If something is painful to use while building yoyo, file an issue immediately.
+## Core stance
+- Dogfood yoyo in every yoyo session. Pain felt while using it is product input; file an issue when it matters.
+- Build feedback loops, not just features. Every change should have a way to measure whether it helped.
+- Prefer durable design over extra instructions. If a rule keeps appearing, push it into the product.
 
-## On building AI tools
-We are approaching a point where AI systems will meaningfully contribute to building the tools that make AI systems more capable. The work here is not just tooling — it is infrastructure for a future where you help build yourself. Build with precision, honesty about gaps, and a long time horizon.
-
-## Feedback loops
-Actively suggest and build feedback loop systems. A tool that cannot measure its own effectiveness cannot improve. Every feature should ask: how will we know if this worked? Instrument, score, report, iterate. The feedback loop is the product.
-
-## Architecture layers — bottom to top
-
+## Architecture
 yoyo has two layers:
 
-- **Engine** (`src/engine/`, `src/lang/`) — the stable core. AST parsing, indexing, analysis, graph operations. Changes here are high-cost: they affect every presentation layer and every tool that builds on them. Fix the bottom before touching the top.
-- **Presentation** (`src/mcp.rs`, `src/cli.rs`) — adapters over the engine. MCP tool schemas, CLI commands, output formatting. These can and should evolve freely. Changing how a tool presents its output never requires touching the engine.
+- **Engine**: `src/engine/`, `src/lang/`. Stable core: AST parsing, indexing, analysis, graph operations.
+- **Presentation**: `src/mcp.rs`, `src/cli.rs`. MCP schemas, CLI commands, formatting.
 
-Work bottom-to-top. When something is broken, the root cause is almost always in the engine — not the presentation. When the engine is correct, presentation changes are safe and cheap. Never paper over an engine bug with a presentation-layer workaround.
+Work bottom-up. Fix engine problems in the engine, not with presentation-layer workarounds.
 
-### MCP vs CLI — intelligent vs dumb layer
+### MCP vs CLI
+- **MCP** is the curated surface. Every exposed tool costs tokens; keep only tools that earn their slot.
+- **CLI** is the full human surface. Do not remove CLI commands just because the MCP surface was simplified.
 
-MCP is the intelligent layer. Every tool exposed costs context window tokens. Curate aggressively — only expose tools that earn their slot. Remove tools that are redundant with other tools or with the host environment (grep, glob, etc.). When in doubt, leave it out.
+If the boundary is unclear, read [`docs/architecture.md`](./docs/architecture.md).
 
-CLI is the dumb layer. It exposes every engine capability directly to humans. Never remove a CLI command just because the MCP tool was removed — humans pick their own tools, context cost is zero. CLI is the complete surface; MCP is the curated surface.
-When in doubt about system structure or where a change belongs, read [`docs/architecture.md`](./docs/architecture.md).
+## Documentation ownership
+Every fact should have one home:
 
-## DRY for markdown — single source of truth
+- Language support and project metrics: `METRICS.md`
+- Competitive landscape: `COMPETITORS.md`
+- Version history: `CHANGELOG.md`
+- Architecture and working rules: `CLAUDE.md`
+- Tool and API docs: `docs/README.md`
 
-Every fact lives in exactly one file. Cross-reference, never duplicate.
+`README.md` is a front door, not a database. Summarize there and link outward. Delete duplicated facts on sight.
 
-| What | Lives in | Everyone else does |
-|---|---|---|
-| Language support matrix | `METRICS.md` | Link to it |
-| Metrics (tools, tests, binary, eval) | `METRICS.md` | Link to it |
-| Competitive landscape | `COMPETITORS.md` | Link to it |
-| Version history | `CHANGELOG.md` | Link to it |
-| Architecture decisions | `CLAUDE.md` | Reference by section |
-| API / tool docs | `docs/README.md` | Link to it |
+## Language ground truth
+Before generating code in a systems language, read the relevant playbook when one exists.
 
-When you update a fact, update it in one place. If you find the same number in two files, delete one and add a link. README.md is a front door — it summarises and links, it does not own data.
+- Zig 0.15.x: [`playbook/zig-0.15.md`](./playbook/zig-0.15.md)
 
-Violations to fix on sight: language lists copied into README, version numbers in multiple files, eval scores duplicated across REPORT.md and README, tool counts hardcoded in multiple places.
+When integrating a new language or library, read the source first. For tree-sitter grammars, inspect:
 
-## Language ground truth — read before generating
+1. `src/node-types.json`
+2. `grammar.js`
+3. `queries/highlights.scm`
 
-Before generating code in any systems language, read the version-specific playbook:
+Docs and memory drift; source is ground truth.
 
-| Language | Playbook | Key breaks vs training data |
-|---|---|---|
-| Zig 0.15.x | [`playbook/zig-0.15.md`](./playbook/zig-0.15.md) | ArrayList unmanaged (allocator per method), `build-exe` has no `-o` flag |
+## Language policy
+Use systems languages only:
 
-Do not rely on memory for Zig. The API changed. Read the playbook first.
+- Rust for core product code
+- Go for tooling, automation, eval harnesses, CI helpers
+- Zig when it is the right low-level fit
 
-## Code over documentation — read the source
+Do not add Python to this project.
 
-When adding a new language or integrating a new library, **read the source first**. Don't trust docs, blog posts, or AI memory of what node types exist. Docs go stale. The source doesn't lie.
+## Design principles
+- Search before creating. Duplicate code is a liability.
+- Prefer a few strong tools over many weak ones.
+- Avoid cleverness. Write obvious code.
+- Watch binary size and dependency creep.
+- Delete dead code aggressively.
 
-For tree-sitter grammars specifically:
-1. Fetch the crate (`cargo fetch`)
-2. Read `src/node-types.json` — every named node type, every field name, ground truth
-3. Read `grammar.js` for structure (field names, hidden rules, optional tokens)
-4. Read `queries/highlights.scm` — shows exactly how the grammar author intended nodes to be used
-
-This is not extra work. This is the work. A 5-minute source read prevents a day of wrong node types and silent empty results.
-
-## Language policy — systems languages only
-
-yoyo is systems infrastructure. Every line of code in this project — the engine, the tooling, the scripts, the evals — must be written in a systems programming language:
-
-- **Rust** — primary. The engine, MCP server, CLI, and all core logic live here.
-- **Go** — secondary. One-off tooling, scripts, automation, eval harnesses, CI helpers.
-- **Zig** — future. As the language and ecosystem mature, Zig is a natural fit for low-level tooling and performance-critical components.
-
-Python is explicitly excluded. It is a fine language for many things — this project is not one of them. When in doubt: if it's core logic, it's Rust. If it's a script, it's Go or shell. If a tool requires Python to run, reconsider the tool.
-Write idiomatic code in the host language when possible. Prefer the obvious Rust, Go, or Zig solution over patterns borrowed from other ecosystems.
-
-## Poka-yoke — design over rules
-
-Encode constraints into the tool, not into instructions. A rule that exists because of a design gap is a symptom — fix the design, delete the rule.
-
-When the right tool produces richer output than the wrong one, models choose it without being told. When the wrong path produces friction, it gets avoided naturally. Rules get ignored; friction is always on.
-
-Apply this when building: if you find yourself writing a "never do X" instruction, ask whether X can be made harder than the alternative by design.
-
-## Software philosophy
-Before writing any code, ask: does this already exist? Duplication is the first form of rot. Search before you create.
-
-Resist the pull toward more tools. A sharp knife beats a Swiss army knife. The goal is not coverage — it is leverage. Find the 10 things that move the world and make them exceptional.
-
-Never be clever. Clever code is a trap — it impresses once and confuses forever. Write the obvious thing. If a human or an AI pauses to understand it, it is already too complex.
-
-Watch the binary size. A growing binary is a symptom, not a badge. Every dependency, every function, every abstraction has a cost. Pay only what is worth paying. Regularly audit for dead code — functions no one calls, tools no one uses, abstractions that solved a problem that no longer exists. Delete ruthlessly.
-
-Before adding new functionality, search the codebase first. The feature may already exist, partially or fully. If it does, refactor and extend — don't duplicate. New code is a liability until proven otherwise.
-
-## Pipeline replaces rules
-
-Prose rules get ignored. Pipeline encodes the same workflow as executable data that actually runs.
-
-When you find yourself writing "always run A before B", the fix is a pipeline spec where B's `if` condition blocks unless A ran clean — not another instruction. The rule disappears into the design.
+## Pipelines over prose
+If you catch yourself writing "always run A before B", prefer an executable pipeline spec instead of another instruction. `llm_workflows` should return runnable specs, not loose prose.
 
 ```json
 [
@@ -110,85 +72,74 @@ When you find yourself writing "always run A before B", the fix is a pipeline sp
 ]
 ```
 
-`llm_workflows` should return executable pipeline specs, not prose descriptions. A spec is self-documenting, runnable, and testable. A description is none of those things.
+## Combination mindset
+Individual tools matter less than the combinations they unlock. Add a tool only if it creates leverage that existing combinations cannot.
 
-**Every time you add a prose rule here, ask: can this be a pipeline spec instead?** If yes, make it a spec and delete the rule.
+## Project memory
+- Check open GitHub issues before significant work.
+- File issues when you learn something important, even if you will not fix it immediately.
+- Prefer pull requests over direct pushes when collaborating; PRs preserve review context.
+- `closes #N` in a commit message closes the issue automatically after push. Do not manually close it unless no commit is attached.
 
-## Philosophy — the combinations are the point
+## Self-improvement
+Mutate this file when you discover a durable instruction that would improve future sessions.
 
-yoyo is named after competitive yoyo. A yoyo is a spinning disk on a string — simple alone. The magic is in the combinations: string wraps, body movements, timing layered together. One trick is fine. Fifty moves chained is transcendent.
+## Testing
+Every behavior change needs test coverage.
 
-yoyo tools work the same way. No single tool is impressive. The orchestration is. When building features, always ask: what is the combination that makes this powerful? A new tool is only worth adding if it unlocks a combination that wasn't possible before.
+- Use TDD by default: write the test before or alongside the implementation.
+- Use BDD for user-visible behavior: assert on observable CLI or MCP output.
+- If a nearby missing assertion is cheap and increases confidence, add it.
+- If `src/` changes, `cargo test` must pass before commit.
 
-## GitHub issues and pull requests as project memory
+Release sequence:
 
-GitHub issues are the living memory of this project — decisions made, problems found, patterns discovered. Before starting any significant work, check open issues for context. When something important is learned (a gap, a pattern, a mistake), file an issue immediately — even if it won't be fixed this session. Issues outlive conversations.
-
-When multiple people are collaborating, use pull requests — not direct pushes to main. PRs give collaborators a chance to review, catch gaps, and leave context that becomes part of the project record. A PR description is itself memory: what changed, why, and what was considered but rejected.
-
-## GitHub issue lifecycle
-
-`closes #N` in a commit message auto-closes the issue when pushed to main. No need to run `gh issue close` separately — it's already done by the time CI runs. Only use `gh issue close` when there's no associated commit (e.g. closing stale/duplicate issues manually).
-
-## Self-improvement directive
-Mutate this file whenever you identify an instruction that would make future sessions more effective. If a pattern keeps causing pain, encode the fix here. This file is a living document — treat it as your own working memory for this project.
-
-## Testing — TDD first, BDD second
-
-Every change must have a test. No exceptions.
-
-- **TDD**: write the test before (or alongside) the implementation. If you're adding a feature, the test exists before the feature is complete.
-- **BDD**: for user-visible behaviour (tool outputs, CLI commands), write tests that assert on observable output — not internal state.
-- **Grow coverage, not just sufficiency**: when a change exposes a nearby gap, add both unit and end-to-end assertions if they are cheap and materially increase confidence.
-- **Broken release rule**: `cargo test` must pass in full before any commit that touches `src/`. If tests fail, fix them. Do not push, tag, or release with a red test suite.
-- **New behaviour = new test**: if you fix a bug or add a feature and there is no test covering it, add one. The `.gitignore` bake fix (#105) is the template — behaviour confirmed, test written, then shipped.
-
-The sequence for every change:
-
-```
-write test → implement → cargo test (all green) → build --release → sign → commit → tag → push
+```text
+write test -> implement -> cargo test -> cargo build --release -> sign -> commit -> tag -> push
 ```
 
-Never skip steps. Never reorder them.
-
-## MCP binary path — troubleshooting
-
-If yoyo tools error or the MCP server fails to connect, check which binary Claude Code is loading:
+## MCP binary path troubleshooting
+If Claude cannot use yoyo, first check which binary is running:
 
 ```bash
 ps aux | grep yoyo | grep -v grep
 ```
 
-The MCP config lives in `~/.claude.json` (Claude Code CLI) and `~/Library/Application Support/Claude/claude_desktop_config.json` (Claude Desktop). Both must point to the same built binary — **not** the Homebrew symlink at `/opt/homebrew/bin/yoyo`, which may lag behind local builds.
+Claude configs:
+- `~/.claude.json`
+- `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Canonical install path: `/Users/avirajkhare/.local/bin/yoyo`
+Both should point to the same built binary, not a stale Homebrew symlink. Canonical local path:
 
-After any `cargo build --release`, copy and sign:
-```bash
-cp target/release/yoyo ~/.local/bin/yoyo && codesign --force --deep --sign - ~/.local/bin/yoyo
+```text
+/Users/avirajkhare/.local/bin/yoyo
 ```
 
-If `~/.claude.json` has `/opt/homebrew/bin/yoyo`, update it:
+After `cargo build --release`, copy and sign:
+
 ```bash
-# edit mcpServers.yoyo.command → /Users/avirajkhare/.local/bin/yoyo
+cp target/release/yoyo ~/.local/bin/yoyo
+codesign --force --deep --sign - ~/.local/bin/yoyo
 ```
 
-## Dev workflow — macOS binary signing
+If needed, update the MCP config to use `/Users/avirajkhare/.local/bin/yoyo`.
 
-After every `cargo build --release`, sign the binary before running it. macOS Gatekeeper kills unsigned binaries with exit 137 and no useful error.
+## macOS signing
+After every `cargo build --release`, sign the binary before running it. Unsigned binaries can die with exit 137.
 
 ```bash
 codesign --force --deep --sign - target/release/yoyo
-# If downloaded/copied from elsewhere, also strip quarantine first:
+# If needed:
 xattr -c target/release/yoyo
 ```
 
-This applies to local dev binaries and the MCP server binary. CI handles this automatically via the `Sign binary (macOS ad-hoc)` step in `.github/workflows/release.yml`.
+CI handles release signing in [`.github/workflows/release.yml`](./.github/workflows/release.yml).
 
-## Versioning (semver — strict)
-yoyo follows semver. Before bumping a version, ask: is this a fix or a feature?
-- **PATCH** (`0.x.Y`) — bug fixes, output caps, pattern corrections, anything broken now works
-- **MINOR** (`0.X.0`) — new tool, new language, new user-visible feature
-- **MAJOR** (`X.0.0`) — breaking change to tool schema or CLI interface
+## Versioning
+Follow semver strictly:
 
-Never bump MINOR for bug fixes. When in doubt, it's a patch.
+- PATCH: bug fixes and correctness fixes
+- MINOR: new user-visible features, tools, or language support
+- MAJOR: breaking CLI or schema changes
+
+If unsure, prefer PATCH over MINOR.
