@@ -5,3 +5,4 @@ bakes/
 .cursor/
 __pycache__/
 *.pyc
+evals/harness/harness
