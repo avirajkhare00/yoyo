@@ -1,0 +1,35 @@
+{
+  "suite": "directed_tool_use_write_batch",
+  "description": "Concrete executable write-only tasks for the directed tool-use benchmark. These tasks assume the evaluator has already narrowed the fix surface and are meant to measure patch quality, scope control, and targeted verification.",
+  "status": "pilot_executable",
+  "tasks": [
+    {
+      "id": "dtu-write-ripgrep-global-gitignore",
+      "mode": "write_only",
+      "task_dir": "evals/tasks/ripgrep-global-gitignore",
+      "commands_file": "evals/tasks/ripgrep-global-gitignore/commands/write_only.json",
+      "goal": "Patch the known ripgrep ignore-handling surface with a minimal change and verify the exact regression."
+    },
+    {
+      "id": "dtu-write-uuid",
+      "mode": "write_only",
+      "task_dir": "evals/tasks/uuid",
+      "commands_file": "evals/tasks/uuid/commands/write_only.json",
+      "goal": "Patch the known uuid formatting and bitmask surface in one file and verify with the task test command."
+    },
+    {
+      "id": "dtu-write-httprouter",
+      "mode": "write_only",
+      "task_dir": "evals/tasks/httprouter",
+      "commands_file": "evals/tasks/httprouter/commands/write_only.json",
+      "goal": "Patch the known router/path counting surface across the three named files and verify with the task test command."
+    },
+    {
+      "id": "dtu-write-semver",
+      "mode": "write_only",
+      "task_dir": "evals/tasks/semver",
+      "commands_file": "evals/tasks/semver/commands/write_only.json",
+      "goal": "Patch the known semver comparison surface in src/eval.rs and verify with the task test command."
+    }
+  ]
+}

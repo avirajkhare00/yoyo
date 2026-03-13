@@ -26,6 +26,17 @@ Pilot command files live under:
 - [`evals/tasks/ripgrep-global-gitignore/commands/write_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/ripgrep-global-gitignore/commands/write_only.json)
 - [`evals/tasks/ripgrep-global-gitignore/commands/read_then_write.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/ripgrep-global-gitignore/commands/read_then_write.json)
 
+Additional write-only command files now exist for:
+
+- [`evals/tasks/uuid/commands/write_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/uuid/commands/write_only.json)
+- [`evals/tasks/httprouter/commands/write_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/httprouter/commands/write_only.json)
+- [`evals/tasks/semver/commands/write_only.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/semver/commands/write_only.json)
+
+Grouped batch manifests:
+
+- [`evals/tasks/directed_tool_use_first3.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/directed_tool_use_first3.json)
+- [`evals/tasks/directed_tool_use_write_batch.json`](/Users/avirajkhare/yoyo-stuff/yoyo/evals/tasks/directed_tool_use_write_batch.json)
+
 Example after fixture setup:
 
 ```bash

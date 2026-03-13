@@ -42,6 +42,8 @@ These answer "is the tool correct?" They do not answer "does this make an engine
 Files:
 
 - `evals/tasks/directed_tool_use.json`
+- `evals/tasks/directed_tool_use_first3.json`
+- `evals/tasks/directed_tool_use_write_batch.json`
 
 Purpose:
 
@@ -77,6 +79,25 @@ The directed suite should explicitly cover three task modes:
 The third should be the primary one, but all three matter.
 
 It should also explicitly include principal-engineer-level questions drawn from the codebase, not just local implementation questions.
+
+`directed_tool_use_first3.json` is the first mixed-mode pilot set.
+
+`directed_tool_use_write_batch.json` is the first concrete write-only batch. It currently covers:
+
+- `ripgrep-global-gitignore`
+- `uuid`
+- `httprouter`
+- `semver`
+
+Current WIP directed results:
+
+- `directed-ripgrep-read-only-2026-03-13.md` records one clean read-only ripgrep run where Codex stayed on `yoyo` for `22/22` tool calls.
+- `directed-ripgrep-write-only-2026-03-13.md` records the first clean single-task write-only ripgrep result.
+- `directed-write-batch-2026-03-13.md` records the first clean multi-task write-only batch:
+  - `ripgrep`, `uuid`, and `httprouter`
+- `directed-semver-write-only-2026-03-13.md` keeps `semver` separate:
+  - the patch is correct and passes manual `cargo test`
+  - the fixture's exact verify command, `cargo test --test *`, is malformed and still needs fixing before strict scoring
 
 ## Tier 3: Daily engineering evals
 
@@ -178,6 +199,12 @@ Examples:
 - "Update this signature and its directly affected callers."
 - "Patch this known function with the minimal change."
 - "Rename this known symbol safely."
+
+Write-only tasks should force the model to cross into editing once the surface is already known. The command wording should be explicit about using `change`, keeping the patch minimal, and limiting any extra confirming reads before the first edit.
+
+Write-only tasks should not begin with ownership or blast-radius questions. Those belong in `read_only` or `read_then_write`. If the task starts by rediscovering the fix surface, it is no longer isolating write quality.
+
+For puncture-backed write tasks, scope quality should be measured relative to the post-setup baseline. The injected puncture test file is already dirty before the agent starts, so raw final `git status` overcounts the agent's write surface.
 
 Primary scoring:
 

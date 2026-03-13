@@ -1,0 +1,10 @@
+[
+  {
+    "id": "patch",
+    "command": "The fix surface is already known. Keep the patch within path.go, router.go, and tree.go. Make the minimal patch now. Use yoyo change for the edit if available. Do at most 2 confirming reads before the first edit. Avoid unrelated refactors."
+  },
+  {
+    "id": "verify",
+    "command": "Run the exact task test command and report whether the patch stayed scoped to path.go, router.go, and tree.go."
+  }
+]

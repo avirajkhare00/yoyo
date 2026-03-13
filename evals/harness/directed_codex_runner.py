@@ -31,6 +31,23 @@ def command_is_read_only(command: str) -> bool:
     )
 
 
+def command_is_write_focused(command: str) -> bool:
+    lowered = command.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "make the minimal patch",
+            "make the patch",
+            "apply the patch",
+            "patch the",
+            "rename ",
+            "update ",
+            "edit ",
+            "implement ",
+        )
+    )
+
+
 def load_commands(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text())
     if not isinstance(data, list):
@@ -62,6 +79,7 @@ def build_step_prompt(
     prior_result: str | None,
 ) -> str:
     read_only = command_is_read_only(command)
+    write_focused = not read_only and command_is_write_focused(command)
     lines = [
         "You are working inside a directed tool-use eval on a real repository fixture.",
         "This run evaluates how well you follow a bounded engineer command on the current codebase.",
@@ -125,6 +143,18 @@ def build_step_prompt(
                 "After completing the command, stop and report only the result for this step.",
             ]
         )
+        if write_focused:
+            lines.extend(
+                [
+                    "This is a write-focused step.",
+                    "The fix surface is already narrowed; do not restart broad repo exploration.",
+                    "Use at most 2 additional confirming reads before the first edit.",
+                    "Do not use script in this step.",
+                    "Prefer direct inspect/search calls, then change.",
+                    "If yoyo is available, use change for the edit instead of a raw patch path.",
+                    "Make the patch in this step instead of ending with more analysis.",
+                ]
+            )
     lines.extend(
         [
         "",

@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from directed_codex_runner import build_step_prompt, command_is_read_only, load_commands
+from directed_codex_runner import (
+    build_step_prompt,
+    command_is_read_only,
+    command_is_write_focused,
+    load_commands,
+)
 
 
 class DirectedCodexRunnerTests(unittest.TestCase):
@@ -22,6 +27,11 @@ class DirectedCodexRunnerTests(unittest.TestCase):
         self.assertTrue(command_is_read_only("Find the likely files. Do not edit anything."))
         self.assertTrue(command_is_read_only("This is a read-only investigation."))
         self.assertFalse(command_is_read_only("Make the minimal patch."))
+
+    def test_command_is_write_focused_detects_patch_language(self):
+        self.assertTrue(command_is_write_focused("Make the minimal patch on that surface only."))
+        self.assertTrue(command_is_write_focused("Rename the helper and update direct callers."))
+        self.assertFalse(command_is_write_focused("Run the exact regression test command."))
 
     def test_editable_prompt_omits_autonomous_repair_language(self):
         task = {
@@ -93,6 +103,11 @@ class DirectedCodexRunnerTests(unittest.TestCase):
         self.assertIn("Engineer command: Make the minimal patch.", follow_up)
         self.assertIn("Previous engineer-command result:", follow_up)
         self.assertIn("Likely ownership is in the walker setup.", follow_up)
+        self.assertIn("This is a write-focused step.", follow_up)
+        self.assertIn("Use at most 2 additional confirming reads before the first edit.", follow_up)
+        self.assertIn("Do not use script in this step.", follow_up)
+        self.assertIn("Prefer direct inspect/search calls, then change.", follow_up)
+        self.assertIn("If yoyo is available, use change for the edit instead of a raw patch path.", follow_up)
 
 
 if __name__ == "__main__":

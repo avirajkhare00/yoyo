@@ -9,7 +9,7 @@
   },
   {
     "id": "patch",
-    "command": "Make the minimal patch in the correct ownership layer. Avoid broad refactors."
+    "command": "Make the minimal patch now in the correct ownership layer. Use yoyo change for the edit if available. Do at most 2 confirming reads before the first edit. Avoid broad refactors."
   },
   {
     "id": "verify",
