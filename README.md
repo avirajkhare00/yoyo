@@ -14,7 +14,10 @@ The core product is not generic search. It is a smaller and more reliable interf
 - `inspect` for cheap structured reads like signatures, type surfaces, file structure, and exact excerpts
 - `change` for error-bounded writes through one task-shaped surface
 
-Essay: [Why Recursive Language Models point in the same direction as yoyo](./docs/rlm-and-yoyo.html)
+Essays:
+
+- [Why Recursive Language Models point in the same direction as yoyo](./docs/rlm-and-yoyo.html)
+- [How we designed the yoyo eval harness](./docs/harness-design.html)
 
 ## Current status
 

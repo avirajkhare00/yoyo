@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How we designed the yoyo eval harness</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --paper: #fbf8f2;
+      --ink: #171512;
+      --muted: #5f5a53;
+      --line: #d8d1c6;
+      --accent: #2f5e4e;
+      --warm: #8b4b2f;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.68;
+    }
+
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(23, 21, 18, 0.22);
+    }
+
+    a:hover {
+      border-bottom-color: rgba(23, 21, 18, 0.55);
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    .page {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 24px 24px 80px;
+    }
+
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 20px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .brand span {
+      color: var(--warm);
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      font-size: 0.94rem;
+      color: var(--muted);
+    }
+
+    header {
+      padding: 54px 0 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin-bottom: 14px;
+      color: var(--warm);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2 {
+      font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: clamp(2.5rem, 6vw, 4.1rem);
+      line-height: 0.98;
+    }
+
+    .deck {
+      max-width: 42rem;
+      color: var(--muted);
+      font-size: 1.08rem;
+      margin: 0 0 12px;
+    }
+
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    main {
+      padding-top: 26px;
+    }
+
+    section {
+      padding: 26px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    section:last-of-type {
+      border-bottom: 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.85rem;
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0 0 14px;
+      font-size: 1rem;
+    }
+
+    .note {
+      padding: 18px 20px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      margin: 18px 0;
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.96rem;
+    }
+
+    ul {
+      margin: 0 0 14px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 0 0 8px;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    @media (max-width: 720px) {
+      .nav {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .page {
+        padding: 18px 18px 64px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <div class="brand">yo<span>yo</span></div>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="README.md">Docs</a>
+        <a href="https://github.com/avirajkhare00/yoyo">GitHub</a>
+      </div>
+    </nav>
+
+    <header>
+      <div class="eyebrow">Essay</div>
+      <h1>How we designed the yoyo eval harness</h1>
+      <p class="deck">
+        We stopped trying to prove that <code>yoyo</code> was a fully autonomous coding agent and started evaluating it for what it actually is: a structural MCP tool layer that should make repository answers more grounded and write execution cleaner under direction.
+      </p>
+      <p class="meta">
+        This is the design logic behind the current eval stack, not a final benchmark report.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>The first mistake was benchmarking the wrong thing</h2>
+        <p>
+          The earliest harness work used puncture tasks. Those were cheap to build, easy to score, and useful for validating the plumbing. They also taught the wrong lesson. Small local bug repairs reward direct file reads and direct edits. That makes native agent behavior look strong and under-measures the part of the product we actually care about: grounded repository understanding.
+        </p>
+        <p>
+          Puncture tasks are still useful, but only as smoke tests. They are now Tier 0 in the eval stack, not product truth.
+        </p>
+      </section>
+
+      <section>
+        <h2>The second mistake was treating yoyo like a stand-alone agent</h2>
+        <p>
+          <code>yoyo</code> is not a planner. It is not a replacement policy layer for Codex or Claude. It is a collection of structural repository tools over MCP. So the main question cannot be “can treatment autonomously solve the task with no guidance?” That asks the model runtime to do work that does not belong to the tool layer.
+        </p>
+        <div class="note">
+          <strong>The better question</strong>
+          When an engineer gives realistic commands, does <code>yoyo</code> make the model more grounded on reads and cleaner on writes?
+        </div>
+      </section>
+
+      <section>
+        <h2>That is why the harness became directed</h2>
+        <p>
+          The harness now supports directed tool-use tasks. Instead of handing the model a repo and hoping it invents the right workflow, we give it explicit engineering instructions in phases.
+        </p>
+        <ul>
+          <li><strong>Read-only:</strong> locate the likely files and symbols, explain the ownership layer, state invariants and blast radius.</li>
+          <li><strong>Write-only:</strong> start from a known fix surface, make the minimal patch, and run the narrowest verification.</li>
+          <li><strong>Read-then-write:</strong> investigate first, then patch based on that understanding.</li>
+        </ul>
+        <p>
+          This matches how an engineer actually uses a tool suite. It also lets us ask principal-engineer-level questions drawn from the codebase instead of only local implementation questions.
+        </p>
+      </section>
+
+      <section>
+        <h2>We separated read quality from write quality on purpose</h2>
+        <p>
+          If a task starts by rediscovering ownership and ends by changing code, you cannot tell whether the model failed on analysis or failed on execution. So the harness isolates them.
+        </p>
+        <p>
+          Read-only tasks measure groundedness, ownership calls, invariants, and blast-radius reasoning. Write-only tasks assume the surface is already known and measure patch quality, scope discipline, and verification. Read-then-write tasks are the integration path, but not the only path.
+        </p>
+        <p>
+          This is how we got to the honest product statement: <code>yoyo</code> is strongest when read judgment narrows the surface first, then <code>change</code> executes the write cleanly.
+        </p>
+      </section>
+
+      <section>
+        <h2>We had to learn contamination rules the hard way</h2>
+        <p>
+          A benchmark can look clean and still be invalid. Two concrete failures forced design changes.
+        </p>
+        <ul>
+          <li>We had runs where the repo under test could see Codex session residue. That polluted search results, so runtime artifacts were moved fully outside the workspace.</li>
+          <li>We had a run where the model inspected local git history and effectively found the hidden upstream fix. That made the result unusable, so the directed policy now forbids <code>git log</code>, <code>git show</code>, <code>git blame</code>, and direct oracle access during issue-backed tasks.</li>
+        </ul>
+        <p>
+          The harness is now designed around isolation first: pinned repo state, explicit task files, hidden reference fix, and no accidental leakage from the evaluator’s environment.
+        </p>
+      </section>
+
+      <section>
+        <h2>Verification had to become narrower and more honest</h2>
+        <p>
+          A broad “run everything” verify step is often the wrong measurement. For write tasks, the harness pushes the model toward the exact narrow test or build command that proves the intended fix. That keeps the signal tied to the engineering task instead of letting noise from unrelated failures dominate the result.
+        </p>
+        <p>
+          We also changed how we judge patch scope. For puncture-backed tasks, the repo is already dirty after setup because the harness injected a regression. So the right baseline is the post-setup state, not raw final <code>git status</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>The eval stack now has different jobs</h2>
+        <ul>
+          <li><strong>Tier 0:</strong> puncture smoke tests for harness sanity and version regression checks.</li>
+          <li><strong>Tier 1:</strong> tool-accuracy checks for structural correctness and write safety.</li>
+          <li><strong>Tier 2:</strong> directed tool-use evals, which are the main product benchmark.</li>
+          <li><strong>Tier 3:</strong> broader daily-engineering tasks from real repos, kept as integration work rather than the only source of truth.</li>
+        </ul>
+        <p>
+          This separation matters. It stops easy benchmarks from masquerading as product insight.
+        </p>
+      </section>
+
+      <section>
+        <h2>What the harness is trying to prove now</h2>
+        <p>
+          The current harness is not trying to prove that <code>yoyo</code> makes every agent faster. That is not the product claim. The real claim is narrower and more defensible:
+        </p>
+        <div class="note">
+          <strong>Current product thesis</strong>
+          <code>yoyo</code> should make codebase answers less hallucinated and more grounded on reads, and should make writes cleaner once the correct surface has been identified.
+        </div>
+        <p>
+          That is why one clean read-only result where Codex stayed on <code>yoyo</code> for 22 out of 22 tool calls matters. It is evidence that, under explicit engineering questions, the model will stay on the structural MCP surface when that surface is useful.
+        </p>
+      </section>
+
+      <section>
+        <h2>The harness is part of the product</h2>
+        <p>
+          A bad benchmark teaches a product team to optimize the wrong thing. A better benchmark does something else: it clarifies what the product is actually supposed to do.
+        </p>
+        <p>
+          In our case, the harness forced the product story to get sharper. Search was not the moat. Autonomous one-shot repair was not the point. The important behavior was grounded judgment on the read side and disciplined execution on the write side.
+        </p>
+        <p>
+          That is what the harness is designed to surface now.
+        </p>
+      </section>
+
+      <p class="footer">
+        Related reading: <a href="rlm-and-yoyo.html">Why Recursive Language Models point in the same direction as yoyo</a>.
+      </p>
+    </main>
+  </div>
+</body>
+</html>
