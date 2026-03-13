@@ -387,7 +387,13 @@
           <code>yoyo</code> localized the bug to <code>hiargs.rs</code>, <code>walk.rs</code>, and <code>gitignore.rs</code>, placed ownership in <code>crates/ignore</code>, and surfaced the key invariants and regression risks without making edits.
         </p>
         <p>
-          This is groundedness evidence, not yet a broad with-vs-without benchmark. The old <code>119/120</code> number is still a legacy regression report, and the current compare smoke runs are still <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code>.
+          <strong>Write-side WIP result:</strong> the first clean directed <code>write_only</code> batch now covers <code>ripgrep</code>, <code>uuid</code>, and <code>httprouter</code>. <code>semver</code> is tracked separately: the patch in <code>src/eval.rs</code> is correct and passes manual <code>cargo test</code>, but the fixture's exact verify command, <code>cargo test --test *</code>, is malformed and still needs fixing before strict scoring.
+        </p>
+        <p>
+          This is groundedness and directed tool-use evidence, not yet a broad with-vs-without benchmark. The old <code>119/120</code> number is still a legacy regression report, and the current compare smoke runs are still <strong>6/6 ties</strong> across <code>v1.8.5</code> and <code>v1.7.3</code>.
+        </p>
+        <p class="muted">
+          Detailed artifacts live in the repository under <code>evals/results/</code>, including a separate <code>semver</code> write note.
         </p>
       </div>
     </section>

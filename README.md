@@ -20,9 +20,16 @@ Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used 
 
 That run asked three explicit engineer questions: find the `3` most likely files or symbols, decide which layer should own the fix, and state the invariants and blast radius. `yoyo` localized the bug to `hiargs.rs`, `walk.rs`, and `gitignore.rs`, placed ownership in `crates/ignore`, and surfaced the key invariants and regression risks without making edits.
 
-This is groundedness evidence, not yet a broad with-vs-without benchmark. The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, and the current compare smoke runs are still `6/6` ties across `v1.8.5` and `v1.7.3`.
+Write-side WIP result: the first clean directed `write_only` batch now covers `ripgrep`, `uuid`, and `httprouter`. `semver` is tracked separately: the patch in `src/eval.rs` is correct and passes manual `cargo test`, but the fixture's exact verify command, `cargo test --test *`, is malformed and still needs fixing before strict scoring.
 
-The full directed result is in [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](./evals/results/directed-ripgrep-read-only-2026-03-13.md).
+This is groundedness and tool-use evidence under direction, not yet a broad with-vs-without benchmark. The old `119/120` tool-accuracy benchmark still exists as a legacy regression report, and the current compare smoke runs are still `6/6` ties across `v1.8.5` and `v1.7.3`.
+
+Current directed artifacts:
+
+- [`evals/results/directed-ripgrep-read-only-2026-03-13.md`](./evals/results/directed-ripgrep-read-only-2026-03-13.md)
+- [`evals/results/directed-ripgrep-write-only-2026-03-13.md`](./evals/results/directed-ripgrep-write-only-2026-03-13.md)
+- [`evals/results/directed-write-batch-2026-03-13.md`](./evals/results/directed-write-batch-2026-03-13.md)
+- [`evals/results/directed-semver-write-only-2026-03-13.md`](./evals/results/directed-semver-write-only-2026-03-13.md)
 
 See [`evals/README.md`](./evals/README.md) for the current eval direction.
 
