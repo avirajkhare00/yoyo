@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 
 use super::edit::{
-    ast_check_str, semantic_check_errors_for_files, write_bytes_with_compiler_guard,
+    ast_check_str, write_batch_with_compiler_guard, write_bytes_with_compiler_guard, PendingWrite,
 };
 use super::types::{
-    GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, SyntaxError,
-    TraceDownPayload, TraceNode,
+    GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload,
+    TraceNode,
 };
 use super::util::{
     detect_language, load_bake_index, reindex_files, require_bake_index, resolve_project_root,
@@ -87,93 +87,16 @@ fn write_graph_bytes_with_guard(
         .map_err(|err| wrap_guard_error(op, file, err))
 }
 
-struct PendingWrite<'a> {
-    full_path: &'a Path,
-    file: &'a str,
-    bytes: &'a [u8],
-}
-
-fn format_guard_errors(errors: &[SyntaxError]) -> String {
-    errors
-        .iter()
-        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn restore_graph_original(full_path: &Path, file: &str, original: Option<&[u8]>) -> Result<()> {
-    match original {
-        Some(bytes) => {
-            fs::write(full_path, bytes).with_context(|| format!("Failed to restore {}", file))
-        }
-        None => {
-            if full_path.exists() {
-                fs::remove_file(full_path).with_context(|| format!("Failed to remove {}", file))
-            } else {
-                Ok(())
-            }
-        }
-    }
-}
-
-fn restore_graph_batch(writes: &[PendingWrite<'_>], originals: &[Option<Vec<u8>>]) -> Result<()> {
-    let mut first_err = None;
-    for (write, original) in writes.iter().zip(originals.iter()) {
-        if let Err(err) = restore_graph_original(write.full_path, write.file, original.as_deref()) {
-            if first_err.is_none() {
-                first_err = Some(err);
-            }
-        }
-    }
-
-    if let Some(err) = first_err {
-        return Err(err);
-    }
-    Ok(())
-}
-
 fn write_graph_batch_with_guard(
     op: &str,
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
 ) -> Result<()> {
-    let originals: Vec<Option<Vec<u8>>> = writes
-        .iter()
-        .map(|write| fs::read(write.full_path).ok())
-        .collect();
-    let mut written = 0usize;
-
-    for write in writes {
-        if let Err(err) = fs::write(write.full_path, write.bytes) {
-            if written > 0 {
-                restore_graph_batch(&writes[..written], &originals[..written])?;
-            }
-            return Err(anyhow!(err).context(format!("Failed to write {}", write.file)));
-        }
-        written += 1;
-    }
-
-    let guard_inputs: Vec<(&Path, &str)> = writes
-        .iter()
-        .map(|write| (write.full_path, write.file))
-        .collect();
-    let mut errors_by_file = semantic_check_errors_for_files(root, &guard_inputs);
-    if errors_by_file.is_empty() {
-        return Ok(());
-    }
-
-    restore_graph_batch(writes, &originals)?;
-
-    let mut summaries: Vec<String> = errors_by_file
-        .drain()
-        .map(|(file, errors)| format!("{}:\n{}", file, format_guard_errors(&errors)))
-        .collect();
-    summaries.sort();
-    Err(anyhow!(
-        "{} rejected: compiler/interpreter errors (files restored to original):\n{}",
-        op,
-        summaries.join("\n")
-    ))
+    write_batch_with_compiler_guard(root, writes).map_err(|err| {
+        let msg = err.to_string();
+        let detail = msg.strip_prefix("patch rejected: ").unwrap_or(&msg);
+        anyhow!("{} rejected: {}", op, detail)
+    })
 }
 /// A typed parameter for scaffold generation.
 #[derive(Debug, Clone, serde::Deserialize)]

@@ -132,6 +132,10 @@ fn cargo_check_errors_for_files(
     root: &PathBuf,
     files: &[&str],
 ) -> HashMap<String, Vec<SyntaxError>> {
+    filter_error_map(cargo_all_check_errors(root), files)
+}
+
+fn cargo_all_check_errors(root: &PathBuf) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     let output = Command::new("cargo")
@@ -165,9 +169,7 @@ fn cargo_check_errors_for_files(
 
         for span in spans {
             let span_file = span.get("file_name").and_then(|f| f.as_str()).unwrap_or("");
-            let Some(file) = matching_requested_file(span_file, files) else {
-                continue;
-            };
+            let file = normalize_path(span_file);
 
             let line_num = span.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
             let raw = message
@@ -175,14 +177,11 @@ fn cargo_check_errors_for_files(
                 .and_then(|m| m.as_str())
                 .unwrap_or("");
             let text: String = raw.chars().take(120).collect();
-            errors_by_file
-                .entry(file.to_string())
-                .or_default()
-                .push(SyntaxError {
-                    line: line_num,
-                    kind: "cargo".to_string(),
-                    text,
-                });
+            errors_by_file.entry(file).or_default().push(SyntaxError {
+                line: line_num,
+                kind: "cargo".to_string(),
+                text,
+            });
         }
     }
 
@@ -190,6 +189,10 @@ fn cargo_check_errors_for_files(
 }
 
 fn go_build_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<SyntaxError>> {
+    filter_error_map(go_build_all_errors(root), files)
+}
+
+fn go_build_all_errors(root: &PathBuf) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     let output = Command::new("go")
@@ -210,19 +213,14 @@ fn go_build_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, 
         if parts.len() < 4 {
             continue;
         }
-        let Some(file) = matching_requested_file(parts[0], files) else {
-            continue;
-        };
+        let file = normalize_path(parts[0]);
         let line_num = parts[1].trim().parse::<u32>().unwrap_or(0);
         let text: String = parts[3].trim().chars().take(120).collect();
-        errors_by_file
-            .entry(file.to_string())
-            .or_default()
-            .push(SyntaxError {
-                line: line_num,
-                kind: "go".to_string(),
-                text,
-            });
+        errors_by_file.entry(file).or_default().push(SyntaxError {
+            line: line_num,
+            kind: "go".to_string(),
+            text,
+        });
     }
     errors_by_file
 }
@@ -254,6 +252,77 @@ fn take_file_errors(
     file: &str,
 ) -> Vec<SyntaxError> {
     errors_by_file.remove(file).unwrap_or_default()
+}
+
+fn filter_error_map(
+    errors_by_file: HashMap<String, Vec<SyntaxError>>,
+    files: &[&str],
+) -> HashMap<String, Vec<SyntaxError>> {
+    let mut filtered = HashMap::new();
+    for (reported_file, errors) in errors_by_file {
+        let Some(file) = matching_requested_file(&reported_file, files) else {
+            continue;
+        };
+        filtered
+            .entry(file.to_string())
+            .or_insert_with(Vec::new)
+            .extend(errors);
+    }
+    filtered
+}
+
+fn merge_error_maps(
+    target: &mut HashMap<String, Vec<SyntaxError>>,
+    incoming: HashMap<String, Vec<SyntaxError>>,
+) {
+    for (file, mut errors) in incoming {
+        target.entry(file).or_default().append(&mut errors);
+    }
+}
+
+fn error_fingerprint(file: &str, err: &SyntaxError) -> (String, u32, String, String) {
+    (
+        normalize_path(file),
+        err.line,
+        err.kind.clone(),
+        err.text.clone(),
+    )
+}
+
+fn diff_error_maps(
+    after: HashMap<String, Vec<SyntaxError>>,
+    before: &HashMap<String, Vec<SyntaxError>>,
+) -> HashMap<String, Vec<SyntaxError>> {
+    let mut before_counts: HashMap<(String, u32, String, String), usize> = HashMap::new();
+    for (file, errors) in before {
+        for err in errors {
+            *before_counts
+                .entry(error_fingerprint(file, err))
+                .or_insert(0) += 1;
+        }
+    }
+
+    let mut delta = HashMap::new();
+    for (file, errors) in after {
+        for err in errors {
+            let key = error_fingerprint(&file, &err);
+            if let Some(count) = before_counts.get_mut(&key) {
+                if *count > 0 {
+                    *count -= 1;
+                    continue;
+                }
+            }
+            delta.entry(file.clone()).or_insert_with(Vec::new).push(err);
+        }
+    }
+    delta
+}
+
+#[derive(Default)]
+struct ProjectWideBaselines {
+    cargo: Option<HashMap<String, Vec<SyntaxError>>>,
+    go: Option<HashMap<String, Vec<SyntaxError>>>,
+    tsc: Option<HashMap<String, Vec<SyntaxError>>>,
 }
 
 // zig ast-check performs full semantic analysis (type checking, undefined symbols)
@@ -371,15 +440,190 @@ pub(super) fn semantic_check_errors_for_files(
     errors_by_file
 }
 
-fn restore_original_bytes(full_path: &std::path::Path, original: Option<&[u8]>) {
-    match original {
-        Some(bytes) => {
-            let _ = fs::write(full_path, bytes);
-        }
-        None => {
-            let _ = fs::remove_file(full_path);
+fn collect_project_wide_baselines(
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+) -> ProjectWideBaselines {
+    let mut baselines = ProjectWideBaselines::default();
+    let mut has_rust = false;
+    let mut has_go = false;
+    let mut has_tsc = false;
+
+    for write in writes {
+        let ext = write
+            .full_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        match ext {
+            "rs" => has_rust = true,
+            "go" => has_go = true,
+            "ts" | "tsx" | "jsx" => has_tsc = true,
+            _ => {}
         }
     }
+
+    if has_rust {
+        baselines.cargo = Some(cargo_all_check_errors(root));
+    }
+    if has_go {
+        baselines.go = Some(go_build_all_errors(root));
+    }
+    if has_tsc {
+        baselines.tsc = Some(tsc_all_errors(root));
+    }
+
+    baselines
+}
+
+fn batch_semantic_check_errors(
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+    baselines: &ProjectWideBaselines,
+) -> HashMap<String, Vec<SyntaxError>> {
+    let mut errors_by_file = HashMap::new();
+
+    for write in writes {
+        let ext = write
+            .full_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        match ext {
+            "zig" => {
+                let errors = zig_check_errors(write.full_path);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "py" => {
+                let errors = python_compile_errors(root, write.file);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "js" => {
+                let errors = node_check_errors(root, write.file);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "rb" => {
+                let errors = ruby_check_errors(root, write.file);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "php" => {
+                let errors = php_check_errors(root, write.file);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "sh" | "bash" => {
+                let errors = bash_check_errors(root, write.file);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(before) = &baselines.cargo {
+        merge_error_maps(
+            &mut errors_by_file,
+            diff_error_maps(cargo_all_check_errors(root), before),
+        );
+    }
+    if let Some(before) = &baselines.go {
+        merge_error_maps(
+            &mut errors_by_file,
+            diff_error_maps(go_build_all_errors(root), before),
+        );
+    }
+    if let Some(before) = &baselines.tsc {
+        merge_error_maps(
+            &mut errors_by_file,
+            diff_error_maps(tsc_all_errors(root), before),
+        );
+    }
+
+    errors_by_file
+}
+
+pub(super) struct PendingWrite<'a> {
+    pub(super) full_path: &'a std::path::Path,
+    pub(super) file: &'a str,
+    pub(super) bytes: &'a [u8],
+}
+
+fn format_guard_errors(errors: &[SyntaxError]) -> String {
+    errors
+        .iter()
+        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn restore_batch_originals(
+    writes: &[PendingWrite<'_>],
+    originals: &[Option<Vec<u8>>],
+) -> Result<()> {
+    for (write, original) in writes.iter().zip(originals.iter()) {
+        match original {
+            Some(bytes) => {
+                fs::write(write.full_path, bytes)
+                    .with_context(|| format!("Failed to restore {}", write.file))?;
+            }
+            None => {
+                if write.full_path.exists() {
+                    fs::remove_file(write.full_path)
+                        .with_context(|| format!("Failed to remove {}", write.file))?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn write_batch_with_compiler_guard(
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+) -> Result<()> {
+    let baselines = collect_project_wide_baselines(root, writes);
+    let originals: Vec<Option<Vec<u8>>> = writes
+        .iter()
+        .map(|write| fs::read(write.full_path).ok())
+        .collect();
+    let mut written = 0usize;
+
+    for write in writes {
+        if let Err(err) = fs::write(write.full_path, write.bytes) {
+            if written > 0 {
+                restore_batch_originals(&writes[..written], &originals[..written])?;
+            }
+            return Err(anyhow!(err).context(format!("Failed to write {}", write.file)));
+        }
+        written += 1;
+    }
+
+    let mut errors_by_file = batch_semantic_check_errors(root, writes, &baselines);
+    if errors_by_file.is_empty() {
+        return Ok(());
+    }
+
+    restore_batch_originals(writes, &originals)?;
+
+    let mut summaries: Vec<String> = errors_by_file
+        .drain()
+        .map(|(file, errors)| format!("{}:\n{}", file, format_guard_errors(&errors)))
+        .collect();
+    summaries.sort();
+    Err(anyhow!(
+        "patch rejected: compiler/interpreter errors (files restored to original):\n{}",
+        summaries.join("\n")
+    ))
 }
 
 // Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
@@ -390,24 +634,12 @@ pub(super) fn write_bytes_with_compiler_guard(
     file: &str,
     new_bytes: &[u8],
 ) -> Result<()> {
-    let original = fs::read(full_path).ok();
-
-    fs::write(full_path, new_bytes).with_context(|| format!("Failed to write {}", file))?;
-
-    let errors = semantic_check_errors(root, full_path, file);
-    if !errors.is_empty() {
-        restore_original_bytes(full_path, original.as_deref());
-        let summary: Vec<String> = errors
-            .iter()
-            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-            .collect();
-        return Err(anyhow!(
-            "patch rejected: compiler/interpreter errors (file restored to original):\n{}",
-            summary.join("\n")
-        ));
-    }
-
-    Ok(())
+    let writes = [PendingWrite {
+        full_path,
+        file,
+        bytes: new_bytes,
+    }];
+    write_batch_with_compiler_guard(root, &writes)
 }
 
 // Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
@@ -655,6 +887,10 @@ fn php_check_errors(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
 }
 
 fn tsc_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<SyntaxError>> {
+    filter_error_map(tsc_all_errors(root), files)
+}
+
+fn tsc_all_errors(root: &PathBuf) -> HashMap<String, Vec<SyntaxError>> {
     use std::process::Command;
 
     // Try npx tsc first, fall back to tsc directly.
@@ -681,9 +917,7 @@ fn tsc_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<S
     for ln in combined.lines() {
         // Format: path/file.ts(LINE,COL): error TS####: message
         let Some(paren) = ln.find('(') else { continue };
-        let Some(file) = matching_requested_file(&ln[..paren], files) else {
-            continue;
-        };
+        let file = normalize_path(&ln[..paren]);
         let rest = &ln[paren + 1..];
         let Some(comma) = rest.find(',') else {
             continue;
@@ -691,14 +925,11 @@ fn tsc_errors_for_files(root: &PathBuf, files: &[&str]) -> HashMap<String, Vec<S
         let line_num = rest[..comma].parse::<u32>().unwrap_or(0);
         let text = ln.split(": ").skip(2).collect::<Vec<_>>().join(": ");
         let text: String = text.chars().take(120).collect();
-        errors_by_file
-            .entry(file.to_string())
-            .or_default()
-            .push(SyntaxError {
-                line: line_num,
-                kind: "tsc".to_string(),
-                text,
-            });
+        errors_by_file.entry(file).or_default().push(SyntaxError {
+            line: line_num,
+            kind: "tsc".to_string(),
+            text,
+        });
     }
     errors_by_file
 }
@@ -1164,6 +1395,7 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
 
     let files_written = by_file.len();
     let files_for_reindex: Vec<String> = by_file.keys().cloned().collect();
+    let mut planned_writes: Vec<(String, PathBuf, Vec<u8>)> = Vec::new();
 
     for (file, mut file_edits) in by_file {
         let full_path = root.join(&file);
@@ -1240,8 +1472,18 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
             }
         }
 
-        write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes)?;
+        planned_writes.push((file, full_path, bytes));
     }
+
+    let writes: Vec<PendingWrite<'_>> = planned_writes
+        .iter()
+        .map(|(file, full_path, bytes)| PendingWrite {
+            full_path: full_path.as_path(),
+            file: file.as_str(),
+            bytes: bytes.as_slice(),
+        })
+        .collect();
+    write_batch_with_compiler_guard(&root, &writes)?;
 
     let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
@@ -1464,6 +1706,130 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dir.path().join("lib.rs")).unwrap(),
             "fn bar() {}\n"
+        );
+    }
+
+    #[test]
+    fn multi_patch_applies_cross_file_rust_rename_atomically() {
+        let dir = TempDir::new().unwrap();
+        let cargo =
+            "[package]\nname = \"multi-patch-guard\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+        let lib = "mod a;\nmod b;\npub use a::helper_fn;\npub use b::call_value;\n";
+        let a_src = "pub fn helper_fn() -> i32 { 1 }\n";
+        let b_src = "use crate::helper_fn;\npub fn call_value() -> i32 { helper_fn() }\n";
+        write_file(&dir, "Cargo.toml", cargo);
+        write_file(&dir, "src/lib.rs", lib);
+        write_file(&dir, "src/a.rs", a_src);
+        write_file(&dir, "src/b.rs", b_src);
+
+        let helper_len = "helper_fn".len();
+        let b_first = b_src.find("helper_fn").unwrap();
+        let b_second = b_src.rfind("helper_fn").unwrap();
+        assert_ne!(
+            b_first, b_second,
+            "expected two helper_fn references in src/b.rs"
+        );
+
+        let out = multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            vec![
+                PatchEdit {
+                    file: "src/lib.rs".to_string(),
+                    byte_start: lib.find("helper_fn").unwrap(),
+                    byte_end: lib.find("helper_fn").unwrap() + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+                PatchEdit {
+                    file: "src/a.rs".to_string(),
+                    byte_start: a_src.find("helper_fn").unwrap(),
+                    byte_end: a_src.find("helper_fn").unwrap() + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+                PatchEdit {
+                    file: "src/b.rs".to_string(),
+                    byte_start: b_first,
+                    byte_end: b_first + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+                PatchEdit {
+                    file: "src/b.rs".to_string(),
+                    byte_start: b_second,
+                    byte_end: b_second + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+            ],
+        )
+        .unwrap();
+
+        let payload: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(payload["tool"], "multi_patch");
+        assert_eq!(payload["files_written"], 3);
+        assert_eq!(payload["edits_applied"], 4);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap(),
+            "mod a;\nmod b;\npub use a::renamed_fn;\npub use b::call_value;\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/a.rs")).unwrap(),
+            "pub fn renamed_fn() -> i32 { 1 }\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/b.rs")).unwrap(),
+            "use crate::renamed_fn;\npub fn call_value() -> i32 { renamed_fn() }\n"
+        );
+    }
+
+    #[test]
+    fn multi_patch_rejects_incomplete_cross_file_rust_rename_and_restores_files() {
+        let dir = TempDir::new().unwrap();
+        let cargo =
+            "[package]\nname = \"multi-patch-guard\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+        let lib = "mod a;\nmod b;\npub use a::helper_fn;\npub use b::call_value;\n";
+        let a_src = "pub fn helper_fn() -> i32 { 1 }\n";
+        let b_src = "use crate::helper_fn;\npub fn call_value() -> i32 { helper_fn() }\n";
+        write_file(&dir, "Cargo.toml", cargo);
+        write_file(&dir, "src/lib.rs", lib);
+        write_file(&dir, "src/a.rs", a_src);
+        write_file(&dir, "src/b.rs", b_src);
+
+        let helper_len = "helper_fn".len();
+        let err = multi_patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            vec![
+                PatchEdit {
+                    file: "src/lib.rs".to_string(),
+                    byte_start: lib.find("helper_fn").unwrap(),
+                    byte_end: lib.find("helper_fn").unwrap() + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+                PatchEdit {
+                    file: "src/a.rs".to_string(),
+                    byte_start: a_src.find("helper_fn").unwrap(),
+                    byte_end: a_src.find("helper_fn").unwrap() + helper_len,
+                    new_content: "renamed_fn".to_string(),
+                },
+            ],
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("cargo")
+                || err.to_string().contains("cannot find"),
+            "got: {}",
+            err
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/lib.rs")).unwrap(),
+            lib
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/a.rs")).unwrap(),
+            a_src
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/b.rs")).unwrap(),
+            b_src
         );
     }
 
