@@ -489,6 +489,8 @@ pub fn tool_catalog() -> Vec<ToolDescription> {
             output_shape: Some(r#"{"large_functions":[{"name":"","file":"","start_line":0,"score":0,"complexity":0,"fan_out":0}],"dead_code":[{"name":"","file":"","start_line":0,"lines":0}],"duplicate_code":[{"stem":"","functions":[{"name":"","file":""}]}],"long_methods":[{"name":"","file":"","start_line":0,"lines":0}],"feature_envy":[{"name":"","file":"","envies":"","cross_file_calls":0}],"shotgun_surgery":[{"name":"","file":"","caller_files":0}]}"#) },
         ToolDescription { name: "change", description: "Task-shaped write entrypoint over edit, bulk_edit, rename, move, delete, create, and add.", requires_bake: false, category: "write", parallelisable: false,
             output_shape: Some(r#"{"action":"edit|bulk_edit|rename|move|delete|create|add","result":{}}"#) },
+        ToolDescription { name: "retry_plan", description: "Turn a failed guarded write into a bounded retry plan with targeted inspect context.", requires_bake: false, category: "orchestration", parallelisable: true,
+            output_shape: Some(r#"{"retryable":true,"max_retries":2,"guard_failure":{},"targets":[{"file":"","start_line":0,"end_line":0,"errors":[]}],"workflow":[{"id":"","tool":"","args":{}}]}"#) },
         ToolDescription { name: "script", description: "Run a Rhai script with yoyo tools as functions.", requires_bake: false, category: "orchestration", parallelisable: false, output_shape: None },
         ToolDescription { name: "help", description: "Get params, output shape, example, and limitations for any tool.", requires_bake: false, category: "discovery", parallelisable: true, output_shape: None },
     ]
@@ -631,6 +633,13 @@ fn tool_help_catalog() -> Vec<ToolHelp> {
             output_shape: Some(r#"{"action":"edit|bulk_edit|rename|move|delete|create|add","result":{}}"#),
             example: json!({"call": {"action": "rename", "name": "get_user", "new_name": "fetch_user"}}),
             limitations: "Task-shaped router over existing write primitives. Use when you know the change intent but do not want to choose between edit, rename, move, delete, create, add, or bulk_edit first.",
+        },
+        ToolHelp {
+            name: "retry_plan",
+            params: json!({"text": "required - failed write output containing a guard_failure line or raw guard_failure JSON", "path": "optional - project directory; falls back to project_root inside the payload", "max_retries": "optional - bounded retry budget (default 2)", "context_lines": "optional - surrounding lines to inspect around each failure (default 3)"}),
+            output_shape: Some(r#"{"tool":"guard_retry_plan","retryable":true,"max_retries":2,"next_hint":"","guard_failure":{},"targets":[{"file":"","start_line":0,"end_line":0,"errors":[],"inspect":{}}],"workflow":[{"id":"","tool":"","args":{},"why":""}]}"#),
+            example: json!({"call": {"text": "guard_failure: {\"tool\":\"guard_failure\",\"operation\":\"patch\",\"phase\":\"post_write_guard\",\"retryable\":true,\"files_restored\":true,\"files\":[{\"file\":\"src/lib.rs\",\"errors\":[{\"line\":2,\"kind\":\"rust\",\"text\":\"mismatched types\"}]}]}", "max_retries": 2}}),
+            limitations: "Consumes a prior guarded-write failure; it does not repair code itself. Uses inspect line mode, so it can work without a bake index as long as the target files still exist.",
         },
         ToolHelp {
             name: "script",
@@ -1250,6 +1259,22 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("ownership_layer"));
+    }
+
+    #[test]
+    fn help_supports_retry_plan_tool() {
+        let json = tool_help("retry_plan".to_string()).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload["name"], "retry_plan");
+        assert!(payload["limitations"]
+            .as_str()
+            .unwrap()
+            .contains("does not repair code itself"));
+        assert!(payload["output_shape"]
+            .as_str()
+            .unwrap()
+            .contains("guard_failure"));
     }
 
     #[test]

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0] - 2026-03-14
+
+### Added
+
+- `retry_plan` MCP tool and `yoyo retry-plan` CLI command: turns a failed guarded write into a bounded retry plan with targeted `inspect` context, `next_hint`, and explicit stop conditions.
+- Machine-readable `guard_failure` payloads for guarded writes, including `operation`, `phase`, `retryable`, `files_restored`, and per-file structured errors.
+- Eval runner coverage for guarded write retries (`guard_failure -> inspect -> retry -> success`) with the Rust fixture task `rw-006`.
+
+### Changed
+
+- Guarded writes now cover interpreter-backed syntax checks for JavaScript, Python, Ruby, PHP, and Bash in the same rollback path as compiler-backed languages.
+- Runtime smoke checks are now opt-in and file-targeted only: unsandboxed runtime execution requires explicit config, commands must target `{{file}}` or `{{abs_file}}`, and inline eval forms like `python -c` are rejected.
+- Added first-class workflow guidance for recovering from `guard_failure`, then exposed that guidance as a structured MCP/CLI planner instead of leaving retry policy in eval-only glue.
+
 ## [1.9.2] - 2026-03-13
 
 ### Changed

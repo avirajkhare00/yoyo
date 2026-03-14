@@ -461,6 +461,22 @@ fn build_registry() -> Vec<ToolEntry> {
                 )
             }),
         },
+        ToolEntry {
+            schema: schema_req("retry_plan", d("retry_plan"), &["text"], json!({
+                "path": p(),
+                "text": s("Failed write output containing a `guard_failure: {...}` line, or a raw guard_failure JSON object."),
+                "max_retries": i("Maximum retry attempts the caller should allow before stopping (default 2)."),
+                "context_lines": i("Context lines to include above and below the failing range (default 3).")
+            })),
+            handler: Box::new(|a, path| {
+                crate::engine::guard_retry_plan(
+                    path,
+                    a.str_req("text", "retry_plan")?,
+                    a.uint_opt("max_retries"),
+                    a.uint_opt("context_lines").map(|v| v as u32),
+                )
+            }),
+        },
         // ── orchestration ────────────────────────────────────────────────────
         ToolEntry {
             schema: schema_req("script", d("script"), &["code"], json!({
@@ -582,6 +598,14 @@ mod tests {
         tokio::runtime::Runtime::new().unwrap()
     }
 
+    fn write_file(dir: &TempDir, rel: &str, content: &str) {
+        let path = dir.path().join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, content).unwrap();
+    }
+
     #[test]
     fn supersearch_pattern_alias_promotes_non_mode_value_to_query() {
         let dir = baked_fixture();
@@ -622,6 +646,45 @@ mod tests {
             "arguments": {"path": root, "pattern": "call"}
         })));
         assert!(result.is_err(), "should error when pattern is a mode value and query is absent");
+    }
+
+    #[test]
+    fn retry_plan_tool_returns_structured_plan() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            &dir,
+            "Cargo.toml",
+            "[package]\nname = \"retry-plan\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n",
+        );
+        write_file(
+            &dir,
+            "src/lib.rs",
+            "pub fn greet() -> &'static str {\n    \"hi\"\n}\n",
+        );
+        let root = dir.path().to_string_lossy().into_owned();
+
+        let err = crate::engine::patch(
+            Some(root.clone()),
+            "src/lib.rs".to_string(),
+            1,
+            3,
+            "pub fn greet() -> &'static str {\n    let msg: i32 = \"hi\";\n    msg\n}\n".to_string(),
+        )
+        .unwrap_err();
+
+        let result = rt().block_on(call_tool(json!({
+            "name": "retry_plan",
+            "arguments": {"path": root, "text": err.to_string(), "max_retries": 2, "context_lines": 2}
+        })));
+        assert!(result.is_ok(), "retry_plan tool should succeed: {:?}", result.err());
+
+        let text = result.unwrap()["content"][0]["text"].as_str().unwrap().to_string();
+        let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(payload["tool"], "guard_retry_plan");
+        assert_eq!(payload["retryable"], true);
+        assert_eq!(payload["workflow"][0]["tool"], "inspect");
+        assert_eq!(payload["workflow"][1]["tool"], "change");
+        assert_eq!(payload["targets"][0]["file"], "src/lib.rs");
     }
 
     #[test]

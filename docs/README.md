@@ -171,7 +171,7 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 ---
 
-## Tools reference (13 MCP tools)
+## Tools reference (14 MCP tools)
 
 ### Bootstrap
 
@@ -209,6 +209,12 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 | Tool | What it does |
 |---|---|
 | `change` | Task-shaped write entrypoint over `edit`, `bulk_edit`, `rename`, `move`, `delete`, `create`, and `add`. |
+
+### Recovery
+
+| Tool | What it does |
+|---|---|
+| `retry_plan` | Turns a failed guarded write into a bounded retry plan with targeted `inspect` context, `next_hint`, and explicit stop conditions. |
 
 ### Orchestration
 
