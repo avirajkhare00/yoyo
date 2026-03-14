@@ -23,7 +23,9 @@ pub(crate) struct BakeIndex {
     pub(crate) impls: Vec<crate::lang::IndexedImpl>,
 }
 
-fn default_origin() -> String { "user".to_string() }
+fn default_origin() -> String {
+    "user".to_string()
+}
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct BakeFile {
@@ -100,9 +102,9 @@ pub(crate) fn parse_section_cursor(cursor: Option<&str>) -> Result<Option<(Strin
     let (section, offset) = cursor
         .split_once(':')
         .ok_or_else(|| anyhow!("Invalid cursor '{cursor}'. Expected format <section>:<offset>."))?;
-    let offset = offset
-        .parse::<usize>()
-        .map_err(|_| anyhow!("Invalid cursor '{cursor}'. Offset must be a non-negative integer."))?;
+    let offset = offset.parse::<usize>().map_err(|_| {
+        anyhow!("Invalid cursor '{cursor}'. Offset must be a non-negative integer.")
+    })?;
     Ok(Some((section.to_string(), offset)))
 }
 
@@ -441,12 +443,11 @@ pub(crate) struct DocMatch {
     pub(crate) snippet: Option<String>,
 }
 
-#[derive(Serialize)]
-#[derive(Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub(crate) struct SyntaxError {
     pub(crate) line: u32,
-    pub(crate) kind: String,   // "error" | "missing"
-    pub(crate) text: String,   // up to 80 chars of the offending node
+    pub(crate) kind: String, // "error" | "missing"
+    pub(crate) text: String, // up to 80 chars of the offending node
 }
 
 #[derive(Serialize)]

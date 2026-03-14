@@ -959,12 +959,100 @@ fn collect_runtime_feedback_errors(
     Ok(errors_by_file)
 }
 
+fn single_file_errors(file: &str, errors: Vec<SyntaxError>) -> HashMap<String, Vec<SyntaxError>> {
+    let mut errors_by_file = HashMap::new();
+    errors_by_file.insert(file.to_string(), errors);
+    errors_by_file
+}
+
+fn sorted_syntax_errors(errors: &[SyntaxError]) -> Vec<SyntaxError> {
+    let mut sorted = errors.to_vec();
+    sorted.sort_by(|a, b| {
+        a.line
+            .cmp(&b.line)
+            .then(a.kind.cmp(&b.kind))
+            .then(a.text.cmp(&b.text))
+    });
+    sorted
+}
+
+fn guard_failure_json(
+    root: &PathBuf,
+    operation: &str,
+    phase: &str,
+    retryable: bool,
+    files_restored: bool,
+    errors_by_file: &HashMap<String, Vec<SyntaxError>>,
+) -> String {
+    let mut files: Vec<serde_json::Value> = errors_by_file
+        .iter()
+        .map(|(file, errors)| {
+            serde_json::json!({
+                "file": file,
+                "errors": sorted_syntax_errors(errors),
+            })
+        })
+        .collect();
+    files.sort_by(|a, b| {
+        a.get("file")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("file").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+
+    let payload = serde_json::json!({
+        "tool": "guard_failure",
+        "version": env!("CARGO_PKG_VERSION"),
+        "project_root": root,
+        "operation": operation,
+        "phase": phase,
+        "retryable": retryable,
+        "files_restored": files_restored,
+        "files": files,
+    });
+    serde_json::to_string(&payload)
+        .unwrap_or_else(|_| "{\"tool\":\"guard_failure\",\"retryable\":false}".to_string())
+}
+
 fn format_guard_errors(errors: &[SyntaxError]) -> String {
-    errors
+    sorted_syntax_errors(errors)
         .iter()
         .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn format_structured_rejection(
+    root: &PathBuf,
+    operation: &str,
+    phase: &str,
+    retryable: bool,
+    files_restored: bool,
+    headline: String,
+    errors_by_file: &HashMap<String, Vec<SyntaxError>>,
+) -> String {
+    let mut message = headline;
+    let mut summaries: Vec<String> = errors_by_file
+        .iter()
+        .map(|(file, errors)| format!("{}:\n{}", file, format_guard_errors(errors)))
+        .collect();
+    summaries.sort();
+    if !summaries.is_empty() {
+        message.push('\n');
+        message.push_str(&summaries.join("\n"));
+    }
+    format!(
+        "{}\nguard_failure: {}",
+        message,
+        guard_failure_json(
+            root,
+            operation,
+            phase,
+            retryable,
+            files_restored,
+            errors_by_file,
+        )
+    )
 }
 
 fn restore_batch_originals(
@@ -991,6 +1079,7 @@ fn restore_batch_originals(
 pub(super) fn write_batch_with_compiler_guard(
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
+    operation: &str,
 ) -> Result<()> {
     let baselines = collect_project_wide_baselines(root, writes);
     let runtime_checks = prepare_runtime_checks(root, writes)?;
@@ -1026,16 +1115,15 @@ pub(super) fn write_batch_with_compiler_guard(
     }
 
     restore_batch_originals(writes, &originals)?;
-
-    let mut summaries: Vec<String> = errors_by_file
-        .drain()
-        .map(|(file, errors)| format!("{}:\n{}", file, format_guard_errors(&errors)))
-        .collect();
-    summaries.sort();
-    Err(anyhow!(
-        "patch rejected: compiler/interpreter errors (files restored to original):\n{}",
-        summaries.join("\n")
-    ))
+    Err(anyhow!(format_structured_rejection(
+        root,
+        operation,
+        "post_write_guard",
+        true,
+        true,
+        "patch rejected: compiler/interpreter errors (files restored to original):".to_string(),
+        &errors_by_file,
+    )))
 }
 
 // Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
@@ -1045,13 +1133,14 @@ pub(super) fn write_bytes_with_compiler_guard(
     full_path: &std::path::Path,
     file: &str,
     new_bytes: &[u8],
+    operation: &str,
 ) -> Result<()> {
     let writes = [PendingWrite {
         full_path,
         file,
         bytes: new_bytes,
     }];
-    write_batch_with_compiler_guard(root, &writes)
+    write_batch_with_compiler_guard(root, &writes, operation)
 }
 
 // Write new_text to full_path, run the compiler/interpreter guard, restore original if errors.
@@ -1062,8 +1151,9 @@ fn write_with_compiler_guard(
     file: &str,
     new_text: &str,
     _ext: &str,
+    operation: &str,
 ) -> Result<()> {
-    write_bytes_with_compiler_guard(root, full_path, file, new_text.as_bytes())
+    write_bytes_with_compiler_guard(root, full_path, file, new_text.as_bytes(), operation)
 }
 
 /// Run `python -m py_compile <file>` and return syntax errors. Best-effort.
@@ -1482,17 +1572,19 @@ pub fn patch_string(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let pre_errors = ast_check_str(&new_content, ext);
     if !pre_errors.is_empty() {
-        let summary: Vec<String> = pre_errors
-            .iter()
-            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-            .collect();
-        return Err(anyhow!(
-            "patch rejected: syntax errors in new content (file not modified):\n{}",
-            summary.join("\n")
-        ));
+        let errors_by_file = single_file_errors(&file, pre_errors);
+        return Err(anyhow!(format_structured_rejection(
+            &root,
+            "patch",
+            "pre_write_syntax",
+            true,
+            false,
+            "patch rejected: syntax errors in new content (file not modified):".to_string(),
+            &errors_by_file,
+        )));
     }
 
-    write_with_compiler_guard(&root, &full_path, &file, &new_content, ext)?;
+    write_with_compiler_guard(&root, &full_path, &file, &new_content, ext, "patch")?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
@@ -1745,29 +1837,50 @@ pub fn patch_bytes(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     match std::str::from_utf8(&bytes) {
         Err(_) => {
-            return Err(anyhow!(
-                "patch_bytes rejected: result is invalid UTF-8 in {} (file not modified) — \
-             byte offsets likely split a multi-byte character",
-                file
-            ))
+            let errors_by_file = single_file_errors(
+                &file,
+                vec![SyntaxError {
+                    line: 0,
+                    kind: "invalid_utf8".to_string(),
+                    text:
+                        "result is invalid UTF-8; byte offsets likely split a multi-byte character"
+                            .to_string(),
+                }],
+            );
+            return Err(anyhow!(format_structured_rejection(
+                &root,
+                "patch_bytes",
+                "pre_write_utf8",
+                true,
+                false,
+                format!(
+                    "patch_bytes rejected: result is invalid UTF-8 in {} (file not modified) — byte offsets likely split a multi-byte character",
+                    file
+                ),
+                &errors_by_file,
+            )));
         }
         Ok(patched_str) => {
             let pre_errors = ast_check_str(patched_str, ext);
             if !pre_errors.is_empty() {
-                let summary: Vec<String> = pre_errors
-                    .iter()
-                    .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                    .collect();
-                return Err(anyhow!(
-                    "patch_bytes rejected: syntax errors in {} (file not modified):\n{}",
-                    file,
-                    summary.join("\n")
-                ));
+                let errors_by_file = single_file_errors(&file, pre_errors);
+                return Err(anyhow!(format_structured_rejection(
+                    &root,
+                    "patch_bytes",
+                    "pre_write_syntax",
+                    true,
+                    false,
+                    format!(
+                        "patch_bytes rejected: syntax errors in {} (file not modified):",
+                        file
+                    ),
+                    &errors_by_file,
+                )));
             }
         }
     }
 
-    write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes)?;
+    write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes, "patch_bytes")?;
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
     let payload = PatchBytesPayload {
@@ -1862,24 +1975,45 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
         let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         match std::str::from_utf8(&bytes) {
             Err(_) => {
-                return Err(anyhow!(
-                    "multi_patch rejected: result is invalid UTF-8 in {} (file not modified) — \
-                 byte offsets likely split a multi-byte character",
-                    file
-                ))
+                let errors_by_file = single_file_errors(
+                    &file,
+                    vec![SyntaxError {
+                        line: 0,
+                        kind: "invalid_utf8".to_string(),
+                        text:
+                            "result is invalid UTF-8; byte offsets likely split a multi-byte character"
+                                .to_string(),
+                    }],
+                );
+                return Err(anyhow!(format_structured_rejection(
+                    &root,
+                    "multi_patch",
+                    "pre_write_utf8",
+                    true,
+                    false,
+                    format!(
+                        "multi_patch rejected: result is invalid UTF-8 in {} (file not modified) — byte offsets likely split a multi-byte character",
+                        file
+                    ),
+                    &errors_by_file,
+                )));
             }
             Ok(patched_str) => {
                 let pre_errors = ast_check_str(patched_str, ext);
                 if !pre_errors.is_empty() {
-                    let summary: Vec<String> = pre_errors
-                        .iter()
-                        .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-                        .collect();
-                    return Err(anyhow!(
-                        "multi_patch rejected: syntax errors in {} (file not modified):\n{}",
-                        file,
-                        summary.join("\n")
-                    ));
+                    let errors_by_file = single_file_errors(&file, pre_errors);
+                    return Err(anyhow!(format_structured_rejection(
+                        &root,
+                        "multi_patch",
+                        "pre_write_syntax",
+                        true,
+                        false,
+                        format!(
+                            "multi_patch rejected: syntax errors in {} (file not modified):",
+                            file
+                        ),
+                        &errors_by_file,
+                    )));
                 }
             }
         }
@@ -1895,7 +2029,7 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
             bytes: bytes.as_slice(),
         })
         .collect();
-    write_batch_with_compiler_guard(&root, &writes)?;
+    write_batch_with_compiler_guard(&root, &writes, "multi_patch")?;
 
     let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
@@ -1966,17 +2100,19 @@ fn apply_patch_to_range(
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let pre_errors = ast_check_str(&new_text, ext);
     if !pre_errors.is_empty() {
-        let summary: Vec<String> = pre_errors
-            .iter()
-            .map(|e| format!("line {}: {} — {}", e.line, e.kind, e.text))
-            .collect();
-        return Err(anyhow!(
-            "patch rejected: syntax errors in new content (file not modified):\n{}",
-            summary.join("\n")
-        ));
+        let errors_by_file = single_file_errors(file, pre_errors);
+        return Err(anyhow!(format_structured_rejection(
+            root,
+            "patch",
+            "pre_write_syntax",
+            true,
+            false,
+            "patch rejected: syntax errors in new content (file not modified):".to_string(),
+            &errors_by_file,
+        )));
     }
 
-    write_with_compiler_guard(&root, &full_path, file, &new_text, ext)?;
+    write_with_compiler_guard(&root, &full_path, file, &new_text, ext, "patch")?;
 
     Ok((file.to_string(), start, end, total_lines))
 }
@@ -2003,6 +2139,15 @@ mod tests {
             .arg(version_arg)
             .output()
             .is_ok()
+    }
+
+    fn extract_guard_failure(err: &anyhow::Error) -> serde_json::Value {
+        let msg = err.to_string();
+        let payload = msg
+            .lines()
+            .find_map(|line| line.strip_prefix("guard_failure: "))
+            .unwrap_or_else(|| panic!("missing guard_failure payload in: {}", msg));
+        serde_json::from_str(payload).unwrap()
     }
 
     // ── adversarial / puncture tests ─────────────────────────────────────────
@@ -2286,8 +2431,9 @@ mod tests {
         let full_path = root.join("main.py");
         write_file(&dir, "main.py", "x = 1\n");
 
-        let err = write_with_compiler_guard(&root, &full_path, "main.py", "return 1\n", "py")
-            .unwrap_err();
+        let err =
+            write_with_compiler_guard(&root, &full_path, "main.py", "return 1\n", "py", "patch")
+                .unwrap_err();
 
         assert!(
             err.to_string().contains("compiler/interpreter")
@@ -2312,6 +2458,7 @@ mod tests {
             &full_path,
             "main.sh",
             b"#!/usr/bin/env bash\nif true; then\n  echo ok\n",
+            "patch_bytes",
         )
         .unwrap_err();
 
@@ -2337,8 +2484,9 @@ mod tests {
         let original = "const answer = 1;\n";
         write_file(&dir, "main.js", original);
 
-        let err = write_with_compiler_guard(&root, &full_path, "main.js", "const = 1;\n", "js")
-            .unwrap_err();
+        let err =
+            write_with_compiler_guard(&root, &full_path, "main.js", "const = 1;\n", "js", "patch")
+                .unwrap_err();
 
         assert!(
             err.to_string().contains("compiler/interpreter")
@@ -2368,6 +2516,7 @@ mod tests {
             "main.rb",
             "def greet(\n  puts \"hi\"\nend\n",
             "rb",
+            "patch",
         )
         .unwrap_err();
 
@@ -2399,6 +2548,7 @@ mod tests {
             "main.php",
             "<?php\nfunction greet( {\n    echo \"hi\";\n}\n",
             "php",
+            "patch",
         )
         .unwrap_err();
 
@@ -2444,6 +2594,7 @@ mod tests {
             "main.py",
             "import does_not_exist\n",
             "py",
+            "patch",
         )
         .unwrap_err();
 
@@ -2489,6 +2640,7 @@ mod tests {
             "main.js",
             "require(\"./missing\");\n",
             "js",
+            "patch",
         )
         .unwrap_err();
 
@@ -2500,6 +2652,74 @@ mod tests {
             err
         );
         assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn patch_rejection_includes_machine_readable_syntax_payload() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "lib.rs", "fn greet() {}\n");
+
+        let err = patch(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "lib.rs".to_string(),
+            1,
+            1,
+            "fn greet( {\n".to_string(),
+        )
+        .unwrap_err();
+
+        let payload = extract_guard_failure(&err);
+        assert_eq!(payload["tool"], "guard_failure");
+        assert_eq!(payload["operation"], "patch");
+        assert_eq!(payload["phase"], "pre_write_syntax");
+        assert_eq!(payload["retryable"], true);
+        assert_eq!(payload["files_restored"], false);
+        assert_eq!(payload["files"][0]["file"], "lib.rs");
+    }
+
+    #[test]
+    fn runtime_rejection_includes_machine_readable_guard_payload() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        write_file(&dir, "main.py", "print(\"ok\")\n");
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "{{file}}"],
+      "allow_unsandboxed": true,
+      "kind": "python-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}"#,
+        );
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "import does_not_exist\n",
+            "py",
+            "patch",
+        )
+        .unwrap_err();
+
+        let payload = extract_guard_failure(&err);
+        assert_eq!(payload["tool"], "guard_failure");
+        assert_eq!(payload["operation"], "patch");
+        assert_eq!(payload["phase"], "post_write_guard");
+        assert_eq!(payload["retryable"], true);
+        assert_eq!(payload["files_restored"], true);
+        assert_eq!(payload["files"][0]["file"], "main.py");
+        assert_eq!(payload["files"][0]["errors"][0]["kind"], "python-runtime");
     }
 
     #[test]
@@ -2527,7 +2747,7 @@ mod tests {
 }"#,
         );
 
-        write_with_compiler_guard(&root, &full_path, "main.py", updated, "py").unwrap();
+        write_with_compiler_guard(&root, &full_path, "main.py", updated, "py", "patch").unwrap();
 
         assert_eq!(std::fs::read_to_string(&full_path).unwrap(), updated);
     }
@@ -2556,9 +2776,15 @@ mod tests {
 }"#,
         );
 
-        let err =
-            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
-                .unwrap_err();
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "print(\"still ok\")\n",
+            "py",
+            "patch",
+        )
+        .unwrap_err();
 
         assert!(
             err.to_string().contains("unsafe")
@@ -2593,9 +2819,15 @@ mod tests {
 }"#,
         );
 
-        let err =
-            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
-                .unwrap_err();
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "print(\"still ok\")\n",
+            "py",
+            "patch",
+        )
+        .unwrap_err();
 
         assert!(
             err.to_string().contains("must target the changed file")
@@ -2631,9 +2863,15 @@ mod tests {
 }"#,
         );
 
-        let err =
-            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
-                .unwrap_err();
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "print(\"still ok\")\n",
+            "py",
+            "patch",
+        )
+        .unwrap_err();
 
         assert!(
             err.to_string().contains("unsafe")

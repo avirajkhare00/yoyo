@@ -83,7 +83,7 @@ fn write_graph_bytes_with_guard(
     file: &str,
     bytes: &[u8],
 ) -> Result<()> {
-    write_bytes_with_compiler_guard(root, full_path, file, bytes)
+    write_bytes_with_compiler_guard(root, full_path, file, bytes, op)
         .map_err(|err| wrap_guard_error(op, file, err))
 }
 
@@ -92,7 +92,7 @@ fn write_graph_batch_with_guard(
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
 ) -> Result<()> {
-    write_batch_with_compiler_guard(root, writes).map_err(|err| {
+    write_batch_with_compiler_guard(root, writes, op).map_err(|err| {
         let msg = err.to_string();
         let detail = msg.strip_prefix("patch rejected: ").unwrap_or(&msg);
         anyhow!("{} rejected: {}", op, detail)
