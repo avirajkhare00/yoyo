@@ -365,6 +365,7 @@ pub(crate) fn detect_language(path: &Path) -> &'static str {
         Some("kt") | Some("kts") => "kotlin",
         Some("php") => "php",
         Some("rb") => "ruby",
+        Some("clj") | Some("cljs") | Some("cljc") => "clojure",
         Some("swift") => "swift",
         Some("c") | Some("h") => "c",
         Some("cpp") | Some("cc") | Some("cxx") | Some("hpp") | Some("hh") => "cpp",
@@ -472,5 +473,12 @@ mod tests {
         let err = require_bake_index(&subdir).err().unwrap().to_string();
         assert!(err.contains(&format!("No bake index found under {}", subdir.display())));
         assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
+    }
+
+    #[test]
+    fn detect_language_supports_clojure_extensions() {
+        assert_eq!(detect_language(Path::new("src/core.clj")), "clojure");
+        assert_eq!(detect_language(Path::new("src/core.cljs")), "clojure");
+        assert_eq!(detect_language(Path::new("src/core.cljc")), "clojure");
     }
 }

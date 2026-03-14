@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Initial Clojure support for `bake`/`symbol`/`supersearch`: function indexing, namespace import extraction, and structured search via a lightweight s-expression analyzer.
+
+### Changed
+
+- Clojure source files (`.clj`, `.cljs`, `.cljc`) now participate in write guards through a safe syntax check for unbalanced delimiters and unterminated strings.
+- Fixed Python/Clojure module path normalization so `src/`, `lib/`, and `test/` roots no longer leak into qualified names.
+
 ## [1.10.0] - 2026-03-14
 
 ### Added

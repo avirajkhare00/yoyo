@@ -85,6 +85,9 @@ pub(super) fn ast_check_str(source: &str, ext: &str) -> Vec<SyntaxError> {
     if ext == "zig" {
         return zig_ast_check(source);
     }
+    if matches!(ext, "clj" | "cljs" | "cljc") {
+        return crate::lang::clojure::syntax_errors(source);
+    }
     let mut parser = tree_sitter::Parser::new();
     let ok = match ext {
         "rs" => parser.set_language(&SupportLang::Rust.get_ts_language()),
@@ -165,27 +168,8 @@ fn syntax_check(root: &PathBuf, file: &str) -> Vec<SyntaxError> {
         return vec![];
     };
 
-    use ast_grep_language::{LanguageExt, SupportLang};
     let ext = full_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let mut parser = tree_sitter::Parser::new();
-    let ok = match ext {
-        "rs" => parser.set_language(&SupportLang::Rust.get_ts_language()),
-        "go" => parser.set_language(&SupportLang::Go.get_ts_language()),
-        "py" => parser.set_language(&SupportLang::Python.get_ts_language()),
-        "ts" | "tsx" | "js" | "jsx" => {
-            parser.set_language(&SupportLang::TypeScript.get_ts_language())
-        }
-        _ => return vec![],
-    };
-    if ok.is_err() {
-        return vec![];
-    }
-
-    let Some(tree) = parser.parse(&source, None) else {
-        return vec![];
-    };
-    let mut errors = vec![];
-    collect_errors(tree.root_node(), &source, &mut errors);
+    let mut errors = ast_check_str(&source, ext);
     // For each supported language, run the compiler/interpreter checker to catch
     // errors that tree-sitter cannot see (macros, type errors, import issues, etc.).
     errors.extend(semantic_check_errors(root, &full_path, file));
@@ -557,6 +541,14 @@ fn batch_semantic_check_errors(
         match ext {
             "zig" => {
                 let errors = zig_check_errors(write.full_path);
+                if !errors.is_empty() {
+                    errors_by_file.insert(write.file.to_string(), errors);
+                }
+            }
+            "clj" | "cljs" | "cljc" => {
+                let errors = fs::read_to_string(write.full_path)
+                    .map(|source| ast_check_str(&source, ext))
+                    .unwrap_or_default();
                 if !errors.is_empty() {
                     errors_by_file.insert(write.file.to_string(), errors);
                 }
@@ -2797,6 +2789,34 @@ mod tests {
             err.to_string().contains("compiler/interpreter")
                 || err.to_string().contains("bash")
                 || err.to_string().contains("syntax"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_clojure_syntax_error() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("core.clj");
+        let original = "(ns my.app)\n(defn greet []\n  (println \"hi\"))\n";
+        write_file(&dir, "core.clj", original);
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "core.clj",
+            "(ns my.app)\n(defn greet []\n  (println \"hi\")\n",
+            "clj",
+            "patch",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("compiler/interpreter")
+                || err.to_string().contains("clojure")
+                || err.to_string().contains("unclosed delimiter"),
             "got: {}",
             err
         );

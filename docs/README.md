@@ -242,6 +242,7 @@ These are available via `yoyo <command>` but removed from MCP to keep context co
 | C | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | C++ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | C# | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Clojure | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Java | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Kotlin | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | PHP | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |

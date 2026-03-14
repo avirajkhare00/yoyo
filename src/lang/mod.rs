@@ -1,5 +1,6 @@
 pub mod bash;
 pub mod c;
+pub mod clojure;
 pub mod cpp;
 pub mod csharp;
 pub mod go;
@@ -289,11 +290,13 @@ pub fn module_path_from_file(file: &str, lang: &str) -> String {
     let path = std::path::Path::new(file);
     let dir = path.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
 
-    // Strip common source roots for Python
-    let dir = if lang == "python" {
+    // Strip common source roots for Python and Clojure.
+    let dir = if matches!(lang, "python" | "clojure") {
         let stripped = dir
-            .strip_prefix("src/").unwrap_or(&dir)
-            .strip_prefix("lib/").unwrap_or(&dir);
+            .strip_prefix("src/")
+            .or_else(|| dir.strip_prefix("lib/"))
+            .or_else(|| dir.strip_prefix("test/"))
+            .unwrap_or(&dir);
         stripped.to_string()
     } else {
         dir
@@ -305,7 +308,7 @@ pub fn module_path_from_file(file: &str, lang: &str) -> String {
 
     let sep = match lang {
         "rust" => "::",
-        "python" => ".",
+        "python" | "clojure" => ".",
         _ => "/",
     };
 
@@ -351,6 +354,7 @@ pub fn find_analyzer(lang: &str) -> Option<Box<dyn LanguageAnalyzer>> {
     let all: Vec<Box<dyn LanguageAnalyzer>> = vec![
         Box::new(bash::BashAnalyzer),
         Box::new(c::CAnalyzer),
+        Box::new(clojure::ClojureAnalyzer),
         Box::new(cpp::CppAnalyzer),
         Box::new(csharp::CSharpAnalyzer),
         Box::new(go::GoAnalyzer),
@@ -474,7 +478,7 @@ pub fn estimate_complexity_for(node: Node, branch_kinds: &[&str]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::compute_sig_hash;
+    use super::{compute_sig_hash, module_path_from_file};
 
     #[test]
     fn sig_hash_normalizes_module_paths() {
@@ -489,5 +493,12 @@ mod tests {
         let h1 = compute_sig_hash(&["u32".to_string()], "bool");
         let h2 = compute_sig_hash(&["u64".to_string()], "bool");
         assert_ne!(h1, h2, "different param types must produce different sig_hash");
+    }
+
+    #[test]
+    fn module_path_from_file_strips_python_like_source_roots() {
+        assert_eq!(module_path_from_file("src/my/app/core.py", "python"), "my.app");
+        assert_eq!(module_path_from_file("lib/my/app/core.clj", "clojure"), "my.app");
+        assert_eq!(module_path_from_file("test/my/app/core.cljc", "clojure"), "my.app");
     }
 }
