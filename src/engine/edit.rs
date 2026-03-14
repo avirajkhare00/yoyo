@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
-use super::util::{reindex_files, require_bake_index, resolve_project_root};
+use super::util::{detect_language, reindex_files, require_bake_index, resolve_project_root};
 
 // ── Pre-write in-memory AST validation ────────────────────────────────────────
 
@@ -558,6 +558,360 @@ pub(super) struct PendingWrite<'a> {
     pub(super) bytes: &'a [u8],
 }
 
+#[derive(Debug, Default, serde::Deserialize)]
+struct RuntimeFeedbackConfig {
+    #[serde(default)]
+    runtime_checks: Vec<RuntimeSmokeCheck>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct RuntimeSmokeCheck {
+    language: String,
+    command: Vec<String>,
+    #[serde(default)]
+    sandbox_prefix: Vec<String>,
+    #[serde(default)]
+    allow_unsandboxed: bool,
+    kind: Option<String>,
+    timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+struct PreparedRuntimeCheck {
+    target_key: String,
+    kind: String,
+    argv: Vec<String>,
+    timeout_ms: u64,
+}
+
+struct RuntimeCommandOutput {
+    status: std::process::ExitStatus,
+    stdout: String,
+    stderr: String,
+    timed_out: bool,
+}
+
+fn runtime_config_path(root: &PathBuf) -> Option<PathBuf> {
+    root.ancestors()
+        .map(|ancestor| ancestor.join(".yoyo").join("runtime.json"))
+        .find(|path| path.exists())
+}
+
+fn load_runtime_feedback_config(root: &PathBuf) -> Result<Option<RuntimeFeedbackConfig>> {
+    let Some(path) = runtime_config_path(root) else {
+        return Ok(None);
+    };
+    let bytes = fs::read(&path)
+        .with_context(|| format!("Failed to read runtime config {}", path.display()))?;
+    let config = serde_json::from_slice::<RuntimeFeedbackConfig>(&bytes)
+        .with_context(|| format!("Failed to parse runtime config {}", path.display()))?;
+    Ok(Some(config))
+}
+
+fn runtime_timeout_ms(check: &RuntimeSmokeCheck) -> u64 {
+    let timeout = check.timeout_ms.unwrap_or(3_000);
+    timeout.clamp(100, 10_000)
+}
+
+fn replace_runtime_placeholders(value: &str, root: &PathBuf, write: &PendingWrite<'_>) -> String {
+    value
+        .replace("{{file}}", write.file)
+        .replace("{{abs_file}}", &write.full_path.to_string_lossy())
+        .replace("{{root}}", &root.to_string_lossy())
+}
+
+fn command_basename(command: &str) -> String {
+    std::path::Path::new(command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(command)
+        .to_ascii_lowercase()
+}
+
+fn has_inline_eval_flag(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "-c" | "/c"
+                | "-e"
+                | "--eval"
+                | "-r"
+                | "-Command"
+                | "-command"
+                | "-EncodedCommand"
+                | "-encodedCommand"
+        )
+    })
+}
+
+fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()> {
+    if parts.is_empty() {
+        return Err(anyhow!(
+            "runtime feedback config has empty {} command",
+            context
+        ));
+    }
+
+    let exe = command_basename(&parts[0]);
+    if matches!(
+        exe.as_str(),
+        "python"
+            | "python3"
+            | "node"
+            | "ruby"
+            | "php"
+            | "bash"
+            | "sh"
+            | "zsh"
+            | "fish"
+            | "cmd"
+            | "cmd.exe"
+            | "powershell"
+            | "pwsh"
+    ) && has_inline_eval_flag(&parts[1..])
+    {
+        return Err(anyhow!(
+            "runtime feedback config rejected unsafe {} command: inline interpreter code is not allowed",
+            context
+        ));
+    }
+
+    Ok(())
+}
+
+fn prepare_runtime_checks(
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+) -> Result<Vec<PreparedRuntimeCheck>> {
+    let Some(config) = load_runtime_feedback_config(root)? else {
+        return Ok(vec![]);
+    };
+
+    let mut prepared = Vec::new();
+    for write in writes {
+        let language = detect_language(write.full_path);
+        for check in &config.runtime_checks {
+            if check.language != language {
+                continue;
+            }
+
+            if check.command.is_empty() {
+                return Err(anyhow!(
+                    "runtime feedback config rejected {} runtime check: command must not be empty",
+                    check.language
+                ));
+            }
+
+            let command: Vec<String> = check
+                .command
+                .iter()
+                .map(|part| replace_runtime_placeholders(part, root, write))
+                .collect();
+            validate_runtime_command_parts(&command, "runtime")?;
+
+            let sandbox_prefix: Vec<String> = check
+                .sandbox_prefix
+                .iter()
+                .map(|part| replace_runtime_placeholders(part, root, write))
+                .collect();
+            if !sandbox_prefix.is_empty() {
+                validate_runtime_command_parts(&sandbox_prefix, "sandbox prefix")?;
+            } else if !check.allow_unsandboxed {
+                continue;
+            }
+
+            let mut argv = sandbox_prefix;
+            argv.extend(command);
+
+            prepared.push(PreparedRuntimeCheck {
+                target_key: write.file.to_string(),
+                kind: check
+                    .kind
+                    .clone()
+                    .unwrap_or_else(|| format!("{}-runtime", language)),
+                argv,
+                timeout_ms: runtime_timeout_ms(check),
+            });
+        }
+    }
+
+    Ok(prepared)
+}
+
+fn temp_capture_path(prefix: &str) -> Result<PathBuf> {
+    let base = std::env::temp_dir();
+    for attempt in 0..32u32 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let candidate = base.join(format!(
+            "yoyo-runtime-{}-{}-{}-{}.log",
+            prefix,
+            std::process::id(),
+            nanos,
+            attempt
+        ));
+        match std::fs::OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .open(&candidate)
+        {
+            Ok(_) => return Ok(candidate),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(anyhow!(err).context("Failed to allocate runtime capture file")),
+        }
+    }
+
+    Err(anyhow!("Failed to allocate runtime capture file"))
+}
+
+fn read_and_remove_capture(path: &PathBuf) -> String {
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let _ = fs::remove_file(path);
+    content
+}
+
+fn run_bounded_command(
+    root: &PathBuf,
+    argv: &[String],
+    timeout_ms: u64,
+) -> Result<Option<RuntimeCommandOutput>> {
+    let stdout_path = temp_capture_path("stdout")?;
+    let stderr_path = temp_capture_path("stderr")?;
+
+    let stdout_file = match std::fs::OpenOptions::new().write(true).open(&stdout_path) {
+        Ok(file) => file,
+        Err(err) => {
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            return Err(anyhow!(err).context("Failed to open runtime stdout capture"));
+        }
+    };
+    let stderr_file = match std::fs::OpenOptions::new().write(true).open(&stderr_path) {
+        Ok(file) => file,
+        Err(err) => {
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            return Err(anyhow!(err).context("Failed to open runtime stderr capture"));
+        }
+    };
+
+    let mut command = std::process::Command::new(&argv[0]);
+    command.args(&argv[1..]);
+    command.current_dir(root);
+    command.stdout(stdout_file);
+    command.stderr(stderr_file);
+
+    let spawn_result = command.spawn();
+    let mut child = match spawn_result {
+        Ok(child) => child,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            return Ok(None);
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&stdout_path);
+            let _ = fs::remove_file(&stderr_path);
+            return Err(anyhow!(err).context("Failed to spawn runtime feedback command"));
+        }
+    };
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    let (status, timed_out) = loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("Failed to poll runtime feedback command")?
+        {
+            break (status, false);
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let status = child
+                .wait()
+                .context("Failed to wait for timed out runtime feedback command")?;
+            break (status, true);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    };
+
+    let stdout = read_and_remove_capture(&stdout_path);
+    let stderr = read_and_remove_capture(&stderr_path);
+    Ok(Some(RuntimeCommandOutput {
+        status,
+        stdout,
+        stderr,
+        timed_out,
+    }))
+}
+
+fn runtime_errors_from_output(
+    check: &PreparedRuntimeCheck,
+    output: RuntimeCommandOutput,
+) -> Vec<SyntaxError> {
+    if !output.timed_out && output.status.success() {
+        return vec![];
+    }
+
+    if output.timed_out {
+        return vec![SyntaxError {
+            line: 0,
+            kind: check.kind.clone(),
+            text: format!("runtime feedback timed out after {}ms", check.timeout_ms),
+        }];
+    }
+
+    let combined = format!("{}{}", output.stdout, output.stderr);
+    let mut errors: Vec<SyntaxError> = combined
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(5)
+        .map(|line| SyntaxError {
+            line: 0,
+            kind: check.kind.clone(),
+            text: line.chars().take(120).collect(),
+        })
+        .collect();
+
+    if errors.is_empty() {
+        errors.push(SyntaxError {
+            line: 0,
+            kind: check.kind.clone(),
+            text: format!(
+                "runtime feedback exited with status {}",
+                output
+                    .status
+                    .code()
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "terminated by signal".to_string())
+            ),
+        });
+    }
+
+    errors
+}
+
+fn collect_runtime_feedback_errors(
+    root: &PathBuf,
+    checks: &[PreparedRuntimeCheck],
+) -> Result<HashMap<String, Vec<SyntaxError>>> {
+    let mut errors_by_file = HashMap::new();
+    for check in checks {
+        let Some(output) = run_bounded_command(root, &check.argv, check.timeout_ms)? else {
+            continue;
+        };
+        let errors = runtime_errors_from_output(check, output);
+        if errors.is_empty() {
+            continue;
+        }
+        errors_by_file.insert(check.target_key.clone(), errors);
+    }
+    Ok(errors_by_file)
+}
+
 fn format_guard_errors(errors: &[SyntaxError]) -> String {
     errors
         .iter()
@@ -592,6 +946,8 @@ pub(super) fn write_batch_with_compiler_guard(
     writes: &[PendingWrite<'_>],
 ) -> Result<()> {
     let baselines = collect_project_wide_baselines(root, writes);
+    let runtime_checks = prepare_runtime_checks(root, writes)?;
+    let runtime_baseline = collect_runtime_feedback_errors(root, &runtime_checks)?;
     let originals: Vec<Option<Vec<u8>>> = writes
         .iter()
         .map(|write| fs::read(write.full_path).ok())
@@ -609,6 +965,15 @@ pub(super) fn write_batch_with_compiler_guard(
     }
 
     let mut errors_by_file = batch_semantic_check_errors(root, writes, &baselines);
+    if errors_by_file.is_empty() && !runtime_checks.is_empty() {
+        merge_error_maps(
+            &mut errors_by_file,
+            diff_error_maps(
+                collect_runtime_feedback_errors(root, &runtime_checks)?,
+                &runtime_baseline,
+            ),
+        );
+    }
     if errors_by_file.is_empty() {
         return Ok(());
     }
@@ -1582,6 +1947,10 @@ mod tests {
         std::fs::write(p, content).unwrap();
     }
 
+    fn write_runtime_config(dir: &TempDir, content: &str) {
+        write_file(dir, ".yoyo/runtime.json", content);
+    }
+
     fn command_available(cmd: &str, version_arg: &str) -> bool {
         std::process::Command::new(cmd)
             .arg(version_arg)
@@ -1990,6 +2359,163 @@ mod tests {
             err.to_string().contains("compiler/interpreter")
                 || err.to_string().contains("php")
                 || err.to_string().contains("Parse error"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_python_runtime_smoke_error() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        let original = "print(\"ok\")\n";
+        write_file(&dir, "main.py", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "{{file}}"],
+      "allow_unsandboxed": true,
+      "kind": "python-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}"#,
+        );
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "import does_not_exist\n",
+            "py",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("python-runtime")
+                || err.to_string().contains("does_not_exist")
+                || err.to_string().contains("ModuleNotFoundError"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_javascript_runtime_smoke_error() {
+        if !command_available("node", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.js");
+        let original = "console.log(\"ok\");\n";
+        write_file(&dir, "main.js", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "javascript",
+      "command": ["node", "{{file}}"],
+      "allow_unsandboxed": true,
+      "kind": "javascript-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}"#,
+        );
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.js",
+            "require(\"./missing\");\n",
+            "js",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("javascript-runtime")
+                || err.to_string().contains("Cannot find module")
+                || err.to_string().contains("./missing"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_skips_unsandboxed_runtime_without_opt_in() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        let updated = "import does_not_exist\n";
+        write_file(&dir, "main.py", "print(\"ok\")\n");
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "{{file}}"],
+      "kind": "python-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}"#,
+        );
+
+        write_with_compiler_guard(&root, &full_path, "main.py", updated, "py").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), updated);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_inline_runtime_command_config() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        let original = "print(\"ok\")\n";
+        write_file(&dir, "main.py", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "-c", "print('hi')"],
+      "allow_unsandboxed": true
+    }
+  ]
+}"#,
+        );
+
+        let err =
+            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
+                .unwrap_err();
+
+        assert!(
+            err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"),
             "got: {}",
             err
         );
