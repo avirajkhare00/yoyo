@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-03-14
+
+### Added
+
+- yoyo now bootstraps `.yoyo/runtime.json` automatically for supported interpreted languages when a guarded write needs runtime config and the file is missing.
+
+### Changed
+
+- Auto-generated runtime config now starts from least-privilege defaults: file-targeted commands are scaffolded, `allow_unsandboxed` stays `false`, and runtime checks remain disabled until the user edits the file explicitly.
+- Guarded write payloads now surface a warning when yoyo creates `.yoyo/runtime.json`, including a direct message that users can edit the file manually if they want broader access.
+
 ## [1.11.0] - 2026-03-14
 
 ### Added
