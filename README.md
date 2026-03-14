@@ -16,7 +16,7 @@
 
 ## Sponsor
 
-Shoutout to **xagi.in**, the first sponsor of yoyo.
+Shoutout to **[xagi.in](https://xagi.in/)**, the first sponsor of yoyo. [All essays](./docs/README.md#essays)
 
 yoyo is a local MCP server for repository reading and change work. It exists to make coding agents less hallucinated, more grounded, and more truthful when they answer questions about a real codebase.
 
