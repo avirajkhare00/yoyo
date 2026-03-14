@@ -758,6 +758,9 @@ fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()>
             | "node"
             | "ruby"
             | "php"
+            | "clojure"
+            | "clj"
+            | "bb"
             | "bash"
             | "sh"
             | "zsh"
@@ -2404,6 +2407,21 @@ mod tests {
         write_file(dir, ".yoyo/runtime.json", content);
     }
 
+    fn write_executable_file(dir: &TempDir, rel: &str, content: &str) {
+        let p = dir.path().join(rel);
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&p, content).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&p).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&p, perms).unwrap();
+        }
+    }
+
     fn command_available(cmd: &str, version_arg: &str) -> bool {
         std::process::Command::new(cmd)
             .arg(version_arg)
@@ -2999,6 +3017,92 @@ mod tests {
             err.to_string().contains("javascript-runtime")
                 || err.to_string().contains("Cannot find module")
                 || err.to_string().contains("./missing"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_clojure_runtime_smoke_error() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("core.clj");
+        let original = "(ns my.app)\n(defn greet []\n  :ok)\n";
+        write_file(&dir, "core.clj", original);
+        write_executable_file(
+            &dir,
+            "clojure",
+            "#!/usr/bin/env bash\nif grep -q \"missing.ns\" \"$1\"; then\n  echo \"Could not locate missing/ns__init.class\" >&2\n  exit 1\nfi\nexit 0\n",
+        );
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "clojure",
+      "command": ["{{root}}/clojure", "{{file}}"],
+      "allow_unsandboxed": true,
+      "kind": "clojure-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}"#,
+        );
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "core.clj",
+            "(ns my.app)\n(require 'missing.ns)\n(defn greet []\n  :ok)\n",
+            "clj",
+            "patch",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("clojure-runtime")
+                || err.to_string().contains("missing/ns__init.class")
+                || err.to_string().contains("missing.ns"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_clojure_inline_runtime_command_config() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("core.clj");
+        let original = "(ns my.app)\n(defn greet []\n  :ok)\n";
+        write_file(&dir, "core.clj", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "clojure",
+      "command": ["clojure", "-e", "(println :ok)", "{{file}}"],
+      "allow_unsandboxed": true
+    }
+  ]
+}"#,
+        );
+
+        let err = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "core.clj",
+            "(ns my.app)\n(defn greet []\n  :still-ok)\n",
+            "clj",
+            "patch",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"),
             "got: {}",
             err
         );
