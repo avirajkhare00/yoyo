@@ -25,7 +25,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-YOYO = Path.home() / ".local/bin/yoyo"
+YOYO = Path(os.environ.get("YOYO_BIN", str(Path.home() / ".local/bin/yoyo")))
 
 PASS = "✓"
 FAIL = "✗"
@@ -36,6 +36,13 @@ def run(cmd: list[str], cwd: str | None = None, timeout: int = 60) -> tuple[int,
     return r.returncode, r.stdout.strip(), r.stderr.strip()
 
 
+def resolve_codebase_path(task_file: str, codebase_path: str) -> str:
+    path = Path(codebase_path)
+    if path.is_absolute():
+        return str(path)
+    return str((Path(task_file).resolve().parent / path).resolve())
+
+
 def copy_codebase(src: str) -> str:
     """Copy codebase to a temp dir and return the path."""
     tmp = tempfile.mkdtemp(prefix="yoyo_write_eval_")
@@ -44,7 +51,7 @@ def copy_codebase(src: str) -> str:
 
 
 def bake(path: str):
-    run([str(YOYO), "bake", "--path", path])
+    run([str(YOYO), "index", "--path", path])
 
 
 def git_reset(path: str):
@@ -165,7 +172,7 @@ def cc_patch(path: str, name: str, file: str, comment: str) -> tuple[bool, int]:
 # ── yoyo operations ───────────────────────────────────────────────────────────
 
 def yoyo_rename(path: str, old: str, new: str) -> tuple[bool, dict]:
-    code, out, err = run([str(YOYO), "graph-rename", "--path", path,
+    code, out, err = run([str(YOYO), "rename", "--path", path,
                           "--name", old, "--new-name", new])
     if code != 0:
         return False, {"error": err}
@@ -177,7 +184,7 @@ def yoyo_rename(path: str, old: str, new: str) -> tuple[bool, dict]:
 
 def yoyo_delete(path: str, name: str) -> tuple[bool, str, dict]:
     """Returns (blocked, reason, payload)."""
-    code, out, err = run([str(YOYO), "graph-delete", "--path", path, "--name", name])
+    code, out, err = run([str(YOYO), "delete", "--path", path, "--name", name])
     if code != 0:
         return True, err or out, {}
     try:
@@ -211,10 +218,107 @@ def yoyo_patch(path: str, name: str, file: str, comment: str) -> tuple[bool, boo
     except Exception:
         return False, False
 
-    code, _, err = run([str(YOYO), "patch", "--path", path,
+    code, _, err = run([str(YOYO), "edit", "--path", path,
                         "--symbol", name,
                         "--new-content", new_content])
     return False, code == 0  # needed_line_lookup=False
+
+
+def yoyo_patch_content(path: str, name: str, new_content: str) -> tuple[bool, str, str]:
+    code, out, err = run(
+        [str(YOYO), "edit", "--path", path, "--symbol", name, "--new-content", new_content],
+        timeout=120,
+    )
+    return code == 0, out, err
+
+
+def extract_guard_failure(text: str) -> dict | None:
+    for line in text.splitlines():
+        if not line.startswith("guard_failure: "):
+            continue
+        try:
+            return json.loads(line[len("guard_failure: "):])
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def inspect_guard_failure(path: str, payload: dict) -> dict:
+    files = payload.get("files", [])
+    if not files:
+        return {"ok": False, "next_hint": "", "raw": ""}
+
+    target = files[0]
+    file = target.get("file", "")
+    errors = target.get("errors", [])
+    numbered = [e.get("line", 0) for e in errors if isinstance(e.get("line", 0), int) and e.get("line", 0) > 0]
+    cmd = [str(YOYO), "inspect", "--path", path, "--file", file]
+    if numbered:
+        start = max(1, min(numbered) - 3)
+        end = max(numbered) + 3
+        cmd.extend(["--start-line", str(start), "--end-line", str(end)])
+
+    code, out, err = run(cmd, timeout=120)
+    if code != 0:
+        return {"ok": False, "next_hint": "", "raw": err or out}
+    try:
+        payload = json.loads(out)
+    except Exception:
+        return {"ok": False, "next_hint": "", "raw": out}
+    return {
+        "ok": True,
+        "next_hint": payload.get("next_hint", ""),
+        "raw": out,
+    }
+
+
+def yoyo_patch_with_retry(
+    path: str,
+    name: str,
+    broken_new_content: str,
+    repaired_new_content: str,
+    max_retries: int = 1,
+) -> dict:
+    attempts = 0
+    latest_guard = None
+    inspect_result = {"ok": False, "next_hint": "", "raw": ""}
+    current = broken_new_content
+
+    while True:
+        attempts += 1
+        success, out, err = yoyo_patch_content(path, name, current)
+        if success:
+            return {
+                "success": True,
+                "attempts": attempts,
+                "used_retry": attempts > 1,
+                "guard_failure": latest_guard,
+                "inspect": inspect_result,
+                "error": "",
+            }
+
+        combined = "\n".join(part for part in [out, err] if part)
+        latest_guard = extract_guard_failure(combined)
+        if not latest_guard:
+            return {
+                "success": False,
+                "attempts": attempts,
+                "used_retry": attempts > 1,
+                "guard_failure": None,
+                "inspect": inspect_result,
+                "error": combined,
+            }
+        inspect_result = inspect_guard_failure(path, latest_guard)
+        if not latest_guard.get("retryable", False) or attempts > max_retries:
+            return {
+                "success": False,
+                "attempts": attempts,
+                "used_retry": attempts > 1,
+                "guard_failure": latest_guard,
+                "inspect": inspect_result,
+                "error": combined,
+            }
+        current = repaired_new_content
 
 
 # ── Task runners ──────────────────────────────────────────────────────────────
@@ -427,6 +531,80 @@ def run_rw005(task: dict, src: str, compile_enabled: bool) -> dict:
     return results
 
 
+def run_rw006(task: dict, src: str, compile_enabled: bool) -> dict:
+    """Guard failure -> inspect -> retry loop."""
+    op = task["operation"]
+    gt = task["ground_truth"]
+    results = {"id": task["id"], "cc": [], "yoyo": []}
+
+    print(f"  ── CC ──")
+    path = copy_codebase(src)
+    try:
+        target = Path(path) / op["file"]
+        target.write_text(op["broken_new_content"])
+        ok, detail = compile_check(path)
+        results["cc"].append(check("broken write rejected automatically", False, "no guard_failure retry loop"))
+        results["cc"].append(check("still compiles after broken write", ok, detail))
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+    print(f"  ── yoyo ──")
+    path = copy_codebase(src)
+    try:
+        bake(path)
+        retry = yoyo_patch_with_retry(
+            path,
+            op["name"],
+            op["broken_new_content"],
+            op["fixed_new_content"],
+            max_retries=gt.get("max_retries", 1),
+        )
+        guard = retry.get("guard_failure") or {}
+        inspect_result = retry.get("inspect") or {}
+        results["yoyo"].append(check(
+            "guard failure captured",
+            bool(guard),
+            retry.get("error", ""),
+        ))
+        results["yoyo"].append(check(
+            "guard failure phase",
+            guard.get("phase") == gt["guard_failure_phase"],
+            f"phase={guard.get('phase')}",
+        ))
+        results["yoyo"].append(check(
+            "retryable payload",
+            guard.get("retryable") is True,
+            f"retryable={guard.get('retryable')}",
+        ))
+        results["yoyo"].append(check(
+            "inspected targeted file",
+            inspect_result.get("ok", False),
+            inspect_result.get("raw", ""),
+        ))
+        results["yoyo"].append(check(
+            "next_hint available",
+            bool(inspect_result.get("next_hint")),
+            inspect_result.get("next_hint", ""),
+        ))
+        results["yoyo"].append(check(
+            "retry succeeded",
+            retry["success"] == gt["retry_succeeds"],
+            retry.get("error", ""),
+        ))
+        results["yoyo"].append(check(
+            "attempt count",
+            retry["attempts"] == gt["attempts"],
+            f"attempts={retry['attempts']}",
+        ))
+        if compile_enabled and retry["success"]:
+            ok, detail = compile_check(path)
+            results["yoyo"].append(check("compiles", ok, detail))
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+    return results
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 RUNNERS = {
@@ -435,13 +613,14 @@ RUNNERS = {
     "rw-003": run_rw003,
     "rw-004": run_rw004,
     "rw-005": run_rw005,
+    "rw-006": run_rw006,
 }
 
 def run_eval(task_file: str, filter_ids: list[str] | None, compile_enabled: bool) -> dict:
     with open(task_file) as f:
         suite = json.load(f)
 
-    src = suite["codebase_path"]
+    src = resolve_codebase_path(task_file, suite["codebase_path"])
     tasks = suite["tasks"]
     if filter_ids:
         tasks = [t for t in tasks if t["id"] in filter_ids]

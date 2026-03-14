@@ -1,0 +1,24 @@
+{
+  "codebase": "guard-retry-rust",
+  "codebase_path": "../fixtures/guard_retry_rust",
+  "pinned_commit": "local-fixture",
+  "tasks": [
+    {
+      "id": "rw-006",
+      "type": "guard_failure_retry",
+      "description": "Patch greet with a type error, parse guard_failure, inspect targeted lines, then retry with a fixed body",
+      "operation": {
+        "name": "greet",
+        "file": "src/lib.rs",
+        "broken_new_content": "pub fn greet() -> &'static str {\n    let msg: i32 = \"hi\";\n    \"hi\"\n}\n",
+        "fixed_new_content": "pub fn greet() -> &'static str {\n    let msg = \"hi\";\n    msg\n}\n"
+      },
+      "ground_truth": {
+        "guard_failure_phase": "post_write_guard",
+        "retry_succeeds": true,
+        "attempts": 2,
+        "max_retries": 1
+      }
+    }
+  ]
+}
