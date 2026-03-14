@@ -4,9 +4,9 @@ use anyhow::Result;
 
 use super::types::{
     build_compact_section, parse_section_cursor, BakeSummary, DecisionEntry, EndpointSummary,
-    FunctionSummary, LlmWorkflowsCompactPayload, LlmWorkflowsPayload,
-    LlmWorkflowsQueryPayload, Metapattern, MetapatternStep, ResponseView, ShakePayload,
-    ToolDescription, Workflow, WorkflowQueryMatch, WorkflowStep, DEFAULT_COMPACT_LIMIT,
+    FunctionSummary, LlmWorkflowsCompactPayload, LlmWorkflowsPayload, LlmWorkflowsQueryPayload,
+    Metapattern, MetapatternStep, ResponseView, ShakePayload, ToolDescription, Workflow,
+    WorkflowQueryMatch, WorkflowStep, DEFAULT_COMPACT_LIMIT,
 };
 use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
 
@@ -154,6 +154,7 @@ pub fn llm_workflows(
             "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use inspect(name=...) — implementors are structured on trait matches.",
             "reading struct source to get field types: works but is unstructured. Use inspect(name=..., include_source=true) — fields stay parsed and typed.",
             "using raw editor-style writes to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use change(action=edit) so the write resolves through the index and auto-reindexes.",
+            "scraping human-oriented write rejection text to decide what to retry: brittle and lossy. Use the structured guard_failure payload first (operation, phase, retryable, files, errors), then use next_hint only as fallback guidance.",
             "calling multiple tools sequentially and combining their outputs manually: use script when you need to loop over tool output, filter arrays, cross-reference categories, or reduce across N items. One script call replaces N round-trips and returns a single structured result.",
         ],
         metapatterns: metapattern_catalog(),
@@ -193,7 +194,10 @@ pub fn llm_workflows(
         }
 
         for d in &payload.decision_map {
-            let text = format!("{} {} {} {}", d.question, d.right_tool, d.right_field, d.wrong_because);
+            let text = format!(
+                "{} {} {} {}",
+                d.question, d.right_tool, d.right_field, d.wrong_because
+            );
             let score = query_score(&text, &words);
             if score > 0 {
                 matches.push(WorkflowQueryMatch {
@@ -248,7 +252,9 @@ pub fn llm_workflows(
 
     // ── compact mode ─────────────────────────────────────────────────────────
     if matches!(view, ResponseView::Compact) {
-        let cursor_ref = cursor.as_ref().map(|(section, offset)| (section.as_str(), *offset));
+        let cursor_ref = cursor
+            .as_ref()
+            .map(|(section, offset)| (section.as_str(), *offset));
         let sections = vec![
             build_compact_section(
                 "workflows",
@@ -899,6 +905,15 @@ fn workflow_catalog() -> Vec<Workflow> {
             ],
         },
         Workflow {
+            name: "Recover from guard failure",
+            description: "When a write is rejected, use the structured guard_failure payload as the retry driver. Repair only the named files, retry a small bounded number of times, and use next_hint as fallback guidance rather than the source of truth.",
+            steps: vec![
+                WorkflowStep { tool: "change",  hint: "Attempt the write. If it fails, parse guard_failure first: operation, phase, retryable, files_restored, and per-file errors." },
+                WorkflowStep { tool: "inspect", hint: "Read only the named files or symbols from guard_failure.files[*]; fix the concrete compiler/interpreter/runtime errors, not adjacent code." },
+                WorkflowStep { tool: "change",  hint: "Retry the write up to 2-3 times when retryable=true. Stop on config/setup errors, missing symbols, unsafe runtime config, or unchanged repeated failures. Use next_hint only as secondary guidance." },
+            ],
+        },
+        Workflow {
             name: "Trace a call chain",
             description: "Follow a function's callees downward to database, HTTP, or queue boundaries.",
             steps: vec![
@@ -1076,15 +1091,26 @@ pub fn bake(path: Option<String>) -> Result<String> {
 
     let (bake, removed, skipped) = build_bake_index(&root, &fingerprints)?;
 
-    fs::create_dir_all(&bakes_dir)
-        .map_err(|e| anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e))?;
+    fs::create_dir_all(&bakes_dir).map_err(|e| {
+        anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e)
+    })?;
 
     let (total_files, all_languages) = if is_incremental {
-        crate::engine::db::write_bake_incremental(&bake, &removed, &bake_path)
-            .map_err(|e| anyhow::anyhow!("Failed to update bake index at {}: {}", bake_path.display(), e))?
+        crate::engine::db::write_bake_incremental(&bake, &removed, &bake_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to update bake index at {}: {}",
+                bake_path.display(),
+                e
+            )
+        })?
     } else {
-        crate::engine::db::write_bake_to_db(&bake, &bake_path)
-            .map_err(|e| anyhow::anyhow!("Failed to write bake index to {}: {}", bake_path.display(), e))?;
+        crate::engine::db::write_bake_to_db(&bake, &bake_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to write bake index to {}: {}",
+                bake_path.display(),
+                e
+            )
+        })?;
         (bake.files.len(), bake.languages.iter().cloned().collect())
     };
 
@@ -1186,20 +1212,16 @@ mod tests {
         let payload: Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(payload["task"], "safe delete");
-        assert!(
-            payload["use"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|tool| tool == "impact")
-        );
-        assert!(
-            payload["use"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|tool| tool == "change")
-        );
+        assert!(payload["use"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool == "impact"));
+        assert!(payload["use"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool == "change"));
     }
 
     #[test]
@@ -1208,12 +1230,10 @@ mod tests {
         let payload: Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(payload["name"], "inspect");
-        assert!(
-            payload["limitations"]
-                .as_str()
-                .unwrap()
-                .contains("line-range mode does not")
-        );
+        assert!(payload["limitations"]
+            .as_str()
+            .unwrap()
+            .contains("line-range mode does not"));
     }
 
     #[test]
@@ -1222,18 +1242,14 @@ mod tests {
         let payload: Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(payload["name"], "judge_change");
-        assert!(
-            payload["limitations"]
-                .as_str()
-                .unwrap()
-                .contains("read-only judgment")
-        );
-        assert!(
-            payload["output_shape"]
-                .as_str()
-                .unwrap()
-                .contains("ownership_layer")
-        );
+        assert!(payload["limitations"]
+            .as_str()
+            .unwrap()
+            .contains("read-only judgment"));
+        assert!(payload["output_shape"]
+            .as_str()
+            .unwrap()
+            .contains("ownership_layer"));
     }
 
     #[test]

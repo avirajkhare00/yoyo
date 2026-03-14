@@ -12,8 +12,7 @@ mod tests {
 
     /// Absolute path to the checked-in fixture.
     fn fixture_src() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/sample_project")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample_project")
     }
 
     /// Copy the fixture into a fresh TempDir and bake it. Returns the TempDir
@@ -52,7 +51,8 @@ mod tests {
     #[test]
     fn e2e_symbol_finds_function_in_correct_file() {
         let dir = setup();
-        let out = crate::engine::symbol(root(&dir), "add".into(), false, None, None, false).unwrap();
+        let out =
+            crate::engine::symbol(root(&dir), "add".into(), false, None, None, false).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let matches = v["matches"].as_array().unwrap();
         assert!(!matches.is_empty(), "expected at least one match for 'add'");
@@ -69,8 +69,17 @@ mod tests {
         let dir = setup();
         // math.rs: add, subtract, multiply, square
         // utils.rs: sum_three, clamp, format_result
-        for name in &["add", "subtract", "multiply", "square", "sum_three", "clamp", "format_result"] {
-            let out = crate::engine::symbol(root(&dir), name.to_string(), false, None, None, false).unwrap();
+        for name in &[
+            "add",
+            "subtract",
+            "multiply",
+            "square",
+            "sum_three",
+            "clamp",
+            "format_result",
+        ] {
+            let out = crate::engine::symbol(root(&dir), name.to_string(), false, None, None, false)
+                .unwrap();
             let v: serde_json::Value = serde_json::from_str(&out).unwrap();
             let matches = v["matches"].as_array().unwrap();
             assert!(
@@ -95,7 +104,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(v["tool"], "judge_change");
-        assert!(v["ownership_layer"]["name"].as_str().unwrap().contains("src"));
+        assert!(v["ownership_layer"]["name"]
+            .as_str()
+            .unwrap()
+            .contains("src"));
         assert!(!v["candidate_symbols"].as_array().unwrap().is_empty());
         assert!(!v["invariants"].as_array().unwrap().is_empty());
         assert!(!v["verification_commands"].as_array().unwrap().is_empty());
@@ -120,11 +132,15 @@ mod tests {
     #[test]
     fn e2e_symbol_accepts_subdirectory_path_when_bake_exists_at_project_root() {
         let dir = setup();
-        let out = crate::engine::symbol(subdir_root(&dir), "add".into(), false, None, None, false).unwrap();
+        let out = crate::engine::symbol(subdir_root(&dir), "add".into(), false, None, None, false)
+            .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let matches = v["matches"].as_array().unwrap();
         assert!(!matches.is_empty(), "expected at least one match for 'add'");
-        assert_eq!(v["project_root"].as_str().unwrap(), dir.path().to_string_lossy());
+        assert_eq!(
+            v["project_root"].as_str().unwrap(),
+            dir.path().to_string_lossy()
+        );
     }
 
     #[test]
@@ -150,7 +166,10 @@ mod tests {
         .to_string();
 
         assert!(err.contains(&format!("No bake index found under {}", subdir.display())));
-        assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
+        assert!(err.contains(&format!(
+            "Did you mean to pass the project root {}",
+            dir.path().display()
+        )));
     }
 
     #[test]
@@ -168,9 +187,14 @@ mod tests {
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let matches = v["matches"].as_array().unwrap();
-        assert!(!matches.is_empty(), "expected natural-language supersearch query to find 'add' usages");
         assert!(
-            matches.iter().any(|m| m["snippet"].as_str().unwrap().contains("add")),
+            !matches.is_empty(),
+            "expected natural-language supersearch query to find 'add' usages"
+        );
+        assert!(
+            matches
+                .iter()
+                .any(|m| m["snippet"].as_str().unwrap().contains("add")),
             "expected at least one match snippet to contain 'add': {:?}",
             matches
         );
@@ -207,7 +231,8 @@ mod tests {
         let out = crate::engine::blast_radius(root(&dir), "multiply".into(), Some(1)).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let callers: Vec<&str> = v["callers"]
-            .as_array().unwrap()
+            .as_array()
+            .unwrap()
             .iter()
             .map(|c| c["caller"].as_str().unwrap())
             .collect();
@@ -228,7 +253,8 @@ mod tests {
         let out = crate::engine::blast_radius(root(&dir), "multiply".into(), Some(1)).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let files: Vec<&str> = v["affected_files"]
-            .as_array().unwrap()
+            .as_array()
+            .unwrap()
             .iter()
             .map(|f| f.as_str().unwrap())
             .collect();
@@ -247,7 +273,8 @@ mod tests {
         let out = crate::engine::blast_radius(root(&dir), "add".into(), Some(2)).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let files: Vec<&str> = v["affected_files"]
-            .as_array().unwrap()
+            .as_array()
+            .unwrap()
             .iter()
             .map(|f| f.as_str().unwrap())
             .collect();
@@ -286,9 +313,18 @@ mod tests {
         let math = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
         let utils = fs::read_to_string(dir.path().join("src/utils.rs")).unwrap();
 
-        assert!(math.contains("fn add_ints("), "definition not renamed in math.rs");
-        assert!(utils.contains("add_ints("), "call site not updated in utils.rs");
-        assert!(!utils.contains("add(add("), "old call site still present in utils.rs");
+        assert!(
+            math.contains("fn add_ints("),
+            "definition not renamed in math.rs"
+        );
+        assert!(
+            utils.contains("add_ints("),
+            "call site not updated in utils.rs"
+        );
+        assert!(
+            !utils.contains("add(add("),
+            "old call site still present in utils.rs"
+        );
     }
 
     // ── graph_move ────────────────────────────────────────────────────────────
@@ -319,7 +355,10 @@ mod tests {
 
         let extra = fs::read_to_string(dir.path().join("src/extra.rs")).unwrap();
         // The function body should be present
-        assert!(extra.contains("fn sum_three"), "sum_three not moved to extra.rs");
+        assert!(
+            extra.contains("fn sum_three"),
+            "sum_three not moved to extra.rs"
+        );
         // The import for add should have been injected
         assert!(
             extra.contains("use crate::math::add") || extra.contains("use crate::math"),
@@ -347,7 +386,8 @@ pub fn fetch_user(id: u32) -> String {
     format!("user:{}", id)
 }
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
         dir
@@ -362,7 +402,10 @@ pub fn fetch_user(id: u32) -> String {
         assert_eq!(v["tool"], "flow");
         assert!(v["endpoint"]["path"].as_str().unwrap().contains("/users"));
         assert_eq!(v["handler"]["name"], "get_user");
-        assert!(v["handler"]["file"].as_str().unwrap().contains("handlers.rs"));
+        assert!(v["handler"]["file"]
+            .as_str()
+            .unwrap()
+            .contains("handlers.rs"));
         assert_eq!(
             v["next_hint"],
             "Use inspect(name=...) on the handler or a downstream callee to read the code behind this route."
@@ -389,8 +432,16 @@ pub fn fetch_user(id: u32) -> String {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         let summary = v["summary"].as_str().unwrap();
-        assert!(summary.contains("get_user"), "summary missing handler: {}", summary);
-        assert!(summary.contains("/users"), "summary missing endpoint: {}", summary);
+        assert!(
+            summary.contains("get_user"),
+            "summary missing handler: {}",
+            summary
+        );
+        assert!(
+            summary.contains("/users"),
+            "summary missing endpoint: {}",
+            summary
+        );
     }
 
     #[test]
@@ -400,28 +451,50 @@ pub fn fetch_user(id: u32) -> String {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         let source = v["handler"]["source"].as_str();
-        assert!(source.is_some(), "expected source to be present with include_source=true");
-        assert!(source.unwrap().contains("fetch_user"), "source missing body content");
+        assert!(
+            source.is_some(),
+            "expected source to be present with include_source=true"
+        );
+        assert!(
+            source.unwrap().contains("fetch_user"),
+            "source missing body content"
+        );
     }
 
     #[test]
     fn e2e_flow_errors_on_unknown_endpoint() {
         let dir = setup_with_endpoint();
-        let err = crate::engine::flow(root(&dir), "/nonexistent".into(), None, None, false).unwrap_err();
-        assert!(err.to_string().contains("No endpoint matching"), "unexpected error: {}", err);
+        let err =
+            crate::engine::flow(root(&dir), "/nonexistent".into(), None, None, false).unwrap_err();
+        assert!(
+            err.to_string().contains("No endpoint matching"),
+            "unexpected error: {}",
+            err
+        );
     }
 
     #[test]
     fn e2e_impact_symbol_mode_wraps_blast_radius() {
         let dir = setup();
-        let out = crate::engine::impact(root(&dir), Some("multiply".into()), None, None, Some(1), None)
-            .unwrap();
+        let out = crate::engine::impact(
+            root(&dir),
+            Some("multiply".into()),
+            None,
+            None,
+            Some(1),
+            None,
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(v["tool"], "impact");
         assert_eq!(v["mode"], "symbol");
         assert_eq!(v["target"]["symbol"], "multiply");
-        assert!(v["callers"].as_array().unwrap().iter().any(|c| c["caller"] == "square"));
+        assert!(v["callers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["caller"] == "square"));
         assert_eq!(
             v["next_hint"],
             "Use inspect(name=...) to read one affected caller, or change(action=rename|move|delete) when the impact is acceptable."
@@ -446,7 +519,11 @@ pub fn fetch_user(id: u32) -> String {
         assert_eq!(v["mode"], "endpoint");
         assert_eq!(v["target"]["endpoint"], "/users");
         assert_eq!(v["handler"]["name"], "get_user");
-        assert!(v["call_chain"].as_array().unwrap().iter().any(|n| n["name"] == "get_user"));
+        assert!(v["call_chain"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n["name"] == "get_user"));
         assert_eq!(
             v["next_hint"],
             "Use inspect(name=...) on the handler or downstream callee, or change(action=edit|rename|move) once you know where the request path lands."
@@ -463,9 +540,18 @@ pub fn fetch_user(id: u32) -> String {
         assert!(v["bytes_removed"].as_u64().unwrap() > 0);
 
         let content = fs::read_to_string(dir.path().join("src/utils.rs")).unwrap();
-        assert!(!content.contains("fn clamp"), "clamp still present after delete");
-        assert!(content.contains("fn sum_three"), "sum_three was incorrectly removed");
-        assert!(content.contains("fn format_result"), "format_result was incorrectly removed");
+        assert!(
+            !content.contains("fn clamp"),
+            "clamp still present after delete"
+        );
+        assert!(
+            content.contains("fn sum_three"),
+            "sum_three was incorrectly removed"
+        );
+        assert!(
+            content.contains("fn format_result"),
+            "format_result was incorrectly removed"
+        );
     }
 
     // ── script ────────────────────────────────────────────────────────────────
@@ -544,21 +630,23 @@ pub fn fetch_user(id: u32) -> String {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["tool"], "script");
         let filtered = v["result"].as_array().unwrap();
-        assert!(!filtered.is_empty(), "filter for 'add' should return at least one result");
+        assert!(
+            !filtered.is_empty(),
+            "filter for 'add' should return at least one result"
+        );
     }
 
     #[test]
     fn e2e_script_supersearch_result() {
         let dir = setup();
-        let out = crate::engine::run_script(
-            root(&dir),
-            r#"search("add")"#.to_string(),
-        )
-        .unwrap();
+        let out = crate::engine::run_script(root(&dir), r#"search("add")"#.to_string()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["tool"], "script");
         let matches = v["result"]["matches"].as_array().unwrap();
-        assert!(!matches.is_empty(), "supersearch for 'add' should find results");
+        assert!(
+            !matches.is_empty(),
+            "supersearch for 'add' should find results"
+        );
     }
 
     // ── patch pre-write AST validation ───────────────────────────────────────
@@ -573,11 +661,15 @@ pub fn fetch_user(id: u32) -> String {
             "a + b".into(),
             "{ { { not valid rust".into(),
         );
-        assert!(result.is_err(), "patch_string should reject syntactically invalid Rust");
+        assert!(
+            result.is_err(),
+            "patch_string should reject syntactically invalid Rust"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("syntax") || msg.contains("parse") || msg.contains("error"),
-            "error message should mention syntax/parse: {}", msg
+            "error message should mention syntax/parse: {}",
+            msg
         );
     }
 
@@ -594,7 +686,10 @@ pub fn fetch_user(id: u32) -> String {
         );
 
         let after = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
-        assert_eq!(original, after, "file must not be modified when patch is rejected");
+        assert_eq!(
+            original, after,
+            "file must not be modified when patch is rejected"
+        );
     }
 
     #[test]
@@ -606,9 +701,16 @@ pub fn fetch_user(id: u32) -> String {
             "a + b".into(),
             "a.saturating_add(b)".into(),
         );
-        assert!(result.is_ok(), "patch_string should accept valid Rust: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "patch_string should accept valid Rust: {:?}",
+            result.err()
+        );
         let after = fs::read_to_string(dir.path().join("src/math.rs")).unwrap();
-        assert!(after.contains("saturating_add"), "file should contain the new content");
+        assert!(
+            after.contains("saturating_add"),
+            "file should contain the new content"
+        );
     }
 
     // ── bake skips .git/ ──────────────────────────────────────────────────────
@@ -630,21 +732,30 @@ pub fn fetch_user(id: u32) -> String {
 
         let out = crate::engine::symbol(
             Some(root_path.to_string_lossy().into_owned()),
-            "hello".to_string(), false, None, None, false,
-        ).unwrap();
+            "hello".to_string(),
+            false,
+            None,
+            None,
+            false,
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         // .git/ blobs must not appear in the file list
-        let bake = crate::engine::db::read_bake_from_db(
-            &root_path.join("bakes/latest/bake.db")
-        ).unwrap();
+        let bake =
+            crate::engine::db::read_bake_from_db(&root_path.join("bakes/latest/bake.db")).unwrap();
         assert!(
-            bake.files.iter().all(|f| !f.path.to_string_lossy().contains(".git/objects")),
+            bake.files
+                .iter()
+                .all(|f| !f.path.to_string_lossy().contains(".git/objects")),
             ".git/objects must not be indexed"
         );
         // main.rs must still be found
         assert!(
-            v["matches"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
+            v["matches"]
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false),
             "main.rs should still be indexed"
         );
     }
@@ -693,7 +804,10 @@ pub fn fetch_user(id: u32) -> String {
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out2).unwrap();
         assert!(
-            v["matches"].as_array().map(|a| a.is_empty()).unwrap_or(true),
+            v["matches"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true),
             "dist/bundle.rs should be excluded via .gitignore"
         );
     }
@@ -721,11 +835,15 @@ pub fn fetch_user(id: u32) -> String {
             "const x: u32 = undefined_symbol;".into(),
         );
 
-        assert!(result.is_err(), "patch_string should reject Zig type errors");
+        assert!(
+            result.is_err(),
+            "patch_string should reject Zig type errors"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("compiler") || msg.contains("zig") || msg.contains("error"),
-            "error should mention compiler rejection: {}", msg
+            "error should mention compiler rejection: {}",
+            msg
         );
 
         // File must be restored to original.
@@ -742,14 +860,17 @@ pub fn fetch_user(id: u32) -> String {
         let dir = TempDir::new().unwrap();
         let root_path = dir.path();
 
-        fs::write(root_path.join("Cargo.toml"),
+        fs::write(
+            root_path.join("Cargo.toml"),
             "[package]\nname = \"guard_test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        ).unwrap();
+        )
+        .unwrap();
         fs::create_dir_all(root_path.join("src")).unwrap();
         fs::write(
             root_path.join("src/main.rs"),
             "fn add(a: i32, b: i32) -> i32 { a + b }\nfn main() {}\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
 
@@ -763,16 +884,23 @@ pub fn fetch_user(id: u32) -> String {
             "totally_undefined_fn_xyz(a, b)".into(),
         );
 
-        assert!(result.is_err(), "patch_string should reject Rust type errors via cargo check");
+        assert!(
+            result.is_err(),
+            "patch_string should reject Rust type errors via cargo check"
+        );
         let msg = result.unwrap_err().to_string();
         assert!(
             msg.contains("compiler") || msg.contains("cargo") || msg.contains("error"),
-            "error should mention compiler rejection: {}", msg
+            "error should mention compiler rejection: {}",
+            msg
         );
 
         // File must be restored.
         let after = fs::read_to_string(root_path.join("src/main.rs")).unwrap();
-        assert_eq!(original, after, "file must be restored after cargo check rejection");
+        assert_eq!(
+            original, after,
+            "file must be restored after cargo check rejection"
+        );
     }
 
     // ── script integration ────────────────────────────────────────────────────
@@ -784,7 +912,8 @@ pub fn fetch_user(id: u32) -> String {
         let result = crate::engine::run_script(
             Some(root),
             r#"let s = inspect(#{name: "add"}); s"#.to_string(),
-        ).unwrap();
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
         assert_eq!(v["result"]["tool"], "inspect");
@@ -795,16 +924,28 @@ pub fn fetch_user(id: u32) -> String {
     fn script_health_returns_all_smell_keys() {
         let dir = setup();
         let root = dir.path().to_string_lossy().into_owned();
-        let result = crate::engine::run_script(
-            Some(root),
-            r#"let h = health(); h.keys()"#.to_string(),
-        ).unwrap();
+        let result =
+            crate::engine::run_script(Some(root), r#"let h = health(); h.keys()"#.to_string())
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let keys: Vec<&str> = v["result"].as_array().unwrap()
-            .iter().filter_map(|k| k.as_str()).collect();
-        assert!(keys.contains(&"dead_code"), "health() must have dead_code key");
-        assert!(keys.contains(&"large_functions"), "health() must have large_functions key");
-        assert!(keys.contains(&"next_hint"), "health() must expose next_hint");
+        let keys: Vec<&str> = v["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|k| k.as_str())
+            .collect();
+        assert!(
+            keys.contains(&"dead_code"),
+            "health() must have dead_code key"
+        );
+        assert!(
+            keys.contains(&"large_functions"),
+            "health() must have large_functions key"
+        );
+        assert!(
+            keys.contains(&"next_hint"),
+            "health() must expose next_hint"
+        );
     }
 
     #[test]
@@ -823,8 +964,10 @@ for d in h["dead_code"] {
     else { priv_dead += [d["name"]]; }
 }
 #{ public_dead: pub_dead, private_dead_count: priv_dead.len() }
-"#.to_string(),
-        ).unwrap();
+"#
+            .to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
         assert!(v["result"]["public_dead"].is_array());
@@ -847,13 +990,17 @@ for f in files {
     report += [#{ file: f, fn_count: fns.len() }];
 }
 report
-"#.to_string(),
-        ).unwrap();
+"#
+            .to_string(),
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
         let rows = v["result"].as_array().expect("array of rows");
         assert_eq!(rows.len(), 2);
-        assert!(rows.iter().all(|r| r["fn_count"].as_i64().unwrap_or(-1) >= 0));
+        assert!(rows
+            .iter()
+            .all(|r| r["fn_count"].as_i64().unwrap_or(-1) >= 0));
     }
 
     #[test]
@@ -876,12 +1023,18 @@ report
             None,
             Some(10),
             true,
-        ).unwrap();
+        )
+        .unwrap();
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let matches = v["matches"].as_array().expect("matches array");
-        let has_stdlib = matches.iter().any(|m| m["is_stdlib"].as_bool().unwrap_or(false));
-        assert!(has_stdlib, "expected at least one is_stdlib: true match for HashMap in Rust stdlib");
+        let has_stdlib = matches
+            .iter()
+            .any(|m| m["is_stdlib"].as_bool().unwrap_or(false));
+        assert!(
+            has_stdlib,
+            "expected at least one is_stdlib: true match for HashMap in Rust stdlib"
+        );
     }
 
     #[test]
@@ -890,14 +1043,9 @@ report
         let dir = setup();
         let root = dir.path().to_string_lossy().into_owned();
 
-        let json = crate::engine::symbol(
-            Some(root),
-            "add".to_string(),
-            false,
-            None,
-            Some(5),
-            false,
-        ).unwrap();
+        let json =
+            crate::engine::symbol(Some(root), "add".to_string(), false, None, Some(5), false)
+                .unwrap();
 
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let matches = v["matches"].as_array().expect("matches array");
@@ -914,13 +1062,21 @@ report
 
         let json = crate::engine::health(Some(root), Some(50), None, None, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-        let dupes = v["duplicate_code"].as_array().expect("duplicate_code array");
+        let dupes = v["duplicate_code"]
+            .as_array()
+            .expect("duplicate_code array");
 
         let has_structural = dupes.iter().any(|d| {
-            d["stem"].as_str().map(|s| s.starts_with("sig:")).unwrap_or(false)
+            d["stem"]
+                .as_str()
+                .map(|s| s.starts_with("sig:"))
+                .unwrap_or(false)
                 && d["smell"].as_str() == Some("Structural Duplicate")
         });
-        assert!(has_structural, "expected health to flag add/subtract/multiply as structural duplicates via sig_hash");
+        assert!(
+            has_structural,
+            "expected health to flag add/subtract/multiply as structural duplicates via sig_hash"
+        );
     }
 
     #[test]
@@ -966,26 +1122,27 @@ fn unused_two() {}
         .unwrap();
         let page_2_json: serde_json::Value = serde_json::from_str(&page_2).unwrap();
         let page_2_sections = page_2_json["sections"].as_array().expect("sections array");
-        assert_eq!(page_2_sections.len(), 1, "cursor should return one section page");
+        assert_eq!(
+            page_2_sections.len(),
+            1,
+            "cursor should return one section page"
+        );
         assert_eq!(page_2_sections[0]["section"], "dead_code");
         assert_eq!(page_2_sections[0]["offset"], 1);
     }
 
     #[test]
     fn llm_workflows_compact_view_sections_reference_catalog() {
-        let json = crate::engine::llm_workflows(
-            None,
-            Some("compact".to_string()),
-            Some(2),
-            None,
-            None,
-        )
-        .unwrap();
+        let json =
+            crate::engine::llm_workflows(None, Some("compact".to_string()), Some(2), None, None)
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["view"], "compact");
         let sections = v["sections"].as_array().expect("sections array");
         assert!(
-            sections.iter().any(|section| section["section"] == "workflows"),
+            sections
+                .iter()
+                .any(|section| section["section"] == "workflows"),
             "compact workflows view must include the workflows section"
         );
         let workflows = sections
@@ -998,18 +1155,16 @@ fn unused_two() {}
 
     #[test]
     fn llm_workflows_query_returns_ranked_matches() {
-        let json = crate::engine::llm_workflows(
-            None,
-            None,
-            None,
-            None,
-            Some("rename symbol".to_string()),
-        )
-        .unwrap();
+        let json =
+            crate::engine::llm_workflows(None, None, None, None, Some("rename symbol".to_string()))
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["query"], "rename symbol");
         let matches = v["matches"].as_array().expect("matches array");
-        assert!(!matches.is_empty(), "query 'rename symbol' must return at least one match");
+        assert!(
+            !matches.is_empty(),
+            "query 'rename symbol' must return at least one match"
+        );
         // graph_rename workflow or decision should rank highest
         assert!(
             matches.iter().any(|m| {
@@ -1042,7 +1197,10 @@ fn unused_two() {}
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         let matches = v["matches"].as_array().expect("matches array");
-        assert!(!matches.is_empty(), "query 'delete dead code' must return matches");
+        assert!(
+            !matches.is_empty(),
+            "query 'delete dead code' must return matches"
+        );
         assert!(
             matches.iter().any(|m| {
                 m["item"]["name"] == "Safely delete dead code"
@@ -1058,10 +1216,38 @@ fn unused_two() {}
     }
 
     #[test]
+    fn llm_workflows_query_guard_failure_retry() {
+        let json = crate::engine::llm_workflows(
+            None,
+            None,
+            None,
+            None,
+            Some("guard failure retry".to_string()),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let matches = v["matches"].as_array().expect("matches array");
+        assert!(
+            matches.iter().any(|m| {
+                m["item"]["name"] == "Recover from guard failure"
+                    || (m["kind"] == "antipattern"
+                        && m["item"]["text"]
+                            .as_str()
+                            .unwrap_or("")
+                            .contains("guard_failure payload"))
+            }),
+            "query 'guard failure retry' must surface the guard-failure recovery workflow or payload guidance"
+        );
+    }
+
+    #[test]
     fn llm_workflows_query_stop_words_only_returns_empty() {
         // A query made entirely of stop words should match nothing.
         let json = crate::engine::llm_workflows(
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             Some("how do I use the a an to".to_string()),
         )
         .unwrap();
@@ -1076,7 +1262,10 @@ fn unused_two() {}
     #[test]
     fn llm_workflows_query_no_match_returns_empty() {
         let json = crate::engine::llm_workflows(
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             Some("xyzzy frobnicator quux".to_string()),
         )
         .unwrap();
@@ -1090,16 +1279,12 @@ fn unused_two() {}
 
     #[test]
     fn llm_workflows_query_case_insensitive() {
-        let lower = crate::engine::llm_workflows(
-            None, None, None, None,
-            Some("rename".to_string()),
-        )
-        .unwrap();
-        let upper = crate::engine::llm_workflows(
-            None, None, None, None,
-            Some("RENAME".to_string()),
-        )
-        .unwrap();
+        let lower =
+            crate::engine::llm_workflows(None, None, None, None, Some("rename".to_string()))
+                .unwrap();
+        let upper =
+            crate::engine::llm_workflows(None, None, None, None, Some("RENAME".to_string()))
+                .unwrap();
         let lv: serde_json::Value = serde_json::from_str(&lower).unwrap();
         let uv: serde_json::Value = serde_json::from_str(&upper).unwrap();
         assert_eq!(
@@ -1112,7 +1297,10 @@ fn unused_two() {}
     #[test]
     fn llm_workflows_query_hits_decision_map() {
         let json = crate::engine::llm_workflows(
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             Some("struct fields types".to_string()),
         )
         .unwrap();
@@ -1127,7 +1315,10 @@ fn unused_two() {}
     #[test]
     fn llm_workflows_query_hits_metapattern() {
         let json = crate::engine::llm_workflows(
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             Some("orient unfamiliar codebase".to_string()),
         )
         .unwrap();
@@ -1142,11 +1333,9 @@ fn unused_two() {}
     #[test]
     fn llm_workflows_query_capped_at_ten() {
         // "function" appears in almost everything — result set must be capped at 10.
-        let json = crate::engine::llm_workflows(
-            None, None, None, None,
-            Some("function".to_string()),
-        )
-        .unwrap();
+        let json =
+            crate::engine::llm_workflows(None, None, None, None, Some("function".to_string()))
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(
             v["matches"].as_array().unwrap().len() <= 10,
@@ -1176,7 +1365,8 @@ fn get_registry() -> &'static Vec<&'static str> {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let blast = crate::engine::blast_radius(root(&dir), "build_registry".into(), Some(2)).unwrap();
+        let blast =
+            crate::engine::blast_radius(root(&dir), "build_registry".into(), Some(2)).unwrap();
         let blast_json: serde_json::Value = serde_json::from_str(&blast).unwrap();
         let callers = blast_json["callers"].as_array().expect("callers array");
         assert!(
@@ -1186,9 +1376,13 @@ fn get_registry() -> &'static Vec<&'static str> {
 
         let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
-        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        let dead_code = health_json["dead_code"]
+            .as_array()
+            .expect("dead_code array");
         assert!(
-            !dead_code.iter().any(|f| f["name"] == "build_registry" && f["file"] == "src/cache.rs"),
+            !dead_code
+                .iter()
+                .any(|f| f["name"] == "build_registry" && f["file"] == "src/cache.rs"),
             "build_registry should not be flagged as dead when passed to get_or_init"
         );
     }
@@ -1223,14 +1417,20 @@ impl Greeter for Person {
 
         let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
-        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        let dead_code = health_json["dead_code"]
+            .as_array()
+            .expect("dead_code array");
 
         assert!(
-            !dead_code.iter().any(|f| f["name"] == "greet" && f["file"] == "src/trait_impl.rs"),
+            !dead_code
+                .iter()
+                .any(|f| f["name"] == "greet" && f["file"] == "src/trait_impl.rs"),
             "trait impl methods should not be classified as dead code"
         );
         assert!(
-            dead_code.iter().any(|f| f["name"] == "unused_helper" && f["file"] == "src/trait_impl.rs"),
+            dead_code
+                .iter()
+                .any(|f| f["name"] == "unused_helper" && f["file"] == "src/trait_impl.rs"),
             "unused inherent methods should still be classified as dead code"
         );
     }
@@ -1251,9 +1451,13 @@ fn runner() {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let symbol = crate::engine::symbol(root(&dir), "runner".into(), false, None, Some(5), false).unwrap();
+        let symbol =
+            crate::engine::symbol(root(&dir), "runner".into(), false, None, Some(5), false)
+                .unwrap();
         let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
-        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+        let calls = symbol_json["matches"][0]["calls"]
+            .as_array()
+            .expect("calls array");
 
         assert!(
             calls.iter().any(|c| c["callee"] == "work"),
@@ -1305,7 +1509,9 @@ fn main() {
         )
         .unwrap();
         let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
-        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+        let calls = symbol_json["matches"][0]["calls"]
+            .as_array()
+            .expect("calls array");
 
         assert!(
             calls.iter().any(|c| c["callee"] == "work"),
@@ -1336,7 +1542,9 @@ struct Event {
 
         let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
-        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        let dead_code = health_json["dead_code"]
+            .as_array()
+            .expect("dead_code array");
 
         assert!(
             !dead_code.iter().any(|f| f["name"] == "default_origin" && f["file"] == "src/serde_defaults.rs"),
@@ -1397,7 +1605,9 @@ fn get_registry() -> &'static Vec<ToolEntry> {
 
         let health = crate::engine::health(root(&dir), Some(100), None, None, None).unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
-        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        let dead_code = health_json["dead_code"]
+            .as_array()
+            .expect("dead_code array");
 
         for name in ["build_registry", "str_req", "bool_opt"] {
             assert!(
@@ -1430,16 +1640,29 @@ func main() {}
 
         crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
 
-        let health = crate::engine::health(Some(root_path.to_string_lossy().into_owned()), Some(100), None, None, None).unwrap();
+        let health = crate::engine::health(
+            Some(root_path.to_string_lossy().into_owned()),
+            Some(100),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let health_json: serde_json::Value = serde_json::from_str(&health).unwrap();
-        let dead_code = health_json["dead_code"].as_array().expect("dead_code array");
+        let dead_code = health_json["dead_code"]
+            .as_array()
+            .expect("dead_code array");
 
         assert!(
-            !dead_code.iter().any(|f| f["name"] == "init" && f["file"] == "main.go"),
+            !dead_code
+                .iter()
+                .any(|f| f["name"] == "init" && f["file"] == "main.go"),
             "Go init functions are runtime entrypoints and should not be classified as dead code"
         );
         assert!(
-            dead_code.iter().any(|f| f["name"] == "unusedHelper" && f["file"] == "main.go"),
+            dead_code
+                .iter()
+                .any(|f| f["name"] == "unusedHelper" && f["file"] == "main.go"),
             "ordinary unused Go helpers should still be classified as dead code"
         );
     }
@@ -1564,40 +1787,58 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         .unwrap();
         crate::engine::bake(root(&dir)).unwrap();
 
-        let symbol = crate::engine::symbol(root(&dir), "build_registry".into(), false, None, Some(5), false).unwrap();
+        let symbol = crate::engine::symbol(
+            root(&dir),
+            "build_registry".into(),
+            false,
+            None,
+            Some(5),
+            false,
+        )
+        .unwrap();
         let symbol_json: serde_json::Value = serde_json::from_str(&symbol).unwrap();
-        let calls = symbol_json["matches"][0]["calls"].as_array().expect("calls array");
+        let calls = symbol_json["matches"][0]["calls"]
+            .as_array()
+            .expect("calls array");
 
-        let qualified_str_req = calls.iter().filter(|c| {
-            c["callee"] == "str_req" && c["qualifier"].as_str() == Some("a")
-        }).count();
-        let unqualified_str_req = calls.iter().filter(|c| {
-            c["callee"] == "str_req" && c.get("qualifier").is_none()
-        }).count();
-        let qualified_bool_opt = calls.iter().filter(|c| {
-            c["callee"] == "bool_opt" && c["qualifier"].as_str() == Some("a")
-        }).count();
-        let unqualified_bool_opt = calls.iter().filter(|c| {
-            c["callee"] == "bool_opt" && c.get("qualifier").is_none()
-        }).count();
+        let qualified_str_req = calls
+            .iter()
+            .filter(|c| c["callee"] == "str_req" && c["qualifier"].as_str() == Some("a"))
+            .count();
+        let unqualified_str_req = calls
+            .iter()
+            .filter(|c| c["callee"] == "str_req" && c.get("qualifier").is_none())
+            .count();
+        let qualified_bool_opt = calls
+            .iter()
+            .filter(|c| c["callee"] == "bool_opt" && c["qualifier"].as_str() == Some("a"))
+            .count();
+        let unqualified_bool_opt = calls
+            .iter()
+            .filter(|c| c["callee"] == "bool_opt" && c.get("qualifier").is_none())
+            .count();
 
         assert_eq!(
-            qualified_str_req, 2,
+            qualified_str_req,
+            2,
             "expected one qualified str_req edge per source line after merge dedupe: {}",
             serde_json::to_string(calls).unwrap()
         );
         assert_eq!(
-            unqualified_str_req, 0,
+            unqualified_str_req,
+            0,
             "unqualified duplicate str_req edges should be removed when qualified edges exist: {}",
             serde_json::to_string(calls).unwrap()
         );
         assert_eq!(
-            qualified_bool_opt, 1,
+            qualified_bool_opt,
+            1,
             "expected exactly one qualified bool_opt edge after merge dedupe: {}",
             serde_json::to_string(calls).unwrap()
         );
         assert_eq!(
-            unqualified_bool_opt, 0,
+            unqualified_bool_opt,
+            0,
             "unqualified duplicate bool_opt edges should be removed when qualified edges exist: {}",
             serde_json::to_string(calls).unwrap()
         );
@@ -1621,17 +1862,18 @@ fn get_registry() -> &'static Vec<ToolEntry> {
             conn.execute_batch(
                 "CREATE TABLE IF NOT EXISTS embeddings \
                  (name TEXT, file TEXT, start_line INTEGER, parent_type TEXT, embedding BLOB);",
-            ).unwrap();
+            )
+            .unwrap();
         }
-        let out = crate::engine::semantic_search(
-            root(&dir),
-            "add numbers".into(),
-            None,
-            None,
-        ).unwrap();
+        let out =
+            crate::engine::semantic_search(root(&dir), "add numbers".into(), None, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         // note should be absent — embeddings.db exists, no need to warn
-        assert!(v["note"].is_null(), "note should be absent when embeddings.db exists: {:?}", v["note"]);
+        assert!(
+            v["note"].is_null(),
+            "note should be absent when embeddings.db exists: {:?}",
+            v["note"]
+        );
     }
 
     #[test]
@@ -1640,16 +1882,20 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         // Ensure embeddings.db does not exist (bake spawns rebuild in background, may or may not exist)
         let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
 
-        let out = crate::engine::semantic_search(
-            root(&dir),
-            "compute sum".into(),
-            None,
-            None,
-        ).unwrap();
+        let out =
+            crate::engine::semantic_search(root(&dir), "compute sum".into(), None, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let note = v["note"].as_str().expect("note must be present when embeddings.db is absent");
-        assert!(note.contains("building"), "note should mention building: {note}");
-        assert!(note.contains("TF-IDF"), "note should mention TF-IDF: {note}");
+        let note = v["note"]
+            .as_str()
+            .expect("note must be present when embeddings.db is absent");
+        assert!(
+            note.contains("building"),
+            "note should mention building: {note}"
+        );
+        assert!(
+            note.contains("TF-IDF"),
+            "note should mention TF-IDF: {note}"
+        );
         // Results should still be returned (TF-IDF fallback works)
         assert!(v["results"].is_array());
     }
@@ -1659,18 +1905,23 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         let dir = setup();
         let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
 
-        let out = crate::engine::semantic_search(
-            root(&dir),
-            "add".into(),
-            Some(5),
-            None,
-        ).unwrap();
+        let out = crate::engine::semantic_search(root(&dir), "add".into(), Some(5), None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let results = v["results"].as_array().unwrap();
         // Fixture has an `add` function — it should rank near the top
-        assert!(!results.is_empty(), "TF-IDF should return results for 'add'");
+        assert!(
+            !results.is_empty(),
+            "TF-IDF should return results for 'add'"
+        );
         assert!(results.len() <= 5, "limit=5 respected");
-        let names: Vec<&str> = results.iter().map(|r| r["name"].as_str().unwrap_or("")).collect();
-        assert!(names.contains(&"add"), "add function should rank in results: {:?}", names);
+        let names: Vec<&str> = results
+            .iter()
+            .map(|r| r["name"].as_str().unwrap_or(""))
+            .collect();
+        assert!(
+            names.contains(&"add"),
+            "add function should rank in results: {:?}",
+            names
+        );
     }
 }
