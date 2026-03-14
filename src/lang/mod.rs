@@ -56,6 +56,8 @@ pub struct IndexedFunction {
     pub name: String,
     pub file: String,
     pub language: String,
+    #[serde(default)]
+    pub scope_name: String,
     pub start_line: u32,
     pub end_line: u32,
     pub complexity: u32,
@@ -107,6 +109,7 @@ impl Default for IndexedFunction {
             name: String::new(),
             file: String::new(),
             language: String::new(),
+            scope_name: String::new(),
             start_line: 0,
             end_line: 0,
             complexity: 0,
@@ -173,6 +176,8 @@ pub struct IndexedEndpoint {
     pub handler_name: Option<String>,
     pub language: String,
     pub framework: String,
+    #[serde(default)]
+    pub scope_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,6 +185,8 @@ pub struct IndexedType {
     pub name: String,
     pub file: String,
     pub language: String,
+    #[serde(default)]
+    pub scope_name: String,
     pub start_line: u32,
     pub end_line: u32,
     pub kind: String, // "struct" | "enum" | "trait" | "type" | "class" | "interface"
@@ -201,6 +208,7 @@ impl Default for IndexedType {
             name: String::new(),
             file: String::new(),
             language: String::new(),
+            scope_name: String::new(),
             start_line: 0,
             end_line: 0,
             kind: String::new(),

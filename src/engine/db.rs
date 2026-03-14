@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 
-use crate::engine::types::{BakeFile, BakeIndex};
+use crate::engine::types::{BakeFile, BakeIndex, ScopeDependency, ScopeSummary};
 use crate::lang::{
     CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
     SignatureParam, Visibility,
@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS languages (
 CREATE TABLE IF NOT EXISTS files (
     path     TEXT PRIMARY KEY,
     language TEXT NOT NULL,
+    scope_name TEXT NOT NULL DEFAULT '',
+    scope_tags TEXT NOT NULL DEFAULT '[]',
     bytes    INTEGER NOT NULL,
     mtime_ns INTEGER NOT NULL DEFAULT 0,
     origin   TEXT NOT NULL,
@@ -33,6 +35,7 @@ CREATE TABLE IF NOT EXISTS functions (
     name              TEXT    NOT NULL,
     file              TEXT    NOT NULL,
     language          TEXT    NOT NULL,
+    scope_name        TEXT    NOT NULL DEFAULT '',
     start_line        INTEGER NOT NULL,
     end_line          INTEGER NOT NULL,
     complexity        INTEGER NOT NULL,
@@ -60,6 +63,7 @@ CREATE TABLE IF NOT EXISTS types (
     name        TEXT    NOT NULL,
     file        TEXT    NOT NULL,
     language    TEXT    NOT NULL,
+    scope_name  TEXT    NOT NULL DEFAULT '',
     start_line  INTEGER NOT NULL,
     end_line    INTEGER NOT NULL,
     kind        TEXT    NOT NULL,
@@ -85,7 +89,19 @@ CREATE TABLE IF NOT EXISTS endpoints (
     file         TEXT NOT NULL,
     handler_name TEXT,
     language     TEXT NOT NULL,
-    framework    TEXT NOT NULL
+    framework    TEXT NOT NULL,
+    scope_name   TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS scopes (
+    name         TEXT PRIMARY KEY,
+    file_count   INTEGER NOT NULL,
+    languages    TEXT NOT NULL,
+    tags         TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scope_dependencies (
+    scope        TEXT NOT NULL,
+    depends_on   TEXT NOT NULL,
+    PRIMARY KEY (scope, depends_on)
 );
 CREATE INDEX IF NOT EXISTS idx_fn_name      ON functions(name);
 CREATE INDEX IF NOT EXISTS idx_fn_file      ON functions(file);
@@ -111,6 +127,41 @@ fn str_vis(s: &str) -> Visibility {
         "module" => Visibility::Module,
         _ => Visibility::Private,
     }
+}
+
+fn rewrite_scope_metadata(
+    conn: &Connection,
+    scopes: &[ScopeSummary],
+    dependencies: &[ScopeDependency],
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM scopes", [])?;
+    tx.execute("DELETE FROM scope_dependencies", [])?;
+
+    {
+        let mut scope_stmt = tx.prepare(
+            "INSERT INTO scopes (name, file_count, languages, tags) VALUES (?1, ?2, ?3, ?4)",
+        )?;
+        for scope in scopes {
+            scope_stmt.execute(params![
+                scope.name,
+                scope.file_count as i64,
+                serde_json::to_string(&scope.languages).unwrap_or_else(|_| "[]".into()),
+                serde_json::to_string(&scope.tags).unwrap_or_else(|_| "[]".into()),
+            ])?;
+        }
+    }
+
+    {
+        let mut dep_stmt =
+            tx.prepare("INSERT INTO scope_dependencies (scope, depends_on) VALUES (?1, ?2)")?;
+        for dep in dependencies {
+            dep_stmt.execute(params![dep.scope, dep.depends_on])?;
+        }
+    }
+
+    tx.commit()?;
+    Ok(())
 }
 
 // ── write ─────────────────────────────────────────────────────────────────────
@@ -147,11 +198,14 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     // files
     for f in &bake.files {
         let imports = serde_json::to_string(&f.imports).unwrap_or_else(|_| "[]".into());
+        let scope_tags = serde_json::to_string(&f.scope_tags).unwrap_or_else(|_| "[]".into());
         tx.execute(
-            "INSERT OR REPLACE INTO files (path, language, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT OR REPLACE INTO files (path, language, scope_name, scope_tags, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 f.path.to_string_lossy().as_ref(),
                 f.language,
+                f.scope_name,
+                scope_tags,
                 f.bytes as i64,
                 f.mtime_ns,
                 f.origin,
@@ -163,10 +217,10 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     // functions + calls
     {
         let mut fn_stmt = tx.prepare(
-            "INSERT INTO functions (name, file, language, start_line, end_line, complexity, \
+            "INSERT INTO functions (name, file, language, scope_name, start_line, end_line, complexity, \
              byte_start, byte_end, module_path, qualified_name, visibility, parent_type, \
              implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
         )?;
         let mut call_stmt = tx.prepare(
             "INSERT INTO calls (function_id, callee, qualifier, line) VALUES (?1, ?2, ?3, ?4)",
@@ -178,6 +232,7 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
                 f.name,
                 f.file,
                 f.language,
+                f.scope_name,
                 f.start_line,
                 f.end_line,
                 f.complexity,
@@ -204,8 +259,8 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     // types + type_fields
     {
         let mut ty_stmt = tx.prepare(
-            "INSERT INTO types (name, file, language, start_line, end_line, kind, module_path, \
-             visibility, is_stdlib) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            "INSERT INTO types (name, file, language, scope_name, start_line, end_line, kind, module_path, \
+             visibility, is_stdlib) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         )?;
         let mut field_stmt = tx.prepare(
             "INSERT INTO type_fields (type_id, name, type_str, visibility) VALUES (?1,?2,?3,?4)",
@@ -215,6 +270,7 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
                 t.name,
                 t.file,
                 t.language,
+                t.scope_name,
                 t.start_line,
                 t.end_line,
                 t.kind,
@@ -247,7 +303,7 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     // endpoints
     {
         let mut ep_stmt = tx.prepare(
-            "INSERT INTO endpoints (method, path, file, handler_name, language, framework) VALUES (?1,?2,?3,?4,?5,?6)",
+            "INSERT INTO endpoints (method, path, file, handler_name, language, framework, scope_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
         )?;
         for e in &bake.endpoints {
             ep_stmt.execute(params![
@@ -256,12 +312,18 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
                 e.file,
                 e.handler_name,
                 e.language,
-                e.framework
+                e.framework,
+                e.scope_name,
             ])?;
         }
     }
 
     tx.commit()?;
+    rewrite_scope_metadata(
+        &conn,
+        &crate::engine::util::bake_scopes(bake),
+        &crate::engine::util::bake_scope_dependencies(bake),
+    )?;
     Ok(())
 }
 
@@ -308,6 +370,14 @@ pub fn write_bake_incremental(
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
     // Migrate older DBs that predate the mtime_ns column (error is ignored when column exists).
     let _ = conn.execute_batch("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE files ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ =
+        conn.execute_batch("ALTER TABLE files ADD COLUMN scope_tags TEXT NOT NULL DEFAULT '[]'");
+    let _ =
+        conn.execute_batch("ALTER TABLE functions ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ = conn.execute_batch("ALTER TABLE types ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ =
+        conn.execute_batch("ALTER TABLE endpoints ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
     // Ensure all tables and indexes exist (no-op when schema is current).
     conn.execute_batch(SCHEMA)?;
 
@@ -358,11 +428,14 @@ pub fn write_bake_incremental(
         // Insert new rows for changed/new files.
         for f in &bake.files {
             let imports = serde_json::to_string(&f.imports).unwrap_or_else(|_| "[]".into());
+            let scope_tags = serde_json::to_string(&f.scope_tags).unwrap_or_else(|_| "[]".into());
             tx.execute(
-                "INSERT OR REPLACE INTO files (path, language, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT OR REPLACE INTO files (path, language, scope_name, scope_tags, bytes, mtime_ns, origin, imports) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     f.path.to_string_lossy().as_ref(),
                     f.language,
+                    f.scope_name,
+                    scope_tags,
                     f.bytes as i64,
                     f.mtime_ns,
                     f.origin,
@@ -373,10 +446,10 @@ pub fn write_bake_incremental(
 
         {
             let mut fn_stmt = tx.prepare(
-                "INSERT INTO functions (name, file, language, start_line, end_line, complexity, \
+                "INSERT INTO functions (name, file, language, scope_name, start_line, end_line, complexity, \
                  byte_start, byte_end, module_path, qualified_name, visibility, parent_type, \
                  implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) \
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
             )?;
             let mut call_stmt = tx.prepare(
                 "INSERT INTO calls (function_id, callee, qualifier, line) VALUES (?1, ?2, ?3, ?4)",
@@ -387,6 +460,7 @@ pub fn write_bake_incremental(
                     f.name,
                     f.file,
                     f.language,
+                    f.scope_name,
                     f.start_line,
                     f.end_line,
                     f.complexity,
@@ -412,8 +486,8 @@ pub fn write_bake_incremental(
 
         {
             let mut ty_stmt = tx.prepare(
-                "INSERT INTO types (name, file, language, start_line, end_line, kind, module_path, \
-                 visibility, is_stdlib) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                "INSERT INTO types (name, file, language, scope_name, start_line, end_line, kind, module_path, \
+                 visibility, is_stdlib) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
             )?;
             let mut field_stmt = tx.prepare(
                 "INSERT INTO type_fields (type_id, name, type_str, visibility) VALUES (?1,?2,?3,?4)",
@@ -423,6 +497,7 @@ pub fn write_bake_incremental(
                     t.name,
                     t.file,
                     t.language,
+                    t.scope_name,
                     t.start_line,
                     t.end_line,
                     t.kind,
@@ -453,7 +528,7 @@ pub fn write_bake_incremental(
 
         {
             let mut ep_stmt = tx.prepare(
-                "INSERT INTO endpoints (method, path, file, handler_name, language, framework) VALUES (?1,?2,?3,?4,?5,?6)",
+                "INSERT INTO endpoints (method, path, file, handler_name, language, framework, scope_name) VALUES (?1,?2,?3,?4,?5,?6,?7)",
             )?;
             for e in &bake.endpoints {
                 ep_stmt.execute(params![
@@ -463,12 +538,20 @@ pub fn write_bake_incremental(
                     e.handler_name,
                     e.language,
                     e.framework,
+                    e.scope_name,
                 ])?;
             }
         }
 
         tx.commit()?;
     }
+
+    let full_bake = read_bake_from_db(db_path)?;
+    rewrite_scope_metadata(
+        &conn,
+        &crate::engine::util::bake_scopes(&full_bake),
+        &crate::engine::util::bake_scope_dependencies(&full_bake),
+    )?;
 
     // Query totals from the now-updated DB.
     let total_files = conn
@@ -487,6 +570,16 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         .with_context(|| format!("Failed to open bake.db at {}", db_path.display()))?;
 
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+    let _ = conn.execute_batch("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0");
+    let _ = conn.execute_batch("ALTER TABLE files ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ =
+        conn.execute_batch("ALTER TABLE files ADD COLUMN scope_tags TEXT NOT NULL DEFAULT '[]'");
+    let _ =
+        conn.execute_batch("ALTER TABLE functions ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ = conn.execute_batch("ALTER TABLE types ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    let _ =
+        conn.execute_batch("ALTER TABLE endpoints ADD COLUMN scope_name TEXT NOT NULL DEFAULT ''");
+    conn.execute_batch(SCHEMA)?;
 
     // meta
     let version: String = conn
@@ -511,27 +604,80 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         }
     }
 
+    let mut scopes: Vec<ScopeSummary> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT name, file_count, languages, tags FROM scopes")?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (name, file_count, languages_json, tags_json) = row?;
+            scopes.push(ScopeSummary {
+                name,
+                file_count: file_count as usize,
+                languages: serde_json::from_str(&languages_json).unwrap_or_default(),
+                tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+            });
+        }
+    }
+
+    let mut scope_dependencies: Vec<ScopeDependency> = Vec::new();
+    {
+        let mut stmt = conn.prepare(
+            "SELECT scope, depends_on FROM scope_dependencies ORDER BY scope, depends_on",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(ScopeDependency {
+                scope: r.get(0)?,
+                depends_on: r.get(1)?,
+            })
+        })?;
+        for row in rows {
+            scope_dependencies.push(row?);
+        }
+    }
+
     // files
     let mut files: Vec<BakeFile> = Vec::new();
     {
         let mut stmt =
-            conn.prepare("SELECT path, language, bytes, mtime_ns, origin, imports FROM files")?;
+            conn.prepare("SELECT path, language, scope_name, scope_tags, bytes, mtime_ns, origin, imports FROM files")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, i64>(3)?,
-                r.get::<_, String>(4)?,
-                r.get::<_, String>(5)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
             ))
         })?;
         for row in rows {
-            let (path, language, bytes, mtime_ns, origin, imports_json) = row?;
+            let (
+                path,
+                language,
+                scope_name,
+                scope_tags_json,
+                bytes,
+                mtime_ns,
+                origin,
+                imports_json,
+            ) = row?;
+            let scope_tags: Vec<String> =
+                serde_json::from_str(&scope_tags_json).unwrap_or_default();
             let imports: Vec<String> = serde_json::from_str(&imports_json).unwrap_or_default();
             files.push(BakeFile {
                 path: PathBuf::from(path),
                 language,
+                scope_name,
+                scope_tags,
                 bytes: bytes as u64,
                 mtime_ns,
                 origin,
@@ -545,7 +691,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
     let mut fn_ids: Vec<i64> = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT id, name, file, language, start_line, end_line, complexity, byte_start, \
+            "SELECT id, name, file, language, scope_name, start_line, end_line, complexity, byte_start, \
              byte_end, module_path, qualified_name, visibility, parent_type, implemented_trait, \
              params_json, return_type, receiver, is_stdlib, sig_hash FROM functions",
         )?;
@@ -555,21 +701,22 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
-                r.get::<_, u32>(4)?,
+                r.get::<_, String>(4)?,
                 r.get::<_, u32>(5)?,
                 r.get::<_, u32>(6)?,
-                r.get::<_, i64>(7)?,
+                r.get::<_, u32>(7)?,
                 r.get::<_, i64>(8)?,
-                r.get::<_, String>(9)?,
+                r.get::<_, i64>(9)?,
                 r.get::<_, String>(10)?,
                 r.get::<_, String>(11)?,
-                r.get::<_, Option<String>>(12)?,
+                r.get::<_, String>(12)?,
                 r.get::<_, Option<String>>(13)?,
-                r.get::<_, String>(14)?,
-                r.get::<_, Option<String>>(15)?,
+                r.get::<_, Option<String>>(14)?,
+                r.get::<_, String>(15)?,
                 r.get::<_, Option<String>>(16)?,
-                r.get::<_, i32>(17)?,
-                r.get::<_, Option<String>>(18)?,
+                r.get::<_, Option<String>>(17)?,
+                r.get::<_, i32>(18)?,
+                r.get::<_, Option<String>>(19)?,
             ))
         })?;
         for row in rows {
@@ -578,6 +725,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 name,
                 file,
                 language,
+                scope_name,
                 start_line,
                 end_line,
                 complexity,
@@ -601,6 +749,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 name,
                 file,
                 language,
+                scope_name,
                 start_line,
                 end_line,
                 complexity,
@@ -653,7 +802,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
     let mut types: Vec<IndexedType> = Vec::new();
     {
         let mut ty_stmt = conn.prepare(
-            "SELECT id, name, file, language, start_line, end_line, kind, module_path, \
+            "SELECT id, name, file, language, scope_name, start_line, end_line, kind, module_path, \
              visibility, is_stdlib FROM types",
         )?;
         let ty_rows = ty_stmt.query_map([], |r| {
@@ -662,12 +811,13 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
-                r.get::<_, u32>(4)?,
+                r.get::<_, String>(4)?,
                 r.get::<_, u32>(5)?,
-                r.get::<_, String>(6)?,
+                r.get::<_, u32>(6)?,
                 r.get::<_, String>(7)?,
                 r.get::<_, String>(8)?,
-                r.get::<_, i32>(9)?,
+                r.get::<_, String>(9)?,
+                r.get::<_, i32>(10)?,
             ))
         })?;
         let mut ty_ids: Vec<i64> = Vec::new();
@@ -677,6 +827,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 name,
                 file,
                 language,
+                scope_name,
                 start_line,
                 end_line,
                 kind,
@@ -689,6 +840,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 name,
                 file,
                 language,
+                scope_name,
                 start_line,
                 end_line,
                 kind,
@@ -749,7 +901,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
     let mut endpoints: Vec<IndexedEndpoint> = Vec::new();
     {
         let mut stmt = conn.prepare(
-            "SELECT method, path, file, handler_name, language, framework FROM endpoints",
+            "SELECT method, path, file, handler_name, language, framework, scope_name FROM endpoints",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(IndexedEndpoint {
@@ -759,6 +911,7 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 handler_name: r.get(3)?,
                 language: r.get(4)?,
                 framework: r.get(5)?,
+                scope_name: r.get(6)?,
             })
         })?;
         for row in rows {
@@ -766,11 +919,24 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         }
     }
 
+    let derived_scopes = if scopes.is_empty() {
+        Some(crate::engine::util::summarize_scopes(&files))
+    } else {
+        None
+    };
+    let derived_scope_dependencies = if scope_dependencies.is_empty() {
+        Some(crate::engine::util::summarize_scope_dependencies(&files))
+    } else {
+        None
+    };
+
     Ok(BakeIndex {
         version,
         project_root,
         languages,
         files,
+        scopes: derived_scopes.unwrap_or(scopes),
+        scope_dependencies: derived_scope_dependencies.unwrap_or(scope_dependencies),
         functions,
         endpoints,
         types,
@@ -800,6 +966,8 @@ mod tests {
             project_root: root.to_path_buf(),
             languages: BTreeSet::new(),
             files: vec![],
+            scopes: vec![],
+            scope_dependencies: vec![],
             functions: vec![],
             endpoints: vec![],
             types: vec![],
@@ -862,6 +1030,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("src/main.rs"),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes: 1024,
             mtime_ns: 0,
             origin: "local".to_string(),
@@ -870,6 +1040,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("src/lib.rs"),
             language: "rust".to_string(),
+            scope_name: String::new(),
+            scope_tags: vec![],
             bytes: 512,
             mtime_ns: 0,
             origin: "local".to_string(),
@@ -883,6 +1055,8 @@ mod tests {
             .find(|f| f.path == PathBuf::from("src/main.rs"))
             .unwrap();
         assert_eq!(main.language, "rust");
+        assert_eq!(main.scope_name, "backend");
+        assert_eq!(main.scope_tags, vec!["backend"]);
         assert_eq!(main.bytes, 1024);
         assert_eq!(main.origin, "local");
         assert_eq!(main.imports, vec!["std::fs", "anyhow"]);
@@ -901,6 +1075,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("pkg/foo.go"),
             language: "go".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes: 100,
             mtime_ns: 0,
             origin: "local".to_string(),
@@ -922,6 +1098,7 @@ mod tests {
             name: name.to_string(),
             file: format!("src/{}.rs", name),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
             start_line: 10,
             end_line: 20,
             complexity: 3,
@@ -952,6 +1129,7 @@ mod tests {
         assert_eq!(f.name, "process");
         assert_eq!(f.file, "src/process.rs");
         assert_eq!(f.language, "rust");
+        assert_eq!(f.scope_name, "backend");
         assert_eq!(f.start_line, 10);
         assert_eq!(f.end_line, 20);
         assert_eq!(f.complexity, 3);
@@ -1082,6 +1260,7 @@ mod tests {
             name: name.to_string(),
             file: "src/types.rs".to_string(),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
             start_line: 5,
             end_line: 15,
             kind: kind.to_string(),
@@ -1104,6 +1283,7 @@ mod tests {
         assert_eq!(t.kind, "struct");
         assert_eq!(t.file, "src/types.rs");
         assert_eq!(t.language, "rust");
+        assert_eq!(t.scope_name, "backend");
         assert_eq!(t.start_line, 5);
         assert_eq!(t.end_line, 15);
         assert_eq!(t.module_path, "crate::types");
@@ -1233,6 +1413,7 @@ mod tests {
             handler_name: Some("list_users".to_string()),
             language: "rust".to_string(),
             framework: "actix".to_string(),
+            scope_name: "backend".to_string(),
         });
         bake.endpoints.push(IndexedEndpoint {
             method: "POST".to_string(),
@@ -1241,6 +1422,7 @@ mod tests {
             handler_name: None,
             language: "rust".to_string(),
             framework: "actix".to_string(),
+            scope_name: "backend".to_string(),
         });
         let out = roundtrip(bake);
         assert_eq!(out.endpoints.len(), 2);
@@ -1248,8 +1430,43 @@ mod tests {
         assert_eq!(get.path, "/api/users");
         assert_eq!(get.handler_name, Some("list_users".to_string()));
         assert_eq!(get.framework, "actix");
+        assert_eq!(get.scope_name, "backend");
         let post = out.endpoints.iter().find(|e| e.method == "POST").unwrap();
         assert_eq!(post.handler_name, None);
+    }
+
+    #[test]
+    fn roundtrip_scope_metadata_and_dependencies() {
+        let dir = TempDir::new().unwrap();
+        let mut bake = empty_bake(dir.path());
+        bake.files.push(BakeFile {
+            path: PathBuf::from("backend/server.ts"),
+            language: "typescript".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
+            bytes: 100,
+            mtime_ns: 0,
+            origin: "user".to_string(),
+            imports: vec!["../generated/openapi".to_string()],
+        });
+        bake.files.push(BakeFile {
+            path: PathBuf::from("generated/openapi.ts"),
+            language: "typescript".to_string(),
+            scope_name: "generated".to_string(),
+            scope_tags: vec!["generated".to_string()],
+            bytes: 100,
+            mtime_ns: 0,
+            origin: "user".to_string(),
+            imports: vec![],
+        });
+
+        let out = roundtrip(bake);
+        assert!(out.scopes.iter().any(|scope| scope.name == "backend"));
+        assert!(out.scopes.iter().any(|scope| scope.name == "generated"));
+        assert!(out
+            .scope_dependencies
+            .iter()
+            .any(|dep| { dep.scope == "backend" && dep.depends_on == "generated" }));
     }
 
     // ── write idempotency / overwrite ────────────────────────────────────────
@@ -1290,6 +1507,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("src/main.rs"),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes: 2048,
             mtime_ns: 0,
             origin: "local".to_string(),
@@ -1323,6 +1542,7 @@ mod tests {
             handler_name: Some("health_check".to_string()),
             language: "rust".to_string(),
             framework: "actix".to_string(),
+            scope_name: "backend".to_string(),
         });
 
         let out = roundtrip(bake);
@@ -1358,6 +1578,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("src/main.rs"),
             language: "rust".to_string(),
+            scope_name: String::new(),
+            scope_tags: vec![],
             bytes: 512,
             mtime_ns: 1_700_000_000_000_000_000,
             origin: "user".to_string(),
@@ -1384,6 +1606,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("src/lib.rs"),
             language: "rust".to_string(),
+            scope_name: String::new(),
+            scope_tags: vec![],
             bytes: 1024,
             mtime_ns: 999_999_999,
             origin: "user".to_string(),
@@ -1392,6 +1616,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from("pkg/foo.go"),
             language: "go".to_string(),
+            scope_name: String::new(),
+            scope_tags: vec![],
             bytes: 2048,
             mtime_ns: 123_456_789,
             origin: "user".to_string(),
@@ -1417,6 +1643,8 @@ mod tests {
         bake.files.push(BakeFile {
             path: PathBuf::from(rel_path),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes,
             mtime_ns,
             origin: "user".to_string(),
@@ -1462,6 +1690,8 @@ mod tests {
             bake1.files.push(BakeFile {
                 path: PathBuf::from(name),
                 language: "rust".to_string(),
+                scope_name: String::new(),
+                scope_tags: vec![],
                 bytes: 100,
                 mtime_ns: 500,
                 origin: "user".to_string(),
@@ -1520,6 +1750,8 @@ mod tests {
         bake1.files.push(BakeFile {
             path: PathBuf::from("src/a.rs"),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes: 100,
             mtime_ns: 1,
             origin: "user".to_string(),
@@ -1535,6 +1767,8 @@ mod tests {
         bake2.files.push(BakeFile {
             path: PathBuf::from("src/a.rs"),
             language: "rust".to_string(),
+            scope_name: "backend".to_string(),
+            scope_tags: vec!["backend".to_string()],
             bytes: 200,
             mtime_ns: 2,
             origin: "user".to_string(),

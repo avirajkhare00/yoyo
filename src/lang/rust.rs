@@ -276,6 +276,7 @@ fn scan_children(
                                 handler_name: Some(name.to_string()),
                                 language: "rust".to_string(),
                                 framework: "actix/rocket".to_string(),
+                                scope_name: String::new(),
                             });
                         }
                     }

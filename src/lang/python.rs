@@ -209,6 +209,7 @@ fn walk_py(
                                 handler_name: Some(name),
                                 language: "python".to_string(),
                                 framework: "flask/fastapi".to_string(),
+                                scope_name: String::new(),
                             });
                         }
                     }

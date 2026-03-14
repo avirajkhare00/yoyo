@@ -2,22 +2,117 @@ use anyhow::{anyhow, Result};
 
 use super::graph::trace_chain;
 use super::types::{AllEndpointsPayload, EndpointSummary, FlowHandlerInfo, FlowPayload};
-use super::util::{require_bake_index, resolve_project_root};
+use super::util::{
+    backend_scope_boost, bake_scope_dependencies, bake_scopes, effective_scope,
+    is_backend_endpoint_task, matches_scope_filter, require_bake_index, resolve_project_root,
+    scope_hints,
+};
+
+fn endpoint_match_score(
+    endpoint: &crate::lang::IndexedEndpoint,
+    query: Option<&str>,
+    method: Option<&str>,
+    prefer_backend: bool,
+) -> Option<i32> {
+    let method_uc = method.map(|value| value.to_uppercase());
+    if method_uc
+        .as_ref()
+        .map(|value| endpoint.method != *value)
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    let mut score = 0i32;
+    if let Some(query) = query {
+        let needle = query.to_lowercase();
+        let path_lc = endpoint.path.to_lowercase();
+        let handler_lc = endpoint
+            .handler_name
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase();
+        let file_lc = endpoint.file.to_lowercase();
+
+        if path_lc == needle {
+            score += 100;
+        } else if path_lc.contains(&needle) {
+            score += 70;
+        } else if handler_lc.contains(&needle) || file_lc.contains(&needle) {
+            score += 25;
+        } else {
+            return None;
+        }
+    }
+
+    if prefer_backend {
+        score += backend_scope_boost(&endpoint.file, &endpoint.language);
+    }
+
+    Some(score)
+}
 
 /// Public entrypoint for the `all_endpoints` tool: list Express-style endpoints.
-pub fn all_endpoints(path: Option<String>) -> Result<String> {
+pub fn all_endpoints(
+    path: Option<String>,
+    query: Option<String>,
+    method: Option<String>,
+    scope: Option<String>,
+    limit: Option<usize>,
+) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
+    let scopes = bake_scopes(&bake);
+    let scope_dependencies = bake_scope_dependencies(&bake);
+    let scoping_hints = scope_hints(&scopes, &scope_dependencies);
+    let prefer_backend =
+        is_backend_endpoint_task(query.as_deref(), query.as_deref(), None, scope.as_deref());
+    let scope_used = effective_scope(
+        &bake.files,
+        scope.as_deref(),
+        query.as_deref(),
+        query.as_deref(),
+        None,
+        None,
+    );
 
-    let endpoints: Vec<EndpointSummary> = bake
+    let mut endpoints: Vec<(i32, EndpointSummary)> = bake
         .endpoints
         .iter()
-        .map(|e| EndpointSummary {
-            method: e.method.clone(),
-            path: e.path.clone(),
-            file: e.file.clone(),
-            handler_name: e.handler_name.clone(),
+        .filter(|endpoint| {
+            matches_scope_filter(&endpoint.file, &endpoint.language, scope_used.as_deref())
         })
+        .filter_map(|endpoint| {
+            let score = endpoint_match_score(
+                endpoint,
+                query.as_deref(),
+                method.as_deref(),
+                prefer_backend,
+            )?;
+            Some((
+                score,
+                EndpointSummary {
+                    method: endpoint.method.clone(),
+                    path: endpoint.path.clone(),
+                    file: endpoint.file.clone(),
+                    handler_name: endpoint.handler_name.clone(),
+                },
+            ))
+        })
+        .collect();
+    endpoints.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then(left.1.path.cmp(&right.1.path))
+            .then(left.1.file.cmp(&right.1.file))
+    });
+    if let Some(limit) = limit {
+        endpoints.truncate(limit);
+    }
+    let endpoints = endpoints
+        .into_iter()
+        .map(|(_, endpoint)| endpoint)
         .collect();
 
     let payload = AllEndpointsPayload {
@@ -25,6 +120,11 @@ pub fn all_endpoints(path: Option<String>) -> Result<String> {
         version: env!("CARGO_PKG_VERSION"),
         project_root: root,
         endpoints,
+        scope_used: scope_used.clone(),
+        scoping_hints,
+        next_hint: scope_used.map(|value| {
+            format!("Use scope='{value}' again for backend endpoint work, or switch scopes if you need frontend/test routes.")
+        }),
     };
 
     let json = serde_json::to_string_pretty(&payload)?;
@@ -44,24 +144,41 @@ pub fn flow(
     method: Option<String>,
     depth: Option<usize>,
     include_source: bool,
+    scope: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
+    let scoping_hints = scope_hints(&bake_scopes(&bake), &bake_scope_dependencies(&bake));
+    let scope_used = effective_scope(
+        &bake.files,
+        scope.as_deref(),
+        Some(endpoint.as_str()),
+        Some(endpoint.as_str()),
+        None,
+        None,
+    );
 
-    let method_uc = method.map(|m| m.to_uppercase());
-    let endpoint_lc = endpoint.to_lowercase();
-
-    // Find matching endpoint
     let ep = bake
         .endpoints
         .iter()
-        .find(|e| {
-            e.path.to_lowercase().contains(&endpoint_lc)
-                && method_uc.as_ref().map(|m| &e.method == m).unwrap_or(true)
+        .filter(|candidate| {
+            matches_scope_filter(&candidate.file, &candidate.language, scope_used.as_deref())
         })
+        .filter_map(|candidate| {
+            endpoint_match_score(
+                candidate,
+                Some(endpoint.as_str()),
+                method.as_deref(),
+                true,
+            )
+            .map(|score| (score, candidate))
+        })
+        .max_by(|left, right| left.0.cmp(&right.0))
+        .map(|(_, endpoint)| endpoint)
         .ok_or_else(|| {
             anyhow!(
-                "No endpoint matching '{}'. Run `all_endpoints` to list available routes.",
+                "No endpoint matching '{}'. Run `routes(query=\"{}\", scope=\"backend\")` or switch to symbol-first search/inspect if generated wiring hides the route.",
+                endpoint,
                 endpoint
             )
         })?;
@@ -76,17 +193,33 @@ pub fn flow(
     // Find handler function in index
     let handler_lc = handler_name.to_lowercase();
     let ep_file_lc = ep.file.to_lowercase();
-    let start = bake
-        .functions
-        .iter()
-        .find(|f| {
-            f.name.to_lowercase() == handler_lc && f.file.to_lowercase().contains(&ep_file_lc)
-        })
-        .or_else(|| {
-            bake.functions
-                .iter()
-                .find(|f| f.name.to_lowercase() == handler_lc)
+    let start = {
+        let mut matches: Vec<&crate::lang::IndexedFunction> = bake
+            .functions
+            .iter()
+            .filter(|function| function.name.to_lowercase() == handler_lc)
+            .collect();
+        matches.sort_by(|left, right| {
+            let left_file = left.file.to_lowercase();
+            let right_file = right.file.to_lowercase();
+            let left_same_file = left_file.contains(&ep_file_lc);
+            let right_same_file = right_file.contains(&ep_file_lc);
+            right_same_file.cmp(&left_same_file).then(
+                backend_scope_boost(&right.file, &right.language)
+                    .cmp(&backend_scope_boost(&left.file, &left.language)),
+            )
         });
+        matches
+            .into_iter()
+            .find(|function| {
+                matches_scope_filter(&function.file, &function.language, scope_used.as_deref())
+            })
+            .or_else(|| {
+                bake.functions
+                    .iter()
+                    .find(|function| function.name.to_lowercase() == handler_lc)
+            })
+    };
 
     let ep_summary = EndpointSummary {
         method: ep.method.clone(),
@@ -186,11 +319,13 @@ pub fn flow(
         project_root: root,
         endpoint: ep_summary,
         handler: handler_info,
+        scope_used,
         call_chain,
         boundaries,
         unresolved,
         summary,
         chain_warning,
+        scoping_hints,
         next_hint: Some("Use inspect(name=...) on the handler or a downstream callee to read the code behind this route."),
     };
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -205,6 +340,7 @@ pub fn impact(
     method: Option<String>,
     depth: Option<usize>,
     include_source: Option<bool>,
+    scope: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path.clone())?;
 
@@ -228,8 +364,16 @@ pub fn impact(
             serde_json::json!({
                 "endpoint": endpoint,
                 "method": method,
+                "scope": scope,
             }),
-            crate::engine::flow(path, endpoint, method, depth, include_source.unwrap_or(false))?,
+            crate::engine::flow(
+                path,
+                endpoint,
+                method,
+                depth,
+                include_source.unwrap_or(false),
+                scope,
+            )?,
             "Use inspect(name=...) on the handler or downstream callee, or change(action=edit|rename|move) once you know where the request path lands.",
         )
     } else {

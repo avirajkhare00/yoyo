@@ -14,6 +14,10 @@ pub(crate) struct BakeIndex {
     pub(crate) languages: BTreeSet<String>,
     pub(crate) files: Vec<BakeFile>,
     #[serde(default)]
+    pub(crate) scopes: Vec<ScopeSummary>,
+    #[serde(default)]
+    pub(crate) scope_dependencies: Vec<ScopeDependency>,
+    #[serde(default)]
     pub(crate) functions: Vec<crate::lang::IndexedFunction>,
     #[serde(default)]
     pub(crate) endpoints: Vec<crate::lang::IndexedEndpoint>,
@@ -31,6 +35,10 @@ fn default_origin() -> String {
 pub(crate) struct BakeFile {
     pub(crate) path: PathBuf,
     pub(crate) language: String,
+    #[serde(default)]
+    pub(crate) scope_name: String,
+    #[serde(default)]
+    pub(crate) scope_tags: Vec<String>,
     pub(crate) bytes: u64,
     /// Modification time in nanoseconds since UNIX epoch. Used for incremental bake.
     /// Zero means "unknown / not tracked" — file will always be re-parsed.
@@ -41,6 +49,21 @@ pub(crate) struct BakeFile {
     /// "user" for project files, "stdlib" for toolchain stdlib files.
     #[serde(default = "default_origin")]
     pub(crate) origin: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct ScopeSummary {
+    pub(crate) name: String,
+    pub(crate) file_count: usize,
+    pub(crate) languages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) tags: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ScopeDependency {
+    pub(crate) scope: String,
+    pub(crate) depends_on: String,
 }
 
 // ── Consolidated shared structs ───────────────────────────────────────────────
@@ -267,10 +290,16 @@ pub(crate) struct BakeSummary {
     pub(crate) bake_path: PathBuf,
     pub(crate) files_indexed: usize,
     pub(crate) languages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scopes: Vec<ScopeSummary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scope_dependencies: Vec<ScopeDependency>,
     /// Number of files skipped because mtime+size matched the cached index.
     /// Omitted when zero (first bake or full rebuild).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) files_skipped: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scoping_hints: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -341,6 +370,12 @@ pub(crate) struct AllEndpointsPayload {
     pub(crate) version: &'static str,
     pub(crate) project_root: PathBuf,
     pub(crate) endpoints: Vec<EndpointSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) scope_used: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scoping_hints: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) next_hint: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -669,12 +704,16 @@ pub(crate) struct FlowPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) endpoint: EndpointSummary,
     pub(crate) handler: FlowHandlerInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) scope_used: Option<String>,
     pub(crate) call_chain: Vec<TraceNode>,
     pub(crate) boundaries: Vec<String>,
     pub(crate) unresolved: Vec<String>,
     pub(crate) summary: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) chain_warning: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scoping_hints: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) next_hint: Option<&'static str>,
 }
@@ -817,10 +856,14 @@ pub(crate) struct SemanticSearchPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) query: String,
     pub(crate) results: Vec<SemanticMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) scope_used: Option<String>,
     /// Present when the embeddings index is not yet ready. Results are TF-IDF
     /// until the background build (started by bake) finishes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) note: Option<&'static str>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scoping_hints: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -846,6 +889,8 @@ pub(crate) struct JudgeChangePayload {
     pub(crate) symbol_hint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) file_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) scope_used: Option<String>,
     pub(crate) ownership_layer: JudgeOwnershipLayer,
     pub(crate) candidate_symbols: Vec<JudgeCandidateSymbol>,
     pub(crate) candidate_files: Vec<JudgeCandidateFile>,
@@ -854,6 +899,8 @@ pub(crate) struct JudgeChangePayload {
     pub(crate) invariants: Vec<JudgeFinding>,
     pub(crate) regression_risks: Vec<JudgeFinding>,
     pub(crate) verification_commands: Vec<JudgeCommand>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) scoping_hints: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) next_hint: Option<&'static str>,
 }

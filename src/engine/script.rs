@@ -209,6 +209,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                 query,
                 None,
                 None,
+                None,
             ))
         });
     }
@@ -223,6 +224,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                         .ok_or_else(|| anyhow!("Missing required 'query' argument for ask"))?,
                     uint_opt(&args, "limit"),
                     str_opt(&args, "file"),
+                    str_opt(&args, "scope"),
                 )
             })();
             call_to_dynamic(res)
@@ -241,6 +243,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                     str_opt(&args, "symbol"),
                     str_opt(&args, "file"),
                     uint_opt(&args, "limit"),
+                    str_opt(&args, "scope"),
                 )
             })();
             call_to_dynamic(res)
@@ -273,7 +276,29 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     {
         let rc = r.clone();
         engine.register_fn("routes", move || -> Dynamic {
-            call_to_dynamic(crate::engine::all_endpoints(Some(rc.clone())))
+            call_to_dynamic(crate::engine::all_endpoints(
+                Some(rc.clone()),
+                None,
+                None,
+                None,
+                None,
+            ))
+        });
+    }
+    {
+        let rc = r.clone();
+        engine.register_fn("routes", move |args: RhaiMap| -> Dynamic {
+            let res = (|| {
+                let args = json_args(args)?;
+                crate::engine::all_endpoints(
+                    Some(rc.clone()),
+                    str_opt(&args, "query"),
+                    str_opt(&args, "method"),
+                    str_opt(&args, "scope"),
+                    uint_opt(&args, "limit"),
+                )
+            })();
+            call_to_dynamic(res)
         });
     }
     {
@@ -288,6 +313,7 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                     str_opt(&args, "method"),
                     uint_opt(&args, "depth"),
                     bool_opt(&args, "include_source"),
+                    str_opt(&args, "scope"),
                 )
             })();
             call_to_dynamic(res)
