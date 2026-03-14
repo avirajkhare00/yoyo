@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-03-15
+
+### Added
+
+- Baked indexes now persist scope metadata and scope dependency edges, so scoped monorepo context survives SQLite writes and can be reused across read paths.
+- Mixed-repo dependency tracking now covers generated and backend edges, which improves dependency-driven scoped invalidation during refreshes.
+
+### Changed
+
+- `bake`, `boot`, and scoped read flows now reuse stored scope summaries and reverse dependency edges instead of rebuilding that context ad hoc.
+
 ## [1.12.1] - 2026-03-14
 
 ### Fixed
