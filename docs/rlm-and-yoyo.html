@@ -198,6 +198,9 @@
       <p class="deck">
         The strongest idea in the RLM paper is not “give the model more tokens.” It is “stop treating the prompt as the place where all work must happen.” That is also the right direction for <code>yoyo</code>.
       </p>
+      <p class="deck">
+        And at this point, that alignment is no longer just philosophical. Parts of the recursive inspect-fail-repair loop now exist directly inside <code>yoyo</code> through guarded writes, runtime guards, <code>guard_failure</code>, and <code>retry_plan</code>.
+      </p>
       <p class="meta">
         Based on <em>Recursive Language Models</em> by Omar Khattab, Tim Kraska, and Alex L. Zhang.
       </p>
@@ -236,6 +239,23 @@
       </section>
 
       <section>
+        <h2>What is now actually inside yoyo</h2>
+        <p>
+          The essay used to describe the connection as mostly conceptual. That is now too weak. <code>yoyo</code> already contains an RLM-shaped loop, just specialized for repository work and constrained execution.
+        </p>
+        <p>
+          The clearest example is the new guarded write path. A write no longer means “edit the file and hope.” <code>yoyo</code> writes the candidate change, runs the relevant checks, and restores the original file if the new version fails. When that happens, the failure is returned as machine-readable <code>guard_failure</code> data, and <code>retry_plan</code> turns that failure into a bounded inspect-fix-retry workflow.
+        </p>
+        <div class="note">
+          <strong>That is the product form of the same idea</strong>
+          The model does not have to hold the whole repository or the whole failure state in prompt memory. The repository is the environment, the failure is structured state, and the next step is a constrained interaction over that state.
+        </div>
+        <p>
+          This matters even more for interpreted languages. Python, JavaScript, Ruby, PHP, and Clojure often fail after parsing, not before. So <code>yoyo</code> now uses runtime guards to catch “this file parses but breaks when it actually runs” cases, then routes those failures back into the same repair loop. That is much closer to the paper’s recursive inspect-and-act model than the old “search a lot and dump source into context” approach.
+        </p>
+      </section>
+
+      <section>
         <h2>Why search is not the moat</h2>
         <p>
           The paper makes one thing clearer: the moat is not raw retrieval. If all you have is better grep, the model still has to do the real work in its own prompt state. That is fragile and easy to replace.
@@ -266,6 +286,9 @@
         <p>
           That is also what our recent directed evals are showing. The read side matters because the write should happen only after the correct ownership layer and invariants are grounded.
         </p>
+        <p>
+          What changed recently is that the write side is now becoming recursive too. The loop is no longer just “read carefully, then write once.” It is increasingly “read carefully, write through a guard, inspect the resulting failure state if needed, then retry on a smaller and better-grounded surface.”
+        </p>
       </section>
 
       <section>
@@ -285,6 +308,9 @@
         <p>
           So the lesson is not “turn <code>yoyo</code> into a Python REPL.” The lesson is “keep moving toward repo-as-environment, but keep the interface opinionated and safe.”
         </p>
+        <p>
+          That is also why the current runtime bootstrap matters. <code>yoyo</code> can now create <code>.yoyo/runtime.json</code> automatically for supported interpreted languages, but it does so with least-privilege defaults. The setup is automated; the permission grant is not. That is the right difference between a software engineering environment and a general-purpose free-form REPL.
+        </p>
       </section>
 
       <section>
@@ -296,6 +322,8 @@
           <li>Make ownership and invariant judgment cheaper and more reliable.</li>
           <li>Keep strengthening cheap structured reads over dumping source text.</li>
           <li>Treat writes as the second step, not the first instinct.</li>
+          <li>Keep making failure states executable and machine-readable so repair loops are bounded instead of improvised.</li>
+          <li>Extend the same loop to more interpreted and functional languages where runtime feedback is the real truth boundary.</li>
           <li>Avoid competing on generic search when the real value is judgment plus constrained execution.</li>
         </ul>
       </section>
@@ -307,6 +335,9 @@
         </p>
         <p>
           For long documents, that environment might be a REPL over text. For codebases, it should be grounded repository tools. That is why the paper feels aligned with <code>yoyo</code>: both are trying to move work out of token memory and into structured interaction with what is actually there.
+        </p>
+        <p>
+          The newer twist is that <code>yoyo</code> is no longer only doing that on the read side. With guarded writes, runtime checks, <code>guard_failure</code>, and <code>retry_plan</code>, parts of the recursive repair loop are now in the product itself.
         </p>
       </section>
 
