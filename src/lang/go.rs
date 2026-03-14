@@ -405,6 +405,7 @@ fn extract_http_route(
         handler_name: None,
         language: "go".to_string(),
         framework: "gin/echo/net-http".to_string(),
+        scope_name: String::new(),
     })
 }
 

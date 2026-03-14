@@ -7,7 +7,10 @@ use super::types::{
     SupersearchMatch, SupersearchPayload, SymbolMatch, SymbolPayload, TypeInspectMatch,
     TypeMethodSummary,
 };
-use super::util::{require_bake_index, resolve_project_root};
+use super::util::{
+    backend_scope_boost, bake_scope_dependencies, bake_scopes, effective_scope,
+    matches_scope_filter, require_bake_index, resolve_project_root, scope_hints,
+};
 
 /// Cap on lines returned by include_source. Prevents context overflow on monster functions.
 /// Functions exceeding this get the first N lines + a slice hint pointing at the rest.
@@ -1254,11 +1257,15 @@ mod semantic_note_tests {
             files: vec![BakeFile {
                 path: std::path::PathBuf::from("src/lib.rs"),
                 language: "rust".to_string(),
+                scope_name: String::new(),
+                scope_tags: vec![],
                 bytes: 10,
                 mtime_ns: 0,
                 origin: "user".to_string(),
                 imports: vec![],
             }],
+            scopes: vec![],
+            scope_dependencies: vec![],
             functions: vec![],
             endpoints: vec![],
             types: vec![],
@@ -1275,6 +1282,7 @@ mod semantic_note_tests {
         let out = crate::engine::semantic_search(
             Some(dir.path().to_string_lossy().into_owned()),
             "add numbers".into(),
+            None,
             None,
             None,
         )
@@ -1305,6 +1313,7 @@ mod semantic_note_tests {
             Some(dir.path().to_string_lossy().into_owned()),
             "function".into(),
             Some(5),
+            None,
             None,
         );
         // Should succeed (TF-IDF fallback), not error.
@@ -1665,11 +1674,22 @@ pub fn semantic_search(
     query: String,
     limit: Option<usize>,
     file: Option<String>,
+    scope: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let limit = limit.unwrap_or(10).min(50);
     let file_filter = file.as_deref().map(str::to_lowercase);
     let bake_dir = root.join("bakes").join("latest");
+    let bake = require_bake_index(&root)?;
+    let scope_used = effective_scope(
+        &bake.files,
+        scope.as_deref(),
+        Some(query.as_str()),
+        None,
+        None,
+        file.as_deref(),
+    );
+    let scoping_hints = scope_hints(&bake_scopes(&bake), &bake_scope_dependencies(&bake));
 
     // Try vector search first. embeddings.db is absent while the background
     // build (started by bake) is still running — in that case we fall through
@@ -1679,26 +1699,80 @@ pub fn semantic_search(
         if let Ok(Some(matches)) =
             crate::engine::embed::vector_search(&bake_dir, &query, limit, file_filter.as_deref())
         {
-            let results: Vec<SemanticMatch> = matches
-                .into_iter()
-                .map(|m| SemanticMatch {
-                    name: m.name,
-                    file: m.file,
-                    start_line: m.start_line,
-                    score: m.score,
-                    parent_type: m.parent_type,
-                    kind: "function",
+            let lookup: std::collections::HashMap<
+                (&str, &str, u32),
+                &crate::lang::IndexedFunction,
+            > = bake
+                .functions
+                .iter()
+                .map(|function| {
+                    (
+                        (
+                            function.name.as_str(),
+                            function.file.as_str(),
+                            function.start_line,
+                        ),
+                        function,
+                    )
                 })
                 .collect();
-            let payload = SemanticSearchPayload {
-                tool: "semantic_search",
-                version: env!("CARGO_PKG_VERSION"),
-                project_root: root,
-                query,
-                results,
-                note: None,
-            };
-            return Ok(serde_json::to_string_pretty(&payload)?);
+            let mut results: Vec<SemanticMatch> = matches
+                .into_iter()
+                .filter_map(|matched| {
+                    let matched_name = matched.name.clone();
+                    let matched_file = matched.file.clone();
+                    let boost = {
+                        let function = lookup.get(&(
+                            matched_name.as_str(),
+                            matched_file.as_str(),
+                            matched.start_line,
+                        ))?;
+                        if file_filter
+                            .as_deref()
+                            .map(|needle| !function.file.to_lowercase().contains(needle))
+                            .unwrap_or(false)
+                        {
+                            return None;
+                        }
+                        if !super::util::matches_scope_filter(
+                            &function.file,
+                            &function.language,
+                            scope_used.as_deref(),
+                        ) {
+                            return None;
+                        }
+                        backend_scope_boost(&function.file, &function.language) as f32 / 100.0
+                    };
+                    Some(SemanticMatch {
+                        name: matched_name,
+                        file: matched_file,
+                        start_line: matched.start_line,
+                        score: matched.score + boost,
+                        parent_type: matched.parent_type,
+                        kind: "function",
+                    })
+                })
+                .collect();
+            results.sort_by(|left, right| {
+                right
+                    .score
+                    .partial_cmp(&left.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            results.truncate(limit);
+            if !results.is_empty() {
+                let payload = SemanticSearchPayload {
+                    tool: "semantic_search",
+                    version: env!("CARGO_PKG_VERSION"),
+                    project_root: root,
+                    query,
+                    results,
+                    scope_used,
+                    note: None,
+                    scoping_hints,
+                };
+                return Ok(serde_json::to_string_pretty(&payload)?);
+            }
         }
     }
 
@@ -1708,8 +1782,6 @@ pub fn semantic_search(
     } else {
         None
     };
-    let bake = require_bake_index(&root)?;
-
     let query_tokens = tokenize(&query);
     if query_tokens.is_empty() {
         return Err(anyhow!("Query produced no tokens after tokenisation."));
@@ -1738,8 +1810,10 @@ pub fn semantic_search(
                 .as_deref()
                 .map_or(true, |ff| f.file.to_lowercase().contains(ff))
         })
+        .filter(|f| matches_scope_filter(&f.file, &f.language, scope_used.as_deref()))
         .filter_map(|f| {
-            let s = score_fn(f, &query_tokens, &idf);
+            let s = score_fn(f, &query_tokens, &idf)
+                + (backend_scope_boost(&f.file, &f.language) as f32 / 10.0);
             if s > 0.0 {
                 Some((s, f))
             } else {
@@ -1769,7 +1843,9 @@ pub fn semantic_search(
         project_root: root,
         query,
         results,
+        scope_used,
         note: tfidf_note,
+        scoping_hints,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }

@@ -312,6 +312,22 @@ pub struct RoutesArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
     pub path: Option<String>,
+
+    /// Optional path or handler substring to narrow endpoint results.
+    #[arg(long)]
+    pub query: Option<String>,
+
+    /// Optional HTTP method filter.
+    #[arg(long)]
+    pub method: Option<String>,
+
+    /// Optional workspace/package/slice hint for monorepos, e.g. backend or web.
+    #[arg(long)]
+    pub scope: Option<String>,
+
+    /// Maximum number of endpoints to return.
+    #[arg(long)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -339,6 +355,10 @@ pub struct ImpactArgs {
     /// Include handler source inline in endpoint mode.
     #[arg(long, default_value_t = false)]
     pub include_source: bool,
+
+    /// Optional workspace/package/slice hint for monorepos, e.g. backend or web.
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -362,6 +382,10 @@ pub struct JudgeChangeArgs {
     /// Maximum number of candidate symbols to return (default 3, max 5).
     #[arg(long)]
     pub limit: Option<usize>,
+
+    /// Optional workspace/package/slice hint for monorepos, e.g. backend or web.
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -385,6 +409,10 @@ pub struct FlowArgs {
     /// Include the handler function source inline.
     #[arg(long)]
     pub include_source: bool,
+
+    /// Optional workspace/package/slice hint for monorepos, e.g. backend or web.
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -678,6 +706,10 @@ pub struct AskArgs {
     /// Optional file path substring to restrict scope.
     #[arg(long)]
     pub file: Option<String>,
+
+    /// Optional workspace/package/slice hint for monorepos, e.g. backend or web.
+    #[arg(long)]
+    pub scope: Option<String>,
 }
 
 pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
@@ -838,7 +870,8 @@ async fn run_inspect(args: InspectArgs) -> anyhow::Result<()> {
 }
 
 async fn run_routes(args: RoutesArgs) -> anyhow::Result<()> {
-    let json = crate::engine::all_endpoints(args.path)?;
+    let json =
+        crate::engine::all_endpoints(args.path, args.query, args.method, args.scope, args.limit)?;
     println!("{json}");
     Ok(())
 }
@@ -851,14 +884,21 @@ async fn run_impact(args: ImpactArgs) -> anyhow::Result<()> {
         args.method,
         args.depth,
         Some(args.include_source),
+        args.scope,
     )?;
     println!("{json}");
     Ok(())
 }
 
 async fn run_judge_change(args: JudgeChangeArgs) -> anyhow::Result<()> {
-    let json =
-        crate::engine::judge_change(args.path, args.query, args.symbol, args.file, args.limit)?;
+    let json = crate::engine::judge_change(
+        args.path,
+        args.query,
+        args.symbol,
+        args.file,
+        args.limit,
+        args.scope,
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -870,6 +910,7 @@ async fn run_flow(args: FlowArgs) -> anyhow::Result<()> {
         args.method,
         args.depth,
         args.include_source,
+        args.scope,
     )?;
     println!("{json}");
     Ok(())
@@ -1155,7 +1196,8 @@ async fn run_delete(args: DeleteArgs) -> anyhow::Result<()> {
 }
 
 async fn run_ask(args: AskArgs) -> anyhow::Result<()> {
-    let json = crate::engine::semantic_search(args.path, args.query, args.limit, args.file)?;
+    let json =
+        crate::engine::semantic_search(args.path, args.query, args.limit, args.file, args.scope)?;
     println!("{json}");
     Ok(())
 }

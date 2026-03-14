@@ -567,6 +567,7 @@ fn detect_express_call(
                 handler_name,
                 language: "typescript".to_string(),
                 framework: "express".to_string(),
+                scope_name: String::new(),
             });
         }
     }

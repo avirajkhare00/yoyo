@@ -99,6 +99,7 @@ mod tests {
             None,
             None,
             Some(3),
+            None,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -122,6 +123,7 @@ mod tests {
             Some("sum_three".to_string()),
             None,
             Some(3),
+            None,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -393,10 +395,89 @@ pub fn fetch_user(id: u32) -> String {
         dir
     }
 
+    fn setup_mixed_scope_repo() -> TempDir {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("backend")).unwrap();
+        fs::create_dir_all(dir.path().join("generated")).unwrap();
+        fs::create_dir_all(dir.path().join("web/src/tui")).unwrap();
+        fs::create_dir_all(dir.path().join("cypress/e2e")).unwrap();
+
+        fs::write(
+            dir.path().join("backend/server.ts"),
+            r#"
+import { deleteWorkflowRecord } from "../generated/openapi"
+
+app.delete("/api/v1/workflows", bulkDeleteWorkflowHandler)
+app.get("/api/v1/workflows", listWorkflowsHandler)
+
+function bulkDeleteWorkflowHandler() {
+    return deleteWorkflowRecord()
+}
+
+function listWorkflowsHandler() {
+    return "ok"
+}
+
+function persistWorkflowDelete() {
+    return "done"
+}
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("generated/openapi.ts"),
+            r#"
+export function deleteWorkflowRecord() {
+    return "generated"
+}
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("web/src/routes.ts"),
+            r#"
+app.delete("/api/v1/workflows-preview", bulkDeleteWorkflowRoute)
+
+function bulkDeleteWorkflowRoute() {
+    return "preview"
+}
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("web/src/tui/workflows.ts"),
+            r#"
+function bulkDeleteWorkflowHandler() {
+    return "tui"
+}
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("cypress/e2e/workflows.ts"),
+            r#"
+app.delete("/api/v1/workflows-fixture", bulkDeleteWorkflowFixture)
+
+function bulkDeleteWorkflowFixture() {
+    return "fixture"
+}
+"#,
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        dir
+    }
+
     #[test]
     fn e2e_flow_returns_endpoint_and_handler() {
         let dir = setup_with_endpoint();
-        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, false).unwrap();
+        let out =
+            crate::engine::flow(root(&dir), "/users".into(), None, None, false, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         assert_eq!(v["tool"], "flow");
@@ -415,7 +496,8 @@ pub fn fetch_user(id: u32) -> String {
     #[test]
     fn e2e_flow_includes_call_chain() {
         let dir = setup_with_endpoint();
-        let out = crate::engine::flow(root(&dir), "/users".into(), None, Some(3), false).unwrap();
+        let out =
+            crate::engine::flow(root(&dir), "/users".into(), None, Some(3), false, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         let chain = v["call_chain"].as_array().unwrap();
@@ -428,7 +510,8 @@ pub fn fetch_user(id: u32) -> String {
     #[test]
     fn e2e_flow_summary_contains_endpoint_and_handler() {
         let dir = setup_with_endpoint();
-        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, false).unwrap();
+        let out =
+            crate::engine::flow(root(&dir), "/users".into(), None, None, false, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         let summary = v["summary"].as_str().unwrap();
@@ -447,7 +530,7 @@ pub fn fetch_user(id: u32) -> String {
     #[test]
     fn e2e_flow_include_source_populates_handler_source() {
         let dir = setup_with_endpoint();
-        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, true).unwrap();
+        let out = crate::engine::flow(root(&dir), "/users".into(), None, None, true, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         let source = v["handler"]["source"].as_str();
@@ -464,8 +547,8 @@ pub fn fetch_user(id: u32) -> String {
     #[test]
     fn e2e_flow_errors_on_unknown_endpoint() {
         let dir = setup_with_endpoint();
-        let err =
-            crate::engine::flow(root(&dir), "/nonexistent".into(), None, None, false).unwrap_err();
+        let err = crate::engine::flow(root(&dir), "/nonexistent".into(), None, None, false, None)
+            .unwrap_err();
         assert!(
             err.to_string().contains("No endpoint matching"),
             "unexpected error: {}",
@@ -482,6 +565,7 @@ pub fn fetch_user(id: u32) -> String {
             None,
             None,
             Some(1),
+            None,
             None,
         )
         .unwrap();
@@ -511,6 +595,7 @@ pub fn fetch_user(id: u32) -> String {
             None,
             Some(3),
             Some(true),
+            None,
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -527,6 +612,137 @@ pub fn fetch_user(id: u32) -> String {
         assert_eq!(
             v["next_hint"],
             "Use inspect(name=...) on the handler or downstream callee, or change(action=edit|rename|move) once you know where the request path lands."
+        );
+    }
+
+    #[test]
+    fn e2e_bake_reports_scope_hints_for_mixed_repo() {
+        let dir = setup_mixed_scope_repo();
+        let out = crate::engine::bake(root(&dir)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        let scopes = v["scopes"].as_array().unwrap();
+        assert!(scopes.iter().any(|s| s["name"] == "backend"));
+        assert!(scopes.iter().any(|s| s["name"] == "generated"));
+        assert!(scopes.iter().any(|s| s["name"] == "web"));
+        assert!(scopes.iter().any(|s| s["name"] == "cypress"));
+        assert!(
+            v["scope_dependencies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|dep| dep["scope"] == "backend" && dep["depends_on"] == "generated"),
+            "expected backend -> generated dependency: {}",
+            out
+        );
+        assert!(
+            v["scoping_hints"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|hint| hint.as_str().unwrap().contains("backend")),
+            "expected backend scoping hint: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn e2e_routes_query_prefers_backend_endpoints_in_mixed_repo() {
+        let dir = setup_mixed_scope_repo();
+        let out = crate::engine::all_endpoints(
+            root(&dir),
+            Some("/api/v1/workflows".into()),
+            Some("DELETE".into()),
+            None,
+            Some(3),
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let endpoints = v["endpoints"].as_array().unwrap();
+        assert!(!endpoints.is_empty(), "expected endpoint results");
+        assert_eq!(endpoints[0]["path"], "/api/v1/workflows");
+        assert!(
+            endpoints[0]["file"]
+                .as_str()
+                .unwrap()
+                .contains("backend/server.ts"),
+            "expected backend endpoint first: {}",
+            out
+        );
+        assert_eq!(v["scope_used"], "backend");
+    }
+
+    #[test]
+    fn e2e_semantic_search_prefers_backend_handler_in_mixed_repo() {
+        let dir = setup_mixed_scope_repo();
+        let out = crate::engine::semantic_search(
+            root(&dir),
+            "bulk delete workflow handler".into(),
+            Some(5),
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let results = v["results"].as_array().unwrap();
+        assert!(!results.is_empty(), "expected semantic results");
+        assert_eq!(results[0]["name"], "bulkDeleteWorkflowHandler");
+        assert!(
+            results[0]["file"]
+                .as_str()
+                .unwrap()
+                .contains("backend/server.ts"),
+            "expected backend handler first: {}",
+            out
+        );
+    }
+
+    #[test]
+    fn e2e_judge_change_prefers_backend_scope_in_mixed_repo() {
+        let dir = setup_mixed_scope_repo();
+        let out = crate::engine::judge_change(
+            root(&dir),
+            "fix bulk delete workflow handler for the api endpoint".to_string(),
+            None,
+            None,
+            Some(3),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let top = &v["candidate_symbols"].as_array().unwrap()[0];
+        assert_eq!(top["name"], "bulkDeleteWorkflowHandler");
+        assert!(
+            top["file"].as_str().unwrap().contains("backend/server.ts"),
+            "expected backend ownership candidate first: {}",
+            out
+        );
+        assert_eq!(v["scope_used"], "backend");
+    }
+
+    #[test]
+    fn e2e_impact_endpoint_mode_prefers_backend_handler_in_mixed_repo() {
+        let dir = setup_mixed_scope_repo();
+        let out = crate::engine::impact(
+            root(&dir),
+            None,
+            Some("/api/v1/workflows".into()),
+            Some("DELETE".into()),
+            Some(3),
+            Some(false),
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+        assert_eq!(v["handler"]["name"], "bulkDeleteWorkflowHandler");
+        assert!(
+            v["handler"]["file"]
+                .as_str()
+                .unwrap()
+                .contains("backend/server.ts"),
+            "expected backend handler in impact endpoint mode: {}",
+            out
         );
     }
 
@@ -1866,7 +2082,8 @@ fn get_registry() -> &'static Vec<ToolEntry> {
             .unwrap();
         }
         let out =
-            crate::engine::semantic_search(root(&dir), "add numbers".into(), None, None).unwrap();
+            crate::engine::semantic_search(root(&dir), "add numbers".into(), None, None, None)
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         // note should be absent — embeddings.db exists, no need to warn
         assert!(
@@ -1883,7 +2100,8 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
 
         let out =
-            crate::engine::semantic_search(root(&dir), "compute sum".into(), None, None).unwrap();
+            crate::engine::semantic_search(root(&dir), "compute sum".into(), None, None, None)
+                .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let note = v["note"]
             .as_str()
@@ -1905,7 +2123,8 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         let dir = setup();
         let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
 
-        let out = crate::engine::semantic_search(root(&dir), "add".into(), Some(5), None).unwrap();
+        let out =
+            crate::engine::semantic_search(root(&dir), "add".into(), Some(5), None, None).unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let results = v["results"].as_array().unwrap();
         // Fixture has an `add` function — it should rank near the top

@@ -27,6 +27,9 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         "project_root": root,
         "languages": snapshot.languages.into_iter().collect::<Vec<_>>(),
         "files_indexed": snapshot.files_indexed,
+        "scopes": snapshot.scopes,
+        "scope_dependencies": snapshot.scope_dependencies,
+        "scoping_hints": snapshot.scoping_hints,
         "tools": groups,
         "capabilities": capability_catalog(),
         "common_tasks": common_task_catalog(),
@@ -1137,6 +1140,11 @@ pub fn bake(path: Option<String>) -> Result<String> {
         });
     }
 
+    let full_bake = load_bake_index(&root)?.unwrap_or(bake);
+    let scopes = super::util::bake_scopes(&full_bake);
+    let scope_dependencies = super::util::bake_scope_dependencies(&full_bake);
+    let scoping_hints = super::util::scope_hints(&scopes, &scope_dependencies);
+
     let summary = BakeSummary {
         tool: "bake",
         version: env!("CARGO_PKG_VERSION"),
@@ -1144,7 +1152,10 @@ pub fn bake(path: Option<String>) -> Result<String> {
         bake_path,
         files_indexed: total_files,
         languages: all_languages,
+        scopes,
+        scope_dependencies,
         files_skipped: if skipped > 0 { Some(skipped) } else { None },
+        scoping_hints,
     };
 
     let out = serde_json::to_string_pretty(&summary)?;

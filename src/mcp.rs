@@ -366,7 +366,8 @@ fn build_registry() -> Vec<ToolEntry> {
                     "path": p(),
                     "query": s("Natural-language description, e.g. 'validate user token'"),
                     "limit": i("Max results (default 10, max 50)"),
-                    "file": s("Optional file path substring to restrict scope")
+                    "file": s("Optional file path substring to restrict scope"),
+                    "scope": s("Optional workspace/package/slice hint, e.g. backend or web")
                 }),
             ),
             handler: Box::new(|a, path| {
@@ -375,12 +376,31 @@ fn build_registry() -> Vec<ToolEntry> {
                     a.str_req("query", "ask")?,
                     a.uint_opt("limit"),
                     a.str_opt("file"),
+                    a.str_opt("scope"),
                 )
             }),
         },
         ToolEntry {
-            schema: schema("routes", d("routes"), json!({"path": p()})),
-            handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
+            schema: schema(
+                "routes",
+                d("routes"),
+                json!({
+                    "path": p(),
+                    "query": s("Optional path or handler substring to narrow endpoint results."),
+                    "method": s("Optional HTTP method filter."),
+                    "scope": s("Optional workspace/package/slice hint, e.g. backend or web."),
+                    "limit": i("Maximum number of endpoints to return.")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::all_endpoints(
+                    path,
+                    a.str_opt("query"),
+                    a.str_opt("method"),
+                    a.str_opt("scope"),
+                    a.uint_opt("limit"),
+                )
+            }),
         },
         ToolEntry {
             schema: schema_req(
@@ -392,7 +412,8 @@ fn build_registry() -> Vec<ToolEntry> {
                     "query": s("Engineering question, issue text, or failing-test summary."),
                     "symbol": s("Optional symbol hint to bias the judgment toward a known name."),
                     "file": s("Optional file path substring to restrict the search surface."),
-                    "limit": i("Maximum number of candidate symbols to return (default 3, max 5).")
+                    "limit": i("Maximum number of candidate symbols to return (default 3, max 5)."),
+                    "scope": s("Optional workspace/package/slice hint, e.g. backend or web.")
                 }),
             ),
             handler: Box::new(|a, path| {
@@ -402,6 +423,7 @@ fn build_registry() -> Vec<ToolEntry> {
                     a.str_opt("symbol"),
                     a.str_opt("file"),
                     a.uint_opt("limit"),
+                    a.str_opt("scope"),
                 )
             }),
         },
@@ -415,7 +437,8 @@ fn build_registry() -> Vec<ToolEntry> {
                     "endpoint": s("URL path substring for endpoint-impact mode."),
                     "method": s("Optional HTTP method filter for endpoint mode."),
                     "depth": i("Max caller/call-chain depth."),
-                    "include_source": b("Include handler source inline in endpoint mode.")
+                    "include_source": b("Include handler source inline in endpoint mode."),
+                    "scope": s("Optional workspace/package/slice hint, e.g. backend or web.")
                 }),
             ),
             handler: Box::new(|a, path| {
@@ -426,6 +449,7 @@ fn build_registry() -> Vec<ToolEntry> {
                     a.str_opt("method"),
                     a.uint_opt("depth"),
                     a.bool_opt("include_source"),
+                    a.str_opt("scope"),
                 )
             }),
         },

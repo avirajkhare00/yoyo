@@ -4,11 +4,20 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 
-use super::types::{BakeFile, BakeIndex};
+use super::types::{BakeFile, BakeIndex, ScopeDependency, ScopeSummary};
 
 pub(crate) struct Snapshot {
     pub(crate) languages: BTreeSet<String>,
     pub(crate) files_indexed: usize,
+    pub(crate) scopes: Vec<ScopeSummary>,
+    pub(crate) scope_dependencies: Vec<ScopeDependency>,
+    pub(crate) scoping_hints: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScopeProfile {
+    pub(crate) name: String,
+    pub(crate) tags: BTreeSet<String>,
 }
 
 fn requested_root(path: Option<String>) -> Result<PathBuf> {
@@ -74,9 +83,405 @@ pub(crate) fn resolve_project_root(path: Option<String>) -> Result<PathBuf> {
     Ok(find_bake_root(&root).unwrap_or(root))
 }
 
+pub(crate) fn scope_profile(path: &str, language: &str) -> ScopeProfile {
+    let normalized = path.replace('\\', "/").to_lowercase();
+    let mut parts = normalized.split('/').filter(|part| !part.is_empty());
+    let first = parts.next().unwrap_or(".");
+    let name = if matches!(first, "src" | "lib" | "app" | "internal" | "pkg" | "cmd")
+        && normalized.contains('/')
+    {
+        first.to_string()
+    } else {
+        first.to_string()
+    };
+
+    let mut tags = BTreeSet::new();
+    let lower_lang = language.to_lowercase();
+    let is_js_family = matches!(lower_lang.as_str(), "typescript" | "javascript");
+    let has_any = |needles: &[&str]| needles.iter().any(|needle| normalized.contains(needle));
+
+    if has_any(&[
+        "/test",
+        "/tests",
+        "/spec",
+        "__tests__",
+        ".test.",
+        ".spec.",
+        "cypress",
+        "playwright",
+        "/e2e",
+        "/integration",
+    ]) {
+        tags.insert("test".to_string());
+    }
+    if has_any(&["cypress", "playwright", "/e2e"]) {
+        tags.insert("e2e".to_string());
+    }
+    if has_any(&[
+        "generated",
+        "openapi",
+        "swagger",
+        "/gen/",
+        "/gen.",
+        "/generated/",
+    ]) {
+        tags.insert("generated".to_string());
+    }
+    if has_any(&[
+        "/backend",
+        "/server",
+        "/servers",
+        "/handler",
+        "/handlers",
+        "/controller",
+        "/controllers",
+        "/service",
+        "/services",
+        "/api",
+        "/internal",
+        "/cmd",
+        "/pkg",
+    ]) || name == "backend"
+    {
+        tags.insert("backend".to_string());
+    }
+    if has_any(&[
+        "/frontend",
+        "/web",
+        "/client",
+        "/ui",
+        "/components",
+        "/hooks",
+        "/pages",
+        "/tui",
+    ]) || name == "web"
+        || name == "frontend"
+    {
+        tags.insert("frontend".to_string());
+    }
+    if is_js_family && !tags.contains("backend") && !tags.contains("test") {
+        tags.insert("frontend".to_string());
+    }
+
+    ScopeProfile { name, tags }
+}
+
+fn scope_profile_for_bake_file(file: &BakeFile) -> ScopeProfile {
+    if !file.scope_name.is_empty() {
+        return ScopeProfile {
+            name: file.scope_name.clone(),
+            tags: file.scope_tags.iter().cloned().collect(),
+        };
+    }
+    scope_profile(&file.path.to_string_lossy(), &file.language)
+}
+
+pub(crate) fn matches_scope_filter(path: &str, language: &str, scope_filter: Option<&str>) -> bool {
+    let Some(scope_filter) = scope_filter else {
+        return true;
+    };
+    let needle = scope_filter.to_lowercase();
+    let profile = scope_profile(path, language);
+    profile.name == needle
+        || profile.tags.iter().any(|tag| tag == &needle)
+        || path.to_lowercase().contains(&needle)
+}
+
+pub(crate) fn is_backend_endpoint_task(
+    query: Option<&str>,
+    endpoint: Option<&str>,
+    symbol: Option<&str>,
+    file_hint: Option<&str>,
+) -> bool {
+    let combined = [query, endpoint, symbol, file_hint]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    combined.contains("/api")
+        || combined.contains("endpoint")
+        || combined.contains("route")
+        || combined.contains("handler")
+        || combined.contains("backend")
+        || combined.contains("http")
+        || combined.contains("workflow")
+}
+
+pub(crate) fn summarize_scopes(files: &[BakeFile]) -> Vec<ScopeSummary> {
+    let mut grouped: std::collections::BTreeMap<
+        String,
+        (usize, BTreeSet<String>, BTreeSet<String>),
+    > = std::collections::BTreeMap::new();
+
+    for file in files {
+        let profile = scope_profile_for_bake_file(file);
+        let entry = grouped
+            .entry(profile.name)
+            .or_insert_with(|| (0, BTreeSet::new(), BTreeSet::new()));
+        entry.0 += 1;
+        entry.1.insert(file.language.clone());
+        entry.2.extend(profile.tags);
+    }
+
+    grouped
+        .into_iter()
+        .map(|(name, (file_count, languages, tags))| ScopeSummary {
+            name,
+            file_count,
+            languages: languages.into_iter().collect(),
+            tags: tags.into_iter().collect(),
+        })
+        .collect()
+}
+
+fn import_tokens(import: &str) -> BTreeSet<String> {
+    import
+        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_lowercase())
+        .collect()
+}
+
+pub(crate) fn summarize_scope_dependencies(files: &[BakeFile]) -> Vec<ScopeDependency> {
+    let scope_names: BTreeSet<String> = files
+        .iter()
+        .map(|file| scope_profile_for_bake_file(file).name)
+        .filter(|name| !name.is_empty())
+        .collect();
+    let mut dependencies = BTreeSet::new();
+
+    for file in files {
+        let source_scope = scope_profile_for_bake_file(file).name;
+        if source_scope.is_empty() {
+            continue;
+        }
+        for import in &file.imports {
+            let tokens = import_tokens(import);
+            for target_scope in &scope_names {
+                if target_scope == &source_scope || !tokens.contains(target_scope) {
+                    continue;
+                }
+                dependencies.insert(ScopeDependency {
+                    scope: source_scope.clone(),
+                    depends_on: target_scope.clone(),
+                });
+            }
+        }
+    }
+
+    dependencies.into_iter().collect()
+}
+
+pub(crate) fn bake_scopes(bake: &BakeIndex) -> Vec<ScopeSummary> {
+    if bake.scopes.is_empty() {
+        summarize_scopes(&bake.files)
+    } else {
+        bake.scopes.clone()
+    }
+}
+
+pub(crate) fn bake_scope_dependencies(bake: &BakeIndex) -> Vec<ScopeDependency> {
+    if bake.scope_dependencies.is_empty() {
+        summarize_scope_dependencies(&bake.files)
+    } else {
+        bake.scope_dependencies.clone()
+    }
+}
+
+pub(crate) fn scope_hints(
+    scopes: &[ScopeSummary],
+    dependencies: &[ScopeDependency],
+) -> Vec<String> {
+    let has_backend = scopes
+        .iter()
+        .any(|scope| scope.tags.iter().any(|tag| tag == "backend"));
+    let has_frontend = scopes
+        .iter()
+        .any(|scope| scope.tags.iter().any(|tag| tag == "frontend"));
+    let has_tests = scopes
+        .iter()
+        .any(|scope| scope.tags.iter().any(|tag| tag == "test" || tag == "e2e"));
+    let has_generated = scopes
+        .iter()
+        .any(|scope| scope.tags.iter().any(|tag| tag == "generated"));
+
+    let mut hints = Vec::new();
+    if has_backend && (has_frontend || has_tests) {
+        hints.push(
+            "Mixed backend/frontend/test repo detected. For backend API work, scope reads to the backend slice first."
+                .to_string(),
+        );
+    }
+    if has_tests {
+        hints.push(
+            "Test and e2e files are indexed too. They can pollute endpoint discovery unless you scope reads."
+                .to_string(),
+        );
+    }
+    if has_generated {
+        hints.push(
+            "Generated/OpenAPI code detected. If endpoint tracing misses, fall back to symbol-first search and inspect."
+                .to_string(),
+        );
+    }
+    if dependencies.iter().any(|dep| dep.scope != dep.depends_on) {
+        hints.push(
+            "Cross-scope imports detected. Changing shared/generated code may require refreshing dependent scopes too."
+                .to_string(),
+        );
+    }
+    hints
+}
+
+fn fingerprints_from_bake(bake: &BakeIndex) -> std::collections::HashMap<String, (i64, i64)> {
+    bake.files
+        .iter()
+        .map(|file| {
+            (
+                file.path.to_string_lossy().into_owned(),
+                (file.mtime_ns, file.bytes as i64),
+            )
+        })
+        .collect()
+}
+
+fn expand_to_scope_files(
+    bake: &BakeIndex,
+    touched_files: &[String],
+) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+
+    let reverse_dependencies = bake_scope_dependencies(bake).into_iter().fold(
+        std::collections::HashMap::<String, Vec<String>>::new(),
+        |mut acc, dep| {
+            acc.entry(dep.depends_on).or_default().push(dep.scope);
+            acc
+        },
+    );
+    let mut affected_scopes = HashSet::new();
+    let mut queue = Vec::new();
+    let mut expanded = HashSet::new();
+
+    for file in touched_files {
+        let scope_name = bake
+            .files
+            .iter()
+            .find(|indexed| indexed.path.to_string_lossy() == file.as_str())
+            .map(|indexed| {
+                if indexed.scope_name.is_empty() {
+                    scope_profile(file, &indexed.language).name
+                } else {
+                    indexed.scope_name.clone()
+                }
+            })
+            .unwrap_or_else(|| scope_profile(file, detect_language(Path::new(file))).name);
+        if affected_scopes.insert(scope_name.clone()) {
+            queue.push(scope_name);
+        }
+        expanded.insert(file.clone());
+    }
+
+    while let Some(scope_name) = queue.pop() {
+        if let Some(dependents) = reverse_dependencies.get(&scope_name) {
+            for dependent in dependents {
+                if affected_scopes.insert(dependent.clone()) {
+                    queue.push(dependent.clone());
+                }
+            }
+        }
+    }
+
+    for file in &bake.files {
+        let path = file.path.to_string_lossy().into_owned();
+        let profile = scope_profile_for_bake_file(file);
+        if affected_scopes.contains(&profile.name) {
+            expanded.insert(path);
+        }
+    }
+
+    expanded
+}
+
+fn refresh_scoped_paths(
+    root: &PathBuf,
+    bake: &BakeIndex,
+    touched_files: &[String],
+) -> Result<BakeIndex> {
+    let bake_path = bake_index_path(root);
+    let affected = expand_to_scope_files(bake, touched_files);
+    let mut fingerprints = fingerprints_from_bake(bake);
+    for path in &affected {
+        fingerprints.remove(path);
+    }
+
+    let (delta, removed, _) = build_bake_index(root, &fingerprints)?;
+    super::db::write_bake_incremental(&delta, &removed, &bake_path).with_context(|| {
+        format!(
+            "Failed to write scoped bake index update to {}",
+            bake_path.display()
+        )
+    })?;
+    super::db::read_bake_from_db(&bake_path).with_context(|| {
+        format!(
+            "Failed to read refreshed bake index from {}",
+            bake_path.display()
+        )
+    })
+}
+
+pub(crate) fn effective_scope(
+    files: &[BakeFile],
+    explicit_scope: Option<&str>,
+    query: Option<&str>,
+    endpoint: Option<&str>,
+    symbol: Option<&str>,
+    file_hint: Option<&str>,
+) -> Option<String> {
+    if let Some(scope) = explicit_scope {
+        return Some(scope.to_lowercase());
+    }
+
+    if let Some(file_hint) = file_hint {
+        return Some(scope_profile(file_hint, detect_language(Path::new(file_hint))).name);
+    }
+
+    if !is_backend_endpoint_task(query, endpoint, symbol, file_hint) {
+        return None;
+    }
+
+    summarize_scopes(files)
+        .into_iter()
+        .filter(|scope| {
+            scope.tags.iter().any(|tag| tag == "backend")
+                && !scope
+                    .tags
+                    .iter()
+                    .any(|tag| tag == "frontend" || tag == "test" || tag == "e2e")
+        })
+        .max_by(|left, right| left.file_count.cmp(&right.file_count))
+        .map(|scope| scope.name)
+}
+
+pub(crate) fn backend_scope_boost(path: &str, language: &str) -> i32 {
+    let profile = scope_profile(path, language);
+    let mut score = 0i32;
+    if profile.tags.iter().any(|tag| tag == "backend") {
+        score += 25;
+    }
+    if profile.tags.iter().any(|tag| tag == "frontend") {
+        score -= 20;
+    }
+    if profile.tags.iter().any(|tag| tag == "test" || tag == "e2e") {
+        score -= 35;
+    }
+    score
+}
+
 pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
     let mut languages = BTreeSet::new();
     let mut files_indexed = 0usize;
+    let mut files = Vec::new();
 
     fn walk(dir: &Path, languages: &mut BTreeSet<String>, count: &mut usize) -> Result<()> {
         for entry in fs::read_dir(dir)? {
@@ -104,11 +509,49 @@ pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
         Ok(())
     }
 
+    fn collect_files(root: &Path, files: &mut Vec<BakeFile>) -> Result<()> {
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if matches!(
+                        name,
+                        ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__"
+                    ) {
+                        continue;
+                    }
+                }
+                collect_files(&path, files)?;
+            } else if path.is_file() {
+                let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+                files.push(BakeFile {
+                    path: rel,
+                    language: detect_language(&path).to_string(),
+                    scope_name: String::new(),
+                    scope_tags: vec![],
+                    bytes: 0,
+                    mtime_ns: 0,
+                    imports: vec![],
+                    origin: "user".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     walk(root, &mut languages, &mut files_indexed)?;
+    collect_files(root, &mut files)?;
+    let scopes = summarize_scopes(&files);
+    let scope_dependencies = summarize_scope_dependencies(&files);
+    let scoping_hints = scope_hints(&scopes, &scope_dependencies);
 
     Ok(Snapshot {
         languages,
         files_indexed,
+        scopes,
+        scope_dependencies,
+        scoping_hints,
     })
 }
 
@@ -128,14 +571,20 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
     let bake_mtime = fs::metadata(&bake_path)
         .and_then(|m| m.modified())
         .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-    let content_stale = bake.files.iter().any(|f| {
-        fs::metadata(root.join(&f.path))
-            .and_then(|m| m.modified())
-            .map(|mtime| mtime > bake_mtime)
-            .unwrap_or(true) // missing file → reindex
-    });
+    let stale_files: Vec<String> = bake
+        .files
+        .iter()
+        .filter_map(|file| {
+            let path = file.path.to_string_lossy().into_owned();
+            let stale = fs::metadata(root.join(&file.path))
+                .and_then(|metadata| metadata.modified())
+                .map(|mtime| mtime > bake_mtime)
+                .unwrap_or(true);
+            stale.then_some(path)
+        })
+        .collect();
 
-    if version_stale || content_stale {
+    if version_stale {
         let (fresh, _, _) = build_bake_index(root, &std::collections::HashMap::new())?;
         let bakes_dir = root.join("bakes").join("latest");
         fs::create_dir_all(&bakes_dir)?;
@@ -146,6 +595,10 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
             )
         })?;
         return Ok(Some(fresh));
+    }
+
+    if !stale_files.is_empty() {
+        return Ok(Some(refresh_scoped_paths(root, &bake, &stale_files)?));
     }
 
     Ok(Some(bake))
@@ -295,6 +748,7 @@ pub(crate) fn build_bake_index(
             languages.insert(lang.to_string());
         }
         let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
+        let scope = scope_profile(&rel.to_string_lossy(), lang);
         let path_str = rel.to_string_lossy().into_owned();
 
         // Skip if mtime_ns+bytes match the stored fingerprint (and fingerprint is non-zero).
@@ -315,6 +769,8 @@ pub(crate) fn build_bake_index(
         files.push(BakeFile {
             path: rel,
             language: lang.to_string(),
+            scope_name: scope.name,
+            scope_tags: scope.tags.into_iter().collect(),
             bytes,
             mtime_ns,
             imports: vec![],
@@ -363,12 +819,25 @@ pub(crate) fn build_bake_index(
     let mut types = Vec::new();
     let mut impls = Vec::new();
     for (idx, funcs, eps, typs, imps, imports) in results {
-        functions.extend(funcs);
-        endpoints.extend(eps);
-        types.extend(typs);
+        let scope_name = files[idx].scope_name.clone();
+        functions.extend(funcs.into_iter().map(|mut func| {
+            func.scope_name = scope_name.clone();
+            func
+        }));
+        endpoints.extend(eps.into_iter().map(|mut endpoint| {
+            endpoint.scope_name = scope_name.clone();
+            endpoint
+        }));
+        types.extend(typs.into_iter().map(|mut typ| {
+            typ.scope_name = scope_name.clone();
+            typ
+        }));
         impls.extend(imps);
         files[idx].imports = imports;
     }
+
+    let scopes = summarize_scopes(&files);
+    let scope_dependencies = summarize_scope_dependencies(&files);
 
     Ok((
         BakeIndex {
@@ -376,6 +845,8 @@ pub(crate) fn build_bake_index(
             project_root: root.clone(),
             languages,
             files,
+            scopes,
+            scope_dependencies,
             functions,
             endpoints,
             types,
@@ -424,40 +895,22 @@ pub(crate) fn reindex_files(root: &PathBuf, changed_files: &[&str]) -> Result<()
         return Ok(());
     }
 
-    let mut bake = match super::db::read_bake_from_db(&bake_path) {
+    let bake = match super::db::read_bake_from_db(&bake_path) {
         Ok(b) => b,
         Err(_) => return Ok(()),
     };
-
-    for file in changed_files {
-        // Remove stale entries for this file.
-        bake.functions.retain(|f| f.file.as_str() != *file);
-        bake.endpoints.retain(|e| e.file.as_str() != *file);
-        bake.types.retain(|t| t.file.as_str() != *file);
-
-        // Re-analyze the file.
-        let full_path = root.join(file);
-        if !full_path.exists() {
-            continue;
-        }
-        let lang = detect_language(&full_path);
-        if let Some(analyzer) = crate::lang::find_analyzer(lang) {
-            if let Ok((funcs, eps, typs, imps)) = analyzer.analyze_file(root, &full_path) {
-                bake.functions.extend(funcs);
-                bake.endpoints.extend(eps);
-                bake.types.extend(typs);
-                bake.impls.extend(imps);
-            }
-        }
-    }
-
-    super::db::write_bake_to_db(&bake, &bake_path)?;
+    let touched: Vec<String> = changed_files
+        .iter()
+        .map(|file| (*file).to_string())
+        .collect();
+    let _ = refresh_scoped_paths(root, &bake, &touched)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::Duration;
 
     use tempfile::TempDir;
 
@@ -472,6 +925,8 @@ mod tests {
             project_root: root.path().to_path_buf(),
             languages: BTreeSet::new(),
             files: vec![],
+            scopes: vec![],
+            scope_dependencies: vec![],
             functions: vec![],
             endpoints: vec![],
             types: vec![],
@@ -515,5 +970,105 @@ mod tests {
         assert_eq!(detect_language(Path::new("src/core.clj")), "clojure");
         assert_eq!(detect_language(Path::new("src/core.cljs")), "clojure");
         assert_eq!(detect_language(Path::new("src/core.cljc")), "clojure");
+    }
+
+    fn write_mixed_repo(root: &TempDir) {
+        fs::create_dir_all(root.path().join("backend")).unwrap();
+        fs::create_dir_all(root.path().join("web")).unwrap();
+        fs::write(
+            root.path().join("backend/a.ts"),
+            "function alpha() { return beta(); }\nfunction beta() { return 1; }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("backend/b.ts"),
+            "function gamma() { return 2; }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("web/ui.ts"),
+            "function renderUi() { return 3; }\n",
+        )
+        .unwrap();
+    }
+
+    fn write_dependency_repo(root: &TempDir) {
+        fs::create_dir_all(root.path().join("backend")).unwrap();
+        fs::create_dir_all(root.path().join("generated")).unwrap();
+        fs::create_dir_all(root.path().join("web")).unwrap();
+        fs::write(
+            root.path().join("backend/server.ts"),
+            "import { client } from \"../generated/client\";\nfunction handler() { return client(); }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("generated/client.ts"),
+            "export function client() { return 1; }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("web/app.ts"),
+            "function renderUi() { return 3; }\n",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn reindex_files_expands_to_changed_scope() {
+        let dir = TempDir::new().unwrap();
+        write_mixed_repo(&dir);
+        std::env::set_var("YOYO_SKIP_EMBED", "1");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        std::env::remove_var("YOYO_SKIP_EMBED");
+
+        fs::write(
+            dir.path().join("backend/b.ts"),
+            "function gammaUpdated() { return 4; }\n",
+        )
+        .unwrap();
+
+        reindex_files(&dir.path().to_path_buf(), &["backend/a.ts"]).unwrap();
+        let bake = require_bake_index(&dir.path().to_path_buf()).unwrap();
+
+        assert!(bake.functions.iter().any(|f| f.name == "gammaUpdated"));
+        assert!(!bake.functions.iter().any(|f| f.name == "gamma"));
+        assert!(bake.functions.iter().any(|f| f.name == "renderUi"));
+    }
+
+    #[test]
+    fn load_bake_index_refreshes_stale_scope_only() {
+        let dir = TempDir::new().unwrap();
+        write_mixed_repo(&dir);
+        std::env::set_var("YOYO_SKIP_EMBED", "1");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        std::env::remove_var("YOYO_SKIP_EMBED");
+
+        std::thread::sleep(Duration::from_millis(20));
+        fs::write(
+            dir.path().join("backend/b.ts"),
+            "function delta() { return 5; }\n",
+        )
+        .unwrap();
+
+        let bake = load_bake_index(&dir.path().to_path_buf()).unwrap().unwrap();
+        assert!(bake.functions.iter().any(|f| f.name == "delta"));
+        assert!(!bake.functions.iter().any(|f| f.name == "gamma"));
+        assert!(bake.functions.iter().any(|f| f.name == "renderUi"));
+    }
+
+    #[test]
+    fn dependency_refresh_expands_to_dependent_scopes() {
+        let dir = TempDir::new().unwrap();
+        write_dependency_repo(&dir);
+        std::env::set_var("YOYO_SKIP_EMBED", "1");
+        crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        std::env::remove_var("YOYO_SKIP_EMBED");
+
+        let bake = require_bake_index(&dir.path().to_path_buf()).unwrap();
+        let expanded = expand_to_scope_files(&bake, &["generated/client.ts".to_string()]);
+
+        assert!(expanded.contains("generated/client.ts"));
+        assert!(expanded.contains("backend/server.ts"));
+        assert!(!expanded.contains("web/app.ts"));
     }
 }

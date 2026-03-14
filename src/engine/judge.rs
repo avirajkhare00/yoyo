@@ -8,7 +8,10 @@ use super::types::{
     JudgeCandidateFile, JudgeCandidateSymbol, JudgeChangePayload, JudgeCommand, JudgeFinding,
     JudgeOwnershipLayer, JudgeRejectedAlternative,
 };
-use super::util::{require_bake_index, resolve_project_root};
+use super::util::{
+    backend_scope_boost, bake_scope_dependencies, bake_scopes, effective_scope,
+    matches_scope_filter, require_bake_index, resolve_project_root, scope_hints,
+};
 
 #[derive(Clone)]
 struct Candidate {
@@ -30,11 +33,21 @@ pub fn judge_change(
     symbol: Option<String>,
     file: Option<String>,
     limit: Option<usize>,
+    scope: Option<String>,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = require_bake_index(&root)?;
     let limit = limit.unwrap_or(3).clamp(1, 5);
     let file_filter = file.as_deref().map(str::to_lowercase);
+    let scope_used = effective_scope(
+        &bake.files,
+        scope.as_deref(),
+        Some(query.as_str()),
+        None,
+        symbol.as_deref(),
+        file.as_deref(),
+    );
+    let scoping_hints = scope_hints(&bake_scopes(&bake), &bake_scope_dependencies(&bake));
 
     let mut caller_names_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
     let mut caller_files_by_symbol: HashMap<String, HashSet<String>> = HashMap::new();
@@ -60,7 +73,9 @@ pub fn judge_change(
             .iter()
             .filter(|f| f.name.to_lowercase() == needle)
         {
-            if matches_file_filter(&func.file, file_filter.as_deref()) {
+            if matches_file_filter(&func.file, file_filter.as_deref())
+                && matches_scope_filter(&func.file, &func.language, scope_used.as_deref())
+            {
                 upsert_candidate(
                     &mut candidates,
                     Candidate {
@@ -68,7 +83,7 @@ pub fn judge_change(
                         file: func.file.clone(),
                         start_line: func.start_line,
                         kind: "function",
-                        score: 100.0,
+                        score: 100.0 + backend_scope_boost(&func.file, &func.language) as f32,
                         why_parts: BTreeSet::from([format!(
                             "Matches explicit symbol hint '{}'.",
                             hint
@@ -93,7 +108,9 @@ pub fn judge_change(
             .iter()
             .filter(|t| t.name.to_lowercase() == needle)
         {
-            if matches_file_filter(&ty.file, file_filter.as_deref()) {
+            if matches_file_filter(&ty.file, file_filter.as_deref())
+                && matches_scope_filter(&ty.file, &ty.language, scope_used.as_deref())
+            {
                 upsert_candidate(
                     &mut candidates,
                     Candidate {
@@ -101,7 +118,7 @@ pub fn judge_change(
                         file: ty.file.clone(),
                         start_line: ty.start_line,
                         kind: "type",
-                        score: 95.0,
+                        score: 95.0 + backend_scope_boost(&ty.file, &ty.language) as f32,
                         why_parts: BTreeSet::from([format!(
                             "Matches explicit symbol hint '{}'.",
                             hint
@@ -117,9 +134,14 @@ pub fn judge_change(
     }
 
     let semantic_limit = limit.max(3) * 4;
-    for (score, func) in
-        semantic_candidates(&root, &bake, &query, file_filter.as_deref(), semantic_limit)
-    {
+    for (score, func) in semantic_candidates(
+        &root,
+        &bake,
+        &query,
+        file_filter.as_deref(),
+        scope_used.as_deref(),
+        semantic_limit,
+    ) {
         upsert_candidate(
             &mut candidates,
             Candidate {
@@ -163,12 +185,14 @@ pub fn judge_change(
                 why: "No strongly grounded candidates were found for this query. Narrow with a symbol or file hint, or inspect the likely area first.".to_string(),
                 evidence_files: vec![],
             },
+            scope_used,
             candidate_symbols: vec![],
             candidate_files: vec![],
             rejected_alternatives: vec![],
             invariants: vec![],
             regression_risks: vec![],
             verification_commands,
+            scoping_hints,
             next_hint: Some("Add a symbol or file hint, or use inspect(...) on the likely area before changing code."),
         };
         return Ok(serde_json::to_string_pretty(&payload)?);
@@ -224,6 +248,7 @@ pub fn judge_change(
         query,
         symbol_hint: symbol,
         file_hint: file,
+        scope_used,
         ownership_layer,
         candidate_symbols,
         candidate_files,
@@ -231,6 +256,7 @@ pub fn judge_change(
         invariants,
         regression_risks,
         verification_commands,
+        scoping_hints,
         next_hint: Some("Use change(action=...) once you accept the ownership layer, or inspect(...) to drill into one candidate before writing."),
     };
 
@@ -242,6 +268,7 @@ fn semantic_candidates<'a>(
     bake: &'a crate::engine::types::BakeIndex,
     query: &str,
     file_filter: Option<&str>,
+    scope_filter: Option<&str>,
     limit: usize,
 ) -> Vec<(f32, &'a crate::lang::IndexedFunction)> {
     let bake_dir = root.join("bakes").join("latest");
@@ -256,7 +283,12 @@ fn semantic_candidates<'a>(
         let mut ranked = Vec::new();
         for m in matches {
             if let Some(func) = lookup.get(&(m.name.as_str(), m.file.as_str(), m.start_line)) {
-                ranked.push((m.score * 10.0, *func));
+                if matches_scope_filter(&func.file, &func.language, scope_filter) {
+                    ranked.push((
+                        m.score * 10.0 + backend_scope_boost(&func.file, &func.language) as f32,
+                        *func,
+                    ));
+                }
             }
         }
         if !ranked.is_empty() {
@@ -285,8 +317,10 @@ fn semantic_candidates<'a>(
         .functions
         .iter()
         .filter(|f| matches_file_filter(&f.file, file_filter))
+        .filter(|f| matches_scope_filter(&f.file, &f.language, scope_filter))
         .filter_map(|f| {
-            let score = score_fn(f, &query_tokens, &idf);
+            let score =
+                score_fn(f, &query_tokens, &idf) + backend_scope_boost(&f.file, &f.language) as f32;
             (score > 0.0).then_some((score, f))
         })
         .collect();
