@@ -275,6 +275,7 @@
     <nav class="nav">
       <div class="brand">yo<span>yo</span></div>
       <div class="nav-links">
+        <a href="https://github.com/avirajkhare00/yoyo/blob/main/docs/blog-v1.10.0-to-v1.12.0.md">Blog</a>
         <a href="rlm-and-yoyo.html">Essay</a>
         <a href="harness-design.html">Harness</a>
         <a href="README.md">Docs</a>
@@ -294,9 +295,10 @@
       <p class="lead">
         The core product is not a bag of search tricks. It is a smaller and more reliable interface to the codebase:
         <code>judge_change</code> for ownership and invariants, <code>inspect</code> for cheap structured reads,
-        and <code>change</code> for error-bounded writes.
+        <code>change</code> for guarded writes, and <code>retry_plan</code> for bounded repair loops after failed edits.
       </p>
       <div class="hero-links">
+        <a href="https://github.com/avirajkhare00/yoyo/blob/main/docs/blog-v1.10.0-to-v1.12.0.md">Read the write-loop post</a>
         <a href="rlm-and-yoyo.html">Read the RLM essay</a>
         <a href="harness-design.html">Read the harness essay</a>
         <a class="primary" href="https://github.com/avirajkhare00/yoyo">View on GitHub</a>
@@ -378,6 +380,47 @@
           <span class="muted"><code>change</code> routes edits, renames, moves, creates, and deletes through a structured path and reindexes after the write.</span>
         </div>
       </div>
+    </section>
+
+    <section>
+      <div class="split">
+        <div>
+          <h2>What makes writes safer</h2>
+          <p>
+            The new write-side ideas are simple but important. A <strong>guarded write</strong> means yoyo does not
+            just save the edit and hope. It writes the candidate change, runs the relevant checks, and restores the
+            original file if the new version fails.
+          </p>
+          <p>
+            A <strong>runtime guard</strong> matters for interpreted languages because parsing is not enough. Python
+            can parse and still fail with a missing name. JavaScript can parse and still fail when a module loads.
+            Clojure can parse and still fail when a namespace resolves. yoyo treats those runtime failures as part of
+            the same edit loop.
+          </p>
+          <div class="tool-line">
+            <span>Write loop:</span>
+            <code>change</code>
+            <code>guard_failure</code>
+            <code>retry_plan</code>
+          </div>
+        </div>
+
+        <aside class="note">
+          <strong>Least-privilege by default</strong>
+          <p class="muted">
+            If <code>.yoyo/runtime.json</code> is missing, yoyo now creates a starter config automatically for
+            supported interpreted languages. The file is still restrictive: file-targeted commands only,
+            no inline eval, and runtime execution remains disabled until the user widens access explicitly.
+          </p>
+        </aside>
+      </div>
+
+      <pre>def greet():
+    return missing_name</pre>
+      <p class="muted">
+        That file is valid syntax. A parser alone misses the failure. A runtime guard rejects the edit, restores the
+        previous file, and gives the next repair attempt structured context instead of vague stderr.
+      </p>
     </section>
 
     <section>

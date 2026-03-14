@@ -6,6 +6,7 @@ Essays:
 
 - [Why Recursive Language Models point in the same direction as yoyo](./rlm-and-yoyo.html)
 - [How we designed the yoyo eval harness](./harness-design.html)
+- [From compiler-shaped guards to dynamic-language repair loops (`v1.10.0` → `v1.12.0`)](./blog-v1.10.0-to-v1.12.0.md)
 
 **Current eval status:** still being redesigned.
 Headline WIP result: in one clean directed ripgrep `read_only` eval, Codex used `yoyo` for `22/22` tool calls.
@@ -67,6 +68,29 @@ change  → route write intent                  → write file + reindex
 **Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically so the next read is always fresh.
 
 The index is a SQLite database (`bakes/latest/bake.db`) in your project root. No server, no daemon.
+
+---
+
+## Guarded write loop
+
+The important write-side concepts are now:
+
+- **Guarded write** — yoyo does not just save the edit. It writes the candidate change, runs syntax/compiler/runtime checks, and restores the original file if the new version fails.
+- **Runtime guard** — this is the post-write check for interpreted languages where parsing is not enough. It catches failures like Python `NameError`, JavaScript module-load errors, and Clojure namespace/load-time failures.
+- **`guard_failure`** — failed guarded writes return machine-readable failure payloads, not just prose, so the next tool call can reason about `operation`, `phase`, `retryable`, `files_restored`, and the implicated files.
+- **`retry_plan`** — yoyo can turn that failure into a bounded recovery workflow with a targeted `inspect` window and explicit stop conditions.
+- **Least-privilege runtime bootstrap** — if `.yoyo/runtime.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages. The file is intentionally restrictive: file-targeted commands, no inline eval, and `allow_unsandboxed: false` until the user edits it.
+
+Concrete example:
+
+```python
+def greet():
+    return missing_name
+```
+
+That file is syntactically valid Python, so a parser-only check is not enough. A runtime guard catches the failure when the file actually runs, rejects the write, restores the previous file, and feeds the error into `retry_plan` so the next edit targets the right lines.
+
+For the longer release story behind these concepts, read [the `v1.10.0` → `v1.12.0` write-loop post](./blog-v1.10.0-to-v1.12.0.md).
 
 ---
 
@@ -208,13 +232,13 @@ Then choose `Local (stdio)` and set: name `yoyo`, command `/usr/local/bin/yoyo`,
 
 | Tool | What it does |
 |---|---|
-| `change` | Task-shaped write entrypoint over `edit`, `bulk_edit`, `rename`, `move`, `delete`, `create`, and `add`. |
+| `change` | Task-shaped write entrypoint over `edit`, `bulk_edit`, `rename`, `move`, `delete`, `create`, and `add`. Writes run through the guarded write path when relevant. |
 
 ### Recovery
 
 | Tool | What it does |
 |---|---|
-| `retry_plan` | Turns a failed guarded write into a bounded retry plan with targeted `inspect` context, `next_hint`, and explicit stop conditions. |
+| `retry_plan` | Turns a failed guarded write into a bounded retry plan with targeted `inspect` context, `next_hint`, and explicit stop conditions. This is the recovery half of the guarded write loop. |
 
 ### Orchestration
 

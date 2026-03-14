@@ -18,6 +18,7 @@ Essays:
 
 - [Why Recursive Language Models point in the same direction as yoyo](./docs/rlm-and-yoyo.html)
 - [How we designed the yoyo eval harness](./docs/harness-design.html)
+- [From compiler-shaped guards to dynamic-language repair loops (`v1.10.0` → `v1.12.0`)](./docs/blog-v1.10.0-to-v1.12.0.md)
 
 ## Current status
 
@@ -50,6 +51,15 @@ yoyo narrows that gap. It gives the model:
 - a structured write path when direct file mutation is the wrong tool
 
 The point is not to make toy tasks look slightly faster. The point is to make answers more truthful and more grounded in the code that actually exists.
+
+## New write-side concepts
+
+- **Guarded write**: yoyo writes the candidate edit, runs the relevant checks, and restores the original file if the edit fails those checks.
+- **Runtime guard**: syntax is not enough for Python, JavaScript, Ruby, PHP, or Clojure. yoyo can also catch "parses fine, crashes on run" failures like missing imports, missing names, and load-time exceptions.
+- **`retry_plan`**: failed guarded writes come back as machine-readable `guard_failure` payloads, then narrow into a bounded inspect-fix-retry workflow instead of vague stderr.
+- **Least-privilege bootstrap**: if `.yoyo/runtime.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages, but keeps runtime execution restricted until the user explicitly widens access.
+
+Small example: if an edit changes Python `return "hello"` into `return missing_name`, a plain editor saves a broken file. A guarded write rejects it, restores the original file, and returns enough structure for the next repair attempt to target the right lines.
 
 ## Language focus
 
@@ -165,6 +175,7 @@ Use both. LSP while you write. yoyo when your agent needs to understand or chang
 ## Links
 
 - [Full docs](./docs/README.md)
+- [Write-loop blog (`v1.10.0` → `v1.12.0`)](./docs/blog-v1.10.0-to-v1.12.0.md)
 - [Eval strategy](./evals/README.md)
 - [Legacy eval report](./evals/REPORT.md)
 - [Metrics](./METRICS.md)
