@@ -649,6 +649,41 @@ fn command_targets_changed_file(args: &[String]) -> bool {
         .any(|arg| arg.contains("{{file}}") || arg.contains("{{abs_file}}"))
 }
 
+fn effective_runtime_command_parts<'a>(parts: &'a [String], context: &str) -> Result<&'a [String]> {
+    if parts.is_empty() {
+        return Ok(parts);
+    }
+
+    if command_basename(&parts[0]) != "env" {
+        return Ok(parts);
+    }
+
+    let mut idx = 1usize;
+    while idx < parts.len() {
+        let arg = &parts[idx];
+        if arg == "-S" || arg == "--split-string" {
+            return Err(anyhow!(
+                "runtime feedback config rejected unsafe {} command: env -S is not allowed",
+                context
+            ));
+        }
+        if arg.starts_with('-') || arg.contains('=') {
+            idx += 1;
+            continue;
+        }
+        break;
+    }
+
+    if idx >= parts.len() {
+        return Err(anyhow!(
+            "runtime feedback config rejected unsafe {} command: missing executable after env",
+            context
+        ));
+    }
+
+    Ok(&parts[idx..])
+}
+
 fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()> {
     if parts.is_empty() {
         return Err(anyhow!(
@@ -657,7 +692,8 @@ fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()>
         ));
     }
 
-    let exe = command_basename(&parts[0]);
+    let effective = effective_runtime_command_parts(parts, context)?;
+    let exe = command_basename(&effective[0]);
     if matches!(
         exe.as_str(),
         "python"
@@ -673,7 +709,7 @@ fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()>
             | "cmd.exe"
             | "powershell"
             | "pwsh"
-    ) && has_inline_eval_flag(&parts[1..])
+    ) && has_inline_eval_flag(&effective[1..])
     {
         return Err(anyhow!(
             "runtime feedback config rejected unsafe {} command: inline interpreter code is not allowed",
@@ -2565,6 +2601,43 @@ mod tests {
             err.to_string().contains("must target the changed file")
                 || err.to_string().contains("{{file}}")
                 || err.to_string().contains("{{abs_file}}"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_env_wrapped_inline_runtime_command() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        let original = "print(\"ok\")\n";
+        write_file(&dir, "main.py", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["env", "python3", "-c", "print('hi')", "{{file}}"],
+      "allow_unsandboxed": true
+    }
+  ]
+}"#,
+        );
+
+        let err =
+            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
+                .unwrap_err();
+
+        assert!(
+            err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"),
             "got: {}",
             err
         );
