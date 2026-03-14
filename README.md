@@ -14,6 +14,10 @@
 				/>
 			</a>
 
+## Sponsor
+
+Shoutout to **xagi.in**, the first sponsor of yoyo.
+
 yoyo is a local MCP server for repository reading and change work. It exists to make coding agents less hallucinated, more grounded, and more truthful when they answer questions about a real codebase.
 
 The core product is not generic search. It is a smaller and more reliable interface to the repository:
