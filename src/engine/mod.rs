@@ -17,7 +17,9 @@ mod e2e_tests;
 
 pub use analysis::{blast_radius, find_docs, graph_delete, health};
 pub use api::{all_endpoints, flow, impact};
-pub use edit::{change, multi_patch, patch, patch_by_symbol, patch_string, slice, PatchEdit};
+pub use edit::{
+    change, guard_retry_plan, multi_patch, patch, patch_by_symbol, patch_string, slice, PatchEdit,
+};
 pub use graph::{graph_add, graph_create, graph_move, graph_rename, trace_down, Param};
 pub use index::{bake, llm_instructions, llm_workflows, shake, tool_catalog, tool_help};
 pub use judge::judge_change;

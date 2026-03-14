@@ -43,6 +43,8 @@ pub enum Command {
     Change(ChangeArgs),
     /// Apply a patch by symbol name or by file/line range.
     Edit(EditArgs),
+    /// Turn a failed guarded write into a bounded retry plan.
+    RetryPlan(RetryPlanArgs),
     /// Analyse the blast radius of a symbol (transitive callers + affected files).
     Callers(CallersArgs),
     /// Rename a symbol everywhere (definition + all call sites) atomically.
@@ -547,6 +549,29 @@ pub struct EditArgs {
 }
 
 #[derive(Args, Debug)]
+pub struct RetryPlanArgs {
+    /// Optional project directory. Falls back to project_root embedded in the guard_failure payload.
+    #[arg(long)]
+    pub path: Option<String>,
+
+    /// Failed write output containing a `guard_failure: {...}` line, or a raw guard_failure JSON object.
+    #[arg(long)]
+    pub text: Option<String>,
+
+    /// Path to a file containing failed write output or a raw guard_failure JSON object.
+    #[arg(long)]
+    pub text_file: Option<String>,
+
+    /// Maximum retry attempts the caller should allow before stopping.
+    #[arg(long, default_value_t = 2)]
+    pub max_retries: usize,
+
+    /// Context lines to include above and below the failing range.
+    #[arg(long, default_value_t = 3)]
+    pub context_lines: u32,
+}
+
+#[derive(Args, Debug)]
 pub struct CallersArgs {
     /// Optional path to the project directory to analyze.
     #[arg(long)]
@@ -678,6 +703,7 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
         Some(Command::Docs(args)) => run_docs(args).await?,
         Some(Command::Change(args)) => run_change(args).await?,
         Some(Command::Edit(args)) => run_edit(args).await?,
+        Some(Command::RetryPlan(args)) => run_retry_plan(args).await?,
         Some(Command::Callers(args)) => run_callers(args).await?,
         Some(Command::Rename(args)) => run_rename(args).await?,
         Some(Command::Create(args)) => run_create(args).await?,
@@ -954,6 +980,24 @@ async fn run_edit(args: EditArgs) -> anyhow::Result<()> {
             "Patch requires either --symbol (patch by symbol name) or --file, --start, and --end (patch by range). See `yoyo patch --help`."
         )
     };
+    println!("{json}");
+    Ok(())
+}
+
+async fn run_retry_plan(args: RetryPlanArgs) -> anyhow::Result<()> {
+    let text = match (args.text, args.text_file) {
+        (Some(text), None) => text,
+        (None, Some(path)) => std::fs::read_to_string(&path)
+            .map_err(|err| anyhow::anyhow!("Failed to read retry input file '{}': {}", path, err))?,
+        (Some(_), Some(_)) => anyhow::bail!("retry-plan accepts either --text or --text-file, not both"),
+        (None, None) => anyhow::bail!("retry-plan requires either --text or --text-file"),
+    };
+    let json = crate::engine::guard_retry_plan(
+        args.path,
+        text,
+        Some(args.max_retries),
+        Some(args.context_lines),
+    )?;
     println!("{json}");
     Ok(())
 }

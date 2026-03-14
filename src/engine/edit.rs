@@ -2,11 +2,76 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
 use super::util::{detect_language, reindex_files, require_bake_index, resolve_project_root};
+
+const DEFAULT_GUARD_RETRY_MAX_RETRIES: usize = 2;
+const DEFAULT_GUARD_RETRY_CONTEXT_LINES: u32 = 3;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct GuardFailureFile {
+    file: String,
+    #[serde(default)]
+    errors: Vec<SyntaxError>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct GuardFailurePayload {
+    #[serde(default)]
+    tool: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    project_root: Option<PathBuf>,
+    operation: String,
+    phase: String,
+    retryable: bool,
+    #[serde(default)]
+    files_restored: bool,
+    #[serde(default)]
+    files: Vec<GuardFailureFile>,
+}
+
+#[derive(Serialize)]
+struct GuardRetryTarget {
+    file: String,
+    start_line: u32,
+    end_line: u32,
+    errors: Vec<SyntaxError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inspect: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inspect_error: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    next_hint: String,
+}
+
+#[derive(Serialize)]
+struct GuardRetryStep {
+    id: &'static str,
+    tool: &'static str,
+    args: serde_json::Value,
+    why: String,
+}
+
+#[derive(Serialize)]
+struct GuardRetryPlanPayload {
+    tool: &'static str,
+    version: &'static str,
+    project_root: PathBuf,
+    retryable: bool,
+    max_retries: usize,
+    stop_conditions: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    next_hint: String,
+    guard_failure: GuardFailurePayload,
+    targets: Vec<GuardRetryTarget>,
+    workflow: Vec<GuardRetryStep>,
+}
 
 // ── Pre-write in-memory AST validation ────────────────────────────────────────
 
@@ -1012,6 +1077,219 @@ fn guard_failure_json(
     });
     serde_json::to_string(&payload)
         .unwrap_or_else(|_| "{\"tool\":\"guard_failure\",\"retryable\":false}".to_string())
+}
+
+fn parse_guard_failure_json(text: &str) -> Result<GuardFailurePayload> {
+    let payload: GuardFailurePayload =
+        serde_json::from_str(text).context("failed to parse guard_failure JSON payload")?;
+    if !payload.tool.is_empty() && payload.tool != "guard_failure" {
+        return Err(anyhow!(
+            "expected guard_failure payload, got tool {:?}",
+            payload.tool
+        ));
+    }
+    if payload.operation.trim().is_empty() {
+        return Err(anyhow!("guard_failure payload is missing operation"));
+    }
+    if payload.phase.trim().is_empty() {
+        return Err(anyhow!("guard_failure payload is missing phase"));
+    }
+    Ok(payload)
+}
+
+fn extract_guard_failure_payload(text: &str) -> Result<GuardFailurePayload> {
+    let mut latest = None;
+    for line in text.lines() {
+        if let Some(rest) = line.trim().strip_prefix("guard_failure: ") {
+            latest = Some(rest.trim());
+        }
+    }
+    if let Some(payload) = latest {
+        return parse_guard_failure_json(payload);
+    }
+    parse_guard_failure_json(text.trim())
+}
+
+fn resolve_guard_failure_root(
+    path: Option<String>,
+    payload: &GuardFailurePayload,
+) -> Result<PathBuf> {
+    if path.is_some() {
+        return resolve_project_root(path);
+    }
+    let root = payload
+        .project_root
+        .as_ref()
+        .ok_or_else(|| anyhow!("guard retry plan requires --path or project_root in payload"))?;
+    resolve_project_root(Some(root.to_string_lossy().into_owned()))
+}
+
+fn guard_retry_window(
+    root: &PathBuf,
+    file: &str,
+    errors: &[SyntaxError],
+    context_lines: u32,
+) -> (u32, u32) {
+    let numbered: Vec<u32> = errors
+        .iter()
+        .filter_map(|err| (err.line > 0).then_some(err.line))
+        .collect();
+    let mut start = numbered
+        .iter()
+        .min()
+        .copied()
+        .unwrap_or(1)
+        .saturating_sub(context_lines);
+    if start == 0 {
+        start = 1;
+    }
+    let mut end = numbered
+        .iter()
+        .max()
+        .copied()
+        .unwrap_or(1)
+        .saturating_add(context_lines);
+    if let Ok(source) = fs::read_to_string(root.join(file)) {
+        let total_lines = source.lines().count() as u32;
+        if total_lines == 0 {
+            return (1, 1);
+        }
+        start = start.min(total_lines).max(1);
+        end = end.min(total_lines).max(start);
+    }
+    (start, end)
+}
+
+fn retry_action_for_operation(operation: &str) -> &'static str {
+    match operation {
+        "patch" | "patch_bytes" => "edit",
+        "multi_patch" => "bulk_edit",
+        "graph_rename" => "rename",
+        "graph_move" => "move",
+        "graph_add" => "add",
+        "graph_create" => "create",
+        "graph_delete" => "delete",
+        _ => "change",
+    }
+}
+
+pub fn guard_retry_plan(
+    path: Option<String>,
+    text: String,
+    max_retries: Option<usize>,
+    context_lines: Option<u32>,
+) -> Result<String> {
+    let payload = extract_guard_failure_payload(&text)?;
+    let root = resolve_guard_failure_root(path, &payload)?;
+    let max_retries = max_retries.unwrap_or(DEFAULT_GUARD_RETRY_MAX_RETRIES);
+    let context_lines = context_lines.unwrap_or(DEFAULT_GUARD_RETRY_CONTEXT_LINES);
+
+    let mut targets = Vec::new();
+    for file_payload in &payload.files {
+        let (start_line, end_line) =
+            guard_retry_window(&root, &file_payload.file, &file_payload.errors, context_lines);
+        let inspect_result = crate::engine::inspect(
+            Some(root.to_string_lossy().into_owned()),
+            None,
+            Some(file_payload.file.clone()),
+            Some(start_line),
+            Some(end_line),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let (inspect, inspect_error, next_hint) = match inspect_result {
+            Ok(json) => match serde_json::from_str::<serde_json::Value>(&json) {
+                Ok(parsed) => {
+                    let next_hint = parsed
+                        .get("next_hint")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    (Some(parsed), None, next_hint)
+                }
+                Err(err) => (
+                    None,
+                    Some(format!("failed to parse inspect payload: {err}")),
+                    String::new(),
+                ),
+            },
+            Err(err) => (None, Some(err.to_string()), String::new()),
+        };
+        targets.push(GuardRetryTarget {
+            file: file_payload.file.clone(),
+            start_line,
+            end_line,
+            errors: file_payload.errors.clone(),
+            inspect,
+            inspect_error,
+            next_hint,
+        });
+    }
+
+    let next_hint = targets
+        .iter()
+        .find_map(|target| (!target.next_hint.is_empty()).then_some(target.next_hint.clone()))
+        .unwrap_or_default();
+    let retry_action = retry_action_for_operation(&payload.operation);
+    let mut workflow = Vec::new();
+    if let Some(target) = targets.first() {
+        workflow.push(GuardRetryStep {
+            id: "inspect_failure",
+            tool: "inspect",
+            args: serde_json::json!({
+                "path": root,
+                "file": target.file,
+                "start_line": target.start_line,
+                "end_line": target.end_line,
+            }),
+            why: "Read the failing lines before changing anything else.".to_string(),
+        });
+    }
+    workflow.push(GuardRetryStep {
+        id: "retry_write",
+        tool: "change",
+        args: if let Some(target) = targets.first() {
+            serde_json::json!({
+                "path": root,
+                "action": retry_action,
+                "file": target.file,
+                "start_line": target.start_line,
+                "end_line": target.end_line,
+            })
+        } else {
+            serde_json::json!({
+                "path": root,
+                "action": retry_action,
+            })
+        },
+        why: format!(
+            "Retry the same write surface after correcting the reported errors. Stop after {} attempt(s) or any non-retryable failure.",
+            max_retries
+        ),
+    });
+
+    let plan = GuardRetryPlanPayload {
+        tool: "guard_retry_plan",
+        version: env!("CARGO_PKG_VERSION"),
+        project_root: root,
+        retryable: payload.retryable,
+        max_retries,
+        stop_conditions: vec![
+            "Stop immediately when retryable=false.".to_string(),
+            format!("Stop after {} retry attempt(s).", max_retries),
+            "Stop on config, setup, sandbox, or safety failures even if the original write was retryable.".to_string(),
+        ],
+        next_hint,
+        guard_failure: payload,
+        targets,
+        workflow,
+    };
+    Ok(serde_json::to_string_pretty(&plan)?)
 }
 
 fn format_guard_errors(errors: &[SyntaxError]) -> String {
@@ -2150,6 +2428,19 @@ mod tests {
         serde_json::from_str(payload).unwrap()
     }
 
+    fn write_rust_fixture(dir: &TempDir) {
+        write_file(
+            dir,
+            "Cargo.toml",
+            "[package]\nname = \"guard-retry\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n",
+        );
+        write_file(
+            dir,
+            "src/lib.rs",
+            "pub fn greet() -> &'static str {\n    \"hi\"\n}\n",
+        );
+    }
+
     // ── adversarial / puncture tests ─────────────────────────────────────────
 
     #[test]
@@ -2221,6 +2512,46 @@ mod tests {
             "valid zig should have no errors, got {} error(s): {:?}",
             errors.len(),
             errors
+        );
+    }
+
+    #[test]
+    fn guard_retry_plan_parses_guard_failure_and_inspects_target_lines() {
+        let dir = TempDir::new().unwrap();
+        write_rust_fixture(&dir);
+        let root = Some(dir.path().to_string_lossy().into_owned());
+
+        let err = patch(
+            root.clone(),
+            "src/lib.rs".to_string(),
+            1,
+            3,
+            "pub fn greet() -> &'static str {\n    let msg: i32 = \"hi\";\n    msg\n}\n"
+                .to_string(),
+        )
+        .unwrap_err();
+        let plan = guard_retry_plan(root.clone(), err.to_string(), Some(2), Some(2)).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&plan).unwrap();
+
+        assert_eq!(payload["tool"], "guard_retry_plan");
+        assert_eq!(payload["retryable"], true);
+        assert_eq!(payload["guard_failure"]["phase"], "post_write_guard");
+        assert_eq!(payload["workflow"][0]["tool"], "inspect");
+        assert_eq!(payload["workflow"][1]["tool"], "change");
+        assert_eq!(payload["workflow"][1]["args"]["action"], "edit");
+        assert_eq!(payload["targets"][0]["file"], "src/lib.rs");
+        assert_eq!(payload["targets"][0]["inspect"]["mode"], "lines");
+        assert_eq!(
+            payload["targets"][0]["next_hint"],
+            "Use change(action=edit,file=...,start_line=...,end_line=...) to modify this excerpt safely."
+        );
+
+        let guard = extract_guard_failure(&err);
+        let from_raw = guard_retry_plan(root, guard.to_string(), Some(2), Some(2)).unwrap();
+        let from_raw_payload: serde_json::Value = serde_json::from_str(&from_raw).unwrap();
+        assert_eq!(
+            from_raw_payload["guard_failure"]["operation"],
+            payload["guard_failure"]["operation"]
         );
     }
 

@@ -443,7 +443,7 @@ pub(crate) struct DocMatch {
     pub(crate) snippet: Option<String>,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct SyntaxError {
     pub(crate) line: u32,
     pub(crate) kind: String, // "error" | "missing"
