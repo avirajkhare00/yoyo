@@ -644,6 +644,11 @@ fn has_inline_eval_flag(args: &[String]) -> bool {
     })
 }
 
+fn command_targets_changed_file(args: &[String]) -> bool {
+    args.iter()
+        .any(|arg| arg.contains("{{file}}") || arg.contains("{{abs_file}}"))
+}
+
 fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()> {
     if parts.is_empty() {
         return Err(anyhow!(
@@ -698,6 +703,12 @@ fn prepare_runtime_checks(
             if check.command.is_empty() {
                 return Err(anyhow!(
                     "runtime feedback config rejected {} runtime check: command must not be empty",
+                    check.language
+                ));
+            }
+            if !command_targets_changed_file(&check.command) {
+                return Err(anyhow!(
+                    "runtime feedback config rejected {} runtime check: command must target the changed file with {{file}} or {{abs_file}}",
                     check.language
                 ));
             }
@@ -2502,7 +2513,7 @@ mod tests {
   "runtime_checks": [
     {
       "language": "python",
-      "command": ["python3", "-c", "print('hi')"],
+      "command": ["python3", "-c", "print('hi')", "{{file}}"],
       "allow_unsandboxed": true
     }
   ]
@@ -2516,6 +2527,44 @@ mod tests {
         assert!(
             err.to_string().contains("unsafe")
                 || err.to_string().contains("inline interpreter code"),
+            "got: {}",
+            err
+        );
+        assert_eq!(std::fs::read_to_string(&full_path).unwrap(), original);
+    }
+
+    #[test]
+    fn write_with_compiler_guard_rejects_runtime_command_without_file_placeholder() {
+        if !command_available("python3", "--version") {
+            return;
+        }
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        let original = "print(\"ok\")\n";
+        write_file(&dir, "main.py", original);
+        write_runtime_config(
+            &dir,
+            r#"{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "-m", "http.server"],
+      "allow_unsandboxed": true
+    }
+  ]
+}"#,
+        );
+
+        let err =
+            write_with_compiler_guard(&root, &full_path, "main.py", "print(\"still ok\")\n", "py")
+                .unwrap_err();
+
+        assert!(
+            err.to_string().contains("must target the changed file")
+                || err.to_string().contains("{{file}}")
+                || err.to_string().contains("{{abs_file}}"),
             "got: {}",
             err
         );
