@@ -141,211 +141,264 @@ pub fn llm_workflows(
     let view = ResponseView::parse(view.as_deref())?;
     let compact_limit = limit.unwrap_or(DEFAULT_COMPACT_LIMIT);
     let cursor = parse_section_cursor(cursor.as_deref())?;
-    let payload = LlmWorkflowsPayload {
+    let payload = llm_workflows_payload();
+
+    if let Some(q) = query {
+        return render_llm_workflows_query(&payload, q);
+    }
+
+    if matches!(view, ResponseView::Compact) {
+        return render_llm_workflows_compact(&payload, view, compact_limit, cursor);
+    }
+
+    Ok(serde_json::to_string_pretty(&payload)?)
+}
+
+fn llm_workflows_payload() -> LlmWorkflowsPayload {
+    LlmWorkflowsPayload {
         tool: "llm_workflows",
         version: env!("CARGO_PKG_VERSION"),
         workflows: workflow_catalog(),
         decision_map: decision_map(),
-        antipatterns: vec![
-            "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use impact(symbol=...).",
-            "grep to find a definition: returns all files containing the string, not the canonical definition. Use inspect(name=...).",
-            "reading raw source to determine visibility: pub/pub(crate)/nothing requires inference and is error-prone. Use inspect(name=...) — visibility is structured.",
-            "inferring module path from file path: conventions vary by language and project. Use inspect(name=...) — module_path is authoritative.",
-            "str.replace to rename: corrupts partial matches (e.g. renaming is_match also renames is_match_candidate). Use change(action=rename).",
-            "deleting a function without checking callers: leaves the codebase broken. Use impact(symbol=...) first, then change(action=delete).",
-            "grep to list methods of a struct: returns all fn definitions in the file, not grouped by type. Use inspect(file=...) and filter the outlined functions by parent_type.",
-            "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use inspect(name=...) — implementors are structured on trait matches.",
-            "reading struct source to get field types: works but is unstructured. Use inspect(name=..., include_source=true) — fields stay parsed and typed.",
-            "using raw editor-style writes to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use change(action=edit) so the write resolves through the index and auto-reindexes.",
-            "scraping human-oriented write rejection text to decide what to retry: brittle and lossy. Use the structured guard_failure payload first (operation, phase, retryable, files, errors), then use next_hint only as fallback guidance.",
-            "calling multiple tools sequentially and combining their outputs manually: use script when you need to loop over tool output, filter arrays, cross-reference categories, or reduce across N items. One script call replaces N round-trips and returns a single structured result.",
-        ],
+        antipatterns: llm_workflow_antipatterns(),
         metapatterns: metapattern_catalog(),
+    }
+}
+
+fn llm_workflow_antipatterns() -> Vec<&'static str> {
+    vec![
+        "grep to count callers: overcounts — hits comments, docs, string literals, partial names. Use impact(symbol=...).",
+        "grep to find a definition: returns all files containing the string, not the canonical definition. Use inspect(name=...).",
+        "reading raw source to determine visibility: pub/pub(crate)/nothing requires inference and is error-prone. Use inspect(name=...) — visibility is structured.",
+        "inferring module path from file path: conventions vary by language and project. Use inspect(name=...) — module_path is authoritative.",
+        "str.replace to rename: corrupts partial matches (e.g. renaming is_match also renames is_match_candidate). Use change(action=rename).",
+        "deleting a function without checking callers: leaves the codebase broken. Use impact(symbol=...) first, then change(action=delete).",
+        "grep to list methods of a struct: returns all fn definitions in the file, not grouped by type. Use inspect(file=...) and filter the outlined functions by parent_type.",
+        "grep to find trait implementors: matches impl blocks loosely, misses generic impls. Use inspect(name=...) — implementors are structured on trait matches.",
+        "reading struct source to get field types: works but is unstructured. Use inspect(name=..., include_source=true) — fields stay parsed and typed.",
+        "using raw editor-style writes to modify a function body: line numbers drift after edits, no reindex, no syntax check. Use change(action=edit) so the write resolves through the index and auto-reindexes.",
+        "scraping human-oriented write rejection text to decide what to retry: brittle and lossy. Use the structured guard_failure payload first (operation, phase, retryable, files, errors), then use next_hint only as fallback guidance.",
+        "calling multiple tools sequentially and combining their outputs manually: use script when you need to loop over tool output, filter arrays, cross-reference categories, or reduce across N items. One script call replaces N round-trips and returns a single structured result.",
+    ]
+}
+
+fn workflow_matches(payload: &LlmWorkflowsPayload, words: &[&str]) -> Vec<WorkflowQueryMatch> {
+    let mut matches = Vec::new();
+    for workflow in &payload.workflows {
+        let text = format!(
+            "{} {} {}",
+            workflow.name,
+            workflow.description,
+            workflow
+                .steps
+                .iter()
+                .map(|step| format!("{} {}", step.tool, step.hint))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let score = query_score(&text, words);
+        if score > 0 {
+            matches.push(WorkflowQueryMatch {
+                kind: "workflow",
+                score,
+                item: serde_json::json!({
+                    "name": workflow.name,
+                    "description": workflow.description,
+                    "steps": workflow.steps.iter().map(|step| serde_json::json!({
+                        "tool": step.tool,
+                        "hint": step.hint,
+                    })).collect::<Vec<_>>(),
+                }),
+            });
+        }
+    }
+    matches
+}
+
+fn decision_matches(payload: &LlmWorkflowsPayload, words: &[&str]) -> Vec<WorkflowQueryMatch> {
+    let mut matches = Vec::new();
+    for decision in &payload.decision_map {
+        let text = format!(
+            "{} {} {} {}",
+            decision.question, decision.right_tool, decision.right_field, decision.wrong_because
+        );
+        let score = query_score(&text, words);
+        if score > 0 {
+            matches.push(WorkflowQueryMatch {
+                kind: "decision",
+                score,
+                item: serde_json::json!({
+                    "question": decision.question,
+                    "right_tool": decision.right_tool,
+                    "right_field": decision.right_field,
+                }),
+            });
+        }
+    }
+    matches
+}
+
+fn antipattern_matches(payload: &LlmWorkflowsPayload, words: &[&str]) -> Vec<WorkflowQueryMatch> {
+    let mut matches = Vec::new();
+    for antipattern in &payload.antipatterns {
+        let score = query_score(antipattern, words);
+        if score > 0 {
+            matches.push(WorkflowQueryMatch {
+                kind: "antipattern",
+                score,
+                item: serde_json::json!({ "text": antipattern }),
+            });
+        }
+    }
+    matches
+}
+
+fn metapattern_matches(payload: &LlmWorkflowsPayload, words: &[&str]) -> Vec<WorkflowQueryMatch> {
+    let mut matches = Vec::new();
+    for metapattern in &payload.metapatterns {
+        let text = format!("{} {}", metapattern.shape, metapattern.when);
+        let score = query_score(&text, words);
+        if score > 0 {
+            matches.push(WorkflowQueryMatch {
+                kind: "metapattern",
+                score,
+                item: serde_json::json!({
+                    "shape": metapattern.shape,
+                    "when": metapattern.when,
+                }),
+            });
+        }
+    }
+    matches
+}
+
+fn render_llm_workflows_query(payload: &LlmWorkflowsPayload, query: String) -> Result<String> {
+    let words: Vec<&str> = query.split_whitespace().collect();
+    let mut matches = workflow_matches(payload, &words);
+    matches.extend(decision_matches(payload, &words));
+    matches.extend(antipattern_matches(payload, &words));
+    matches.extend(metapattern_matches(payload, &words));
+    matches.sort_by(|a, b| b.score.cmp(&a.score));
+    matches.truncate(10);
+
+    let result = LlmWorkflowsQueryPayload {
+        tool: payload.tool,
+        version: payload.version,
+        query,
+        matches,
     };
+    Ok(serde_json::to_string_pretty(&result)?)
+}
 
-    // ── query mode ────────────────────────────────────────────────────────────
-    if let Some(q) = query {
-        let words: Vec<&str> = q.split_whitespace().collect();
-        let mut matches: Vec<WorkflowQueryMatch> = Vec::new();
+fn compact_workflow_items(payload: &LlmWorkflowsPayload) -> Vec<serde_json::Value> {
+    payload
+        .workflows
+        .iter()
+        .map(|workflow| {
+            serde_json::json!({
+                "name": workflow.name,
+                "description": workflow.description,
+                "steps": workflow.steps.len(),
+                "first_tool": workflow.steps.first().map(|step| step.tool),
+            })
+        })
+        .collect()
+}
 
-        for wf in &payload.workflows {
-            let text = format!(
-                "{} {} {}",
-                wf.name,
-                wf.description,
-                wf.steps
-                    .iter()
-                    .map(|s| format!("{} {}", s.tool, s.hint))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-            let score = query_score(&text, &words);
-            if score > 0 {
-                matches.push(WorkflowQueryMatch {
-                    kind: "workflow",
-                    score,
-                    item: serde_json::json!({
-                        "name": wf.name,
-                        "description": wf.description,
-                        "steps": wf.steps.iter().map(|s| serde_json::json!({
-                            "tool": s.tool,
-                            "hint": s.hint,
-                        })).collect::<Vec<_>>(),
-                    }),
-                });
-            }
-        }
+fn compact_decision_items(payload: &LlmWorkflowsPayload) -> Vec<serde_json::Value> {
+    payload
+        .decision_map
+        .iter()
+        .map(|entry| {
+            serde_json::json!({
+                "question": entry.question,
+                "right_tool": entry.right_tool,
+                "right_field": entry.right_field,
+            })
+        })
+        .collect()
+}
 
-        for d in &payload.decision_map {
-            let text = format!(
-                "{} {} {} {}",
-                d.question, d.right_tool, d.right_field, d.wrong_because
-            );
-            let score = query_score(&text, &words);
-            if score > 0 {
-                matches.push(WorkflowQueryMatch {
-                    kind: "decision",
-                    score,
-                    item: serde_json::json!({
-                        "question": d.question,
-                        "right_tool": d.right_tool,
-                        "right_field": d.right_field,
-                    }),
-                });
-            }
-        }
+fn compact_antipattern_items(payload: &LlmWorkflowsPayload) -> Vec<serde_json::Value> {
+    payload
+        .antipatterns
+        .iter()
+        .map(|entry| serde_json::json!({ "text": entry }))
+        .collect()
+}
 
-        for ap in &payload.antipatterns {
-            let score = query_score(ap, &words);
-            if score > 0 {
-                matches.push(WorkflowQueryMatch {
-                    kind: "antipattern",
-                    score,
-                    item: serde_json::json!({ "text": ap }),
-                });
-            }
-        }
+fn compact_metapattern_items(payload: &LlmWorkflowsPayload) -> Vec<serde_json::Value> {
+    payload
+        .metapatterns
+        .iter()
+        .map(|entry| {
+            serde_json::json!({
+                "shape": entry.shape,
+                "when": entry.when,
+                "instances": entry.instances.len(),
+            })
+        })
+        .collect()
+}
 
-        for mp in &payload.metapatterns {
-            let text = format!("{} {}", mp.shape, mp.when);
-            let score = query_score(&text, &words);
-            if score > 0 {
-                matches.push(WorkflowQueryMatch {
-                    kind: "metapattern",
-                    score,
-                    item: serde_json::json!({
-                        "shape": mp.shape,
-                        "when": mp.when,
-                    }),
-                });
-            }
-        }
+fn render_llm_workflows_compact(
+    payload: &LlmWorkflowsPayload,
+    view: ResponseView,
+    compact_limit: usize,
+    cursor: Option<(String, usize)>,
+) -> Result<String> {
+    let cursor_ref = cursor
+        .as_ref()
+        .map(|(section, offset)| (section.as_str(), *offset));
+    let sections = vec![
+        build_compact_section(
+            "workflows",
+            compact_workflow_items(payload),
+            compact_limit,
+            cursor_ref,
+        ),
+        build_compact_section(
+            "decision_map",
+            compact_decision_items(payload),
+            compact_limit,
+            cursor_ref,
+        ),
+        build_compact_section(
+            "antipatterns",
+            compact_antipattern_items(payload),
+            compact_limit,
+            cursor_ref,
+        ),
+        build_compact_section(
+            "metapatterns",
+            compact_metapattern_items(payload),
+            compact_limit,
+            cursor_ref,
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
-        matches.sort_by(|a, b| b.score.cmp(&a.score));
-        matches.truncate(10);
-
-        let result = LlmWorkflowsQueryPayload {
-            tool: payload.tool,
-            version: payload.version,
-            query: q,
-            matches,
-        };
-        return Ok(serde_json::to_string_pretty(&result)?);
-    }
-
-    // ── compact mode ─────────────────────────────────────────────────────────
-    if matches!(view, ResponseView::Compact) {
-        let cursor_ref = cursor
-            .as_ref()
-            .map(|(section, offset)| (section.as_str(), *offset));
-        let sections = vec![
-            build_compact_section(
-                "workflows",
-                payload
-                    .workflows
-                    .iter()
-                    .map(|workflow| {
-                        serde_json::json!({
-                            "name": workflow.name,
-                            "description": workflow.description,
-                            "steps": workflow.steps.len(),
-                            "first_tool": workflow.steps.first().map(|step| step.tool),
-                        })
-                    })
-                    .collect(),
-                compact_limit,
-                cursor_ref,
-            ),
-            build_compact_section(
-                "decision_map",
-                payload
-                    .decision_map
-                    .iter()
-                    .map(|entry| {
-                        serde_json::json!({
-                            "question": entry.question,
-                            "right_tool": entry.right_tool,
-                            "right_field": entry.right_field,
-                        })
-                    })
-                    .collect(),
-                compact_limit,
-                cursor_ref,
-            ),
-            build_compact_section(
-                "antipatterns",
-                payload
-                    .antipatterns
-                    .iter()
-                    .map(|entry| serde_json::json!({ "text": entry }))
-                    .collect(),
-                compact_limit,
-                cursor_ref,
-            ),
-            build_compact_section(
-                "metapatterns",
-                payload
-                    .metapatterns
-                    .iter()
-                    .map(|entry| {
-                        serde_json::json!({
-                            "shape": entry.shape,
-                            "when": entry.when,
-                            "instances": entry.instances.len(),
-                        })
-                    })
-                    .collect(),
-                compact_limit,
-                cursor_ref,
-            ),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-
-        let compact = LlmWorkflowsCompactPayload {
-            tool: payload.tool,
-            version: payload.version,
-            view: view.as_str(),
-            summary: format!(
-                "{} workflows, {} decision entries, {} antipatterns, {} metapatterns",
-                payload.workflows.len(),
-                payload.decision_map.len(),
-                payload.antipatterns.len(),
-                payload.metapatterns.len(),
-            ),
-            sections,
-            detail_hints: vec![
-                "use --view raw for the full reference catalog",
-                "use --cursor <section>:<offset> to page one section forward",
-                "use llm_instructions first and call llm_workflows only when you need deeper guidance",
-            ],
-        };
-        return Ok(serde_json::to_string_pretty(&compact)?);
-    }
-
-    let json = serde_json::to_string_pretty(&payload)?;
-    Ok(json)
+    let compact = LlmWorkflowsCompactPayload {
+        tool: payload.tool,
+        version: payload.version,
+        view: view.as_str(),
+        summary: format!(
+            "{} workflows, {} decision entries, {} antipatterns, {} metapatterns",
+            payload.workflows.len(),
+            payload.decision_map.len(),
+            payload.antipatterns.len(),
+            payload.metapatterns.len(),
+        ),
+        sections,
+        detail_hints: vec![
+            "use --view raw for the full reference catalog",
+            "use --cursor <section>:<offset> to page one section forward",
+            "use llm_instructions first and call llm_workflows only when you need deeper guidance",
+        ],
+    };
+    Ok(serde_json::to_string_pretty(&compact)?)
 }
 
 /// Score a text against a set of query words (case-insensitive word overlap).
