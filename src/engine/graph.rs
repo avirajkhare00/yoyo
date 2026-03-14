@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context, Result};
 
 use super::edit::{
     ast_check_str, write_batch_with_compiler_guard, write_bytes_with_compiler_guard, PendingWrite,
+    WriteGuardOutcome,
 };
 use super::types::{
     GraphAddPayload, GraphCreatePayload, GraphMovePayload, GraphRenamePayload, TraceDownPayload,
@@ -82,7 +83,7 @@ fn write_graph_bytes_with_guard(
     full_path: &Path,
     file: &str,
     bytes: &[u8],
-) -> Result<()> {
+) -> Result<WriteGuardOutcome> {
     write_bytes_with_compiler_guard(root, full_path, file, bytes, op)
         .map_err(|err| wrap_guard_error(op, file, err))
 }
@@ -91,7 +92,7 @@ fn write_graph_batch_with_guard(
     op: &str,
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
-) -> Result<()> {
+) -> Result<WriteGuardOutcome> {
     write_batch_with_compiler_guard(root, writes, op).map_err(|err| {
         let msg = err.to_string();
         let detail = msg.strip_prefix("patch rejected: ").unwrap_or(&msg);
@@ -239,7 +240,7 @@ pub fn graph_rename(path: Option<String>, name: String, new_name: String) -> Res
 
     // Determine rename scope from bake index visibility.
     let bake = load_bake_index(&root)?;
-    let (source_files, scope_label, warnings) = if let Some(ref bake) = bake {
+    let (source_files, scope_label, mut warnings) = if let Some(ref bake) = bake {
         if let Some(func) = bake
             .functions
             .iter()
@@ -372,7 +373,7 @@ pub fn graph_rename(path: Option<String>, name: String, new_name: String) -> Res
             bytes: bytes.as_slice(),
         })
         .collect();
-    write_graph_batch_with_guard("graph_rename", &root, &writes)?;
+    let guard = write_graph_batch_with_guard("graph_rename", &root, &writes)?;
 
     let all_changed_files: Vec<String> = planned_edits
         .iter()
@@ -382,6 +383,7 @@ pub fn graph_rename(path: Option<String>, name: String, new_name: String) -> Res
     let refs: Vec<&str> = all_changed_files.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
 
+    warnings.extend(guard.warnings);
     let payload = GraphRenamePayload {
         tool: "graph_rename",
         version: env!("CARGO_PKG_VERSION"),
@@ -477,7 +479,7 @@ pub fn graph_add(
         }
     }
 
-    write_graph_bytes_with_guard("graph_add", &root, &full_path, &file, &bytes)?;
+    let guard = write_graph_bytes_with_guard("graph_add", &root, &full_path, &file, &bytes)?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
 
@@ -489,6 +491,7 @@ pub fn graph_add(
         name,
         file,
         inserted_at_byte: insert_at,
+        warnings: guard.warnings,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
@@ -561,7 +564,7 @@ pub fn graph_create(
         ));
     }
 
-    write_graph_bytes_with_guard(
+    let guard = write_graph_bytes_with_guard(
         "graph_create",
         &root,
         &full_path,
@@ -578,6 +581,7 @@ pub fn graph_create(
         file,
         function_name,
         language: lang.to_string(),
+        warnings: guard.warnings,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }
@@ -868,7 +872,7 @@ pub fn graph_move(path: Option<String>, name: String, to_file: String) -> Result
             bytes: &final_dst,
         },
     ];
-    write_graph_batch_with_guard("graph_move", &root, &writes)?;
+    let guard = write_graph_batch_with_guard("graph_move", &root, &writes)?;
 
     let _ = reindex_files(&root, &[from_file.as_str(), to_file.as_str()]);
 
@@ -880,6 +884,7 @@ pub fn graph_move(path: Option<String>, name: String, to_file: String) -> Result
         from_file,
         to_file,
         imports_added,
+        warnings: guard.warnings,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
 }

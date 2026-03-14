@@ -46,7 +46,9 @@ pub enum Visibility {
 }
 
 impl Default for Visibility {
-    fn default() -> Self { Visibility::Private }
+    fn default() -> Self {
+        Visibility::Private
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,7 +244,12 @@ pub trait LanguageAnalyzer: Send + Sync {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)>;
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<IndexedImpl>,
+    )>;
     /// Extract import/use/require paths from source. Line-based — no AST needed.
     fn extract_imports(&self, _source: &str) -> Vec<String> {
         vec![]
@@ -265,16 +272,36 @@ pub trait LanguageAnalyzer: Send + Sync {
         context: &str,
         pattern: &str,
     ) -> Vec<AstMatch> {
-        let lang = match self.ts_language() { Some(l) => l, None => return vec![] };
-        let kinds = match self.node_kinds() { Some(k) => k, None => return vec![] };
+        let lang = match self.ts_language() {
+            Some(l) => l,
+            None => return vec![],
+        };
+        let kinds = match self.node_kinds() {
+            Some(k) => k,
+            None => return vec![],
+        };
         let mut parser = Parser::new();
-        if parser.set_language(&lang).is_err() { return vec![]; }
-        let tree = match parser.parse(source, None) { Some(t) => t, None => return vec![] };
+        if parser.set_language(&lang).is_err() {
+            return vec![];
+        }
+        let tree = match parser.parse(source, None) {
+            Some(t) => t,
+            None => return vec![],
+        };
         let lines: Vec<&str> = source.lines().collect();
         let mut matches = Vec::new();
         walk_supersearch(
-            tree.root_node(), source, &lines, query_lc, context, pattern,
-            false, false, false, kinds, &mut matches,
+            tree.root_node(),
+            source,
+            &lines,
+            query_lc,
+            context,
+            pattern,
+            false,
+            false,
+            false,
+            kinds,
+            &mut matches,
         );
         matches
     }
@@ -288,7 +315,10 @@ pub trait LanguageAnalyzer: Send + Sync {
 /// TS/JS: `src/router/index.ts`         → `src/router`
 pub fn module_path_from_file(file: &str, lang: &str) -> String {
     let path = std::path::Path::new(file);
-    let dir = path.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let dir = path
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
 
     // Strip common source roots for Python and Clojure.
     let dir = if matches!(lang, "python" | "clojure") {
@@ -448,7 +478,10 @@ pub fn walk_supersearch(
                         .get(row)
                         .map(|s| s.trim().to_string())
                         .unwrap_or_else(|| text.trim().to_string());
-                    matches.push(AstMatch { line: (row + 1) as u32, snippet });
+                    matches.push(AstMatch {
+                        line: (row + 1) as u32,
+                        snippet,
+                    });
                 }
             }
         }
@@ -457,8 +490,8 @@ pub fn walk_supersearch(
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         walk_supersearch(
-            child, source, lines, query_lc, context, pattern,
-            in_call, in_assign, in_return, kinds, matches,
+            child, source, lines, query_lc, context, pattern, in_call, in_assign, in_return, kinds,
+            matches,
         );
     }
 }
@@ -483,22 +516,43 @@ mod tests {
     #[test]
     fn sig_hash_normalizes_module_paths() {
         // super::CallSite and crate::lang::CallSite are the same type — must hash identically.
-        let h1 = compute_sig_hash(&["Node".to_string(), "super::CallSite".to_string()], "Vec<super::CallSite>");
-        let h2 = compute_sig_hash(&["Node".to_string(), "crate::lang::CallSite".to_string()], "Vec<crate::lang::CallSite>");
-        assert_eq!(h1, h2, "super::X and crate::lang::X should produce the same sig_hash");
+        let h1 = compute_sig_hash(
+            &["Node".to_string(), "super::CallSite".to_string()],
+            "Vec<super::CallSite>",
+        );
+        let h2 = compute_sig_hash(
+            &["Node".to_string(), "crate::lang::CallSite".to_string()],
+            "Vec<crate::lang::CallSite>",
+        );
+        assert_eq!(
+            h1, h2,
+            "super::X and crate::lang::X should produce the same sig_hash"
+        );
     }
 
     #[test]
     fn sig_hash_differs_for_different_types() {
         let h1 = compute_sig_hash(&["u32".to_string()], "bool");
         let h2 = compute_sig_hash(&["u64".to_string()], "bool");
-        assert_ne!(h1, h2, "different param types must produce different sig_hash");
+        assert_ne!(
+            h1, h2,
+            "different param types must produce different sig_hash"
+        );
     }
 
     #[test]
     fn module_path_from_file_strips_python_like_source_roots() {
-        assert_eq!(module_path_from_file("src/my/app/core.py", "python"), "my.app");
-        assert_eq!(module_path_from_file("lib/my/app/core.clj", "clojure"), "my.app");
-        assert_eq!(module_path_from_file("test/my/app/core.cljc", "clojure"), "my.app");
+        assert_eq!(
+            module_path_from_file("src/my/app/core.py", "python"),
+            "my.app"
+        );
+        assert_eq!(
+            module_path_from_file("lib/my/app/core.clj", "clojure"),
+            "my.app"
+        );
+        assert_eq!(
+            module_path_from_file("test/my/app/core.cljc", "clojure"),
+            "my.app"
+        );
     }
 }

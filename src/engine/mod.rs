@@ -1,6 +1,8 @@
 mod analysis;
 mod api;
 pub(crate) mod db;
+#[cfg(test)]
+mod e2e_tests;
 mod edit;
 pub(crate) mod embed;
 mod graph;
@@ -12,8 +14,6 @@ mod search;
 pub(crate) mod types;
 mod update;
 mod util;
-#[cfg(test)]
-mod e2e_tests;
 
 pub use analysis::{blast_radius, find_docs, graph_delete, health};
 pub use api::{all_endpoints, flow, impact};

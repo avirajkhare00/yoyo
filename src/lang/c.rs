@@ -6,9 +6,8 @@ use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
-    NodeKinds, Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, IndexedEndpoint,
+    IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, NodeKinds, Visibility,
 };
 
 pub struct CAnalyzer;
@@ -23,28 +22,56 @@ const KINDS: NodeKinds = NodeKinds {
 };
 
 impl LanguageAnalyzer for CAnalyzer {
-    fn language(&self) -> &str { "c" }
+    fn language(&self) -> &str {
+        "c"
+    }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
-        source.lines()
+        source
+            .lines()
             .filter_map(|l| {
                 let t = l.trim();
                 let s = t.strip_prefix("#include")?;
                 let s = s.trim().trim_matches(|c| c == '<' || c == '>' || c == '"');
-                if s.is_empty() { None } else { Some(s.to_string()) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
             })
             .collect()
     }
 
-    fn analyze_file(&self, root: &Path, file: &Path) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)> {
+    fn analyze_file(
+        &self,
+        root: &Path,
+        file: &Path,
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
-        parser.set_language(&SupportLang::C.get_ts_language()).expect("C grammar");
-        let tree = parser.parse(&source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        parser
+            .set_language(&SupportLang::C.get_ts_language())
+            .expect("C grammar");
+        let tree = parser
+            .parse(&source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
         let mod_path = module_path_from_file(&relative(root, file), "c");
         let mut functions = Vec::new();
         let mut types = Vec::new();
-        walk_c(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut types);
+        walk_c(
+            &source,
+            root,
+            file,
+            tree.root_node(),
+            &mod_path,
+            &mut functions,
+            &mut types,
+        );
         Ok((functions, vec![], types, vec![]))
     }
 
@@ -56,7 +83,15 @@ impl LanguageAnalyzer for CAnalyzer {
     }
 }
 
-fn walk_c(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, functions: &mut Vec<IndexedFunction>, types: &mut Vec<IndexedType>) {
+fn walk_c(
+    source: &str,
+    root: &Path,
+    file: &Path,
+    node: Node,
+    mod_path: &str,
+    functions: &mut Vec<IndexedFunction>,
+    types: &mut Vec<IndexedType>,
+) {
     match node.kind() {
         "function_definition" => {
             let name = extract_c_function_name(node, source);
@@ -67,10 +102,12 @@ fn walk_c(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, fu
                     name: name.clone(),
                     file: relative(root, file),
                     language: "c".to_string(),
-                    start_line, end_line,
+                    start_line,
+                    end_line,
                     complexity: estimate_complexity(node, source),
                     calls: collect_calls(node, source),
-                    byte_start, byte_end,
+                    byte_start,
+                    byte_end,
                     module_path: mod_path.to_string(),
                     qualified_name: qualified_name(mod_path, &name, "c"),
                     visibility: Visibility::Public,
@@ -84,11 +121,21 @@ fn walk_c(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, fu
                 let name = n.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
-                    let kind = if node.kind() == "enum_specifier" { "enum" } else { "struct" };
+                    let kind = if node.kind() == "enum_specifier" {
+                        "enum"
+                    } else {
+                        "struct"
+                    };
                     types.push(IndexedType {
-                        name, file: relative(root, file), language: "c".to_string(),
-                        start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        name,
+                        file: relative(root, file),
+                        language: "c".to_string(),
+                        start_line,
+                        end_line,
+                        kind: kind.to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
+                        fields: vec![],
                         ..Default::default()
                     });
                 }
@@ -129,7 +176,9 @@ fn extract_declarator_name(node: Node, source: &str) -> String {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
                 let name = extract_declarator_name(child, source);
-                if !name.is_empty() { return name; }
+                if !name.is_empty() {
+                    return name;
+                }
             }
             String::new()
         }
@@ -137,10 +186,17 @@ fn extract_declarator_name(node: Node, source: &str) -> String {
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_statement", "for_statement", "while_statement",
-        "do_statement", "switch_statement", "case_statement",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "switch_statement",
+            "case_statement",
+        ],
+    )
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<super::CallSite> {
@@ -157,7 +213,11 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<super::CallSite
         if let Some(func) = node.child_by_field_name("function") {
             let callee = func.utf8_text(source.as_bytes()).unwrap_or("").to_string();
             if !callee.is_empty() {
-                calls.push(super::CallSite { callee, qualifier: None, line });
+                calls.push(super::CallSite {
+                    callee,
+                    qualifier: None,
+                    line,
+                });
             }
         }
     }

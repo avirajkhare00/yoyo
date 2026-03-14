@@ -7,7 +7,11 @@ use clap::Parser;
 
 /// Top-level CLI for yoyo.
 #[derive(Parser, Debug)]
-#[command(name = "yoyo", version, about = "yoyo – Rust code intelligence engine and MCP server")]
+#[command(
+    name = "yoyo",
+    version,
+    about = "yoyo – Rust code intelligence engine and MCP server"
+)]
 struct Cli {
     /// Run as MCP server instead of human CLI.
     #[arg(long)]
@@ -30,4 +34,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

@@ -25,8 +25,9 @@ pub fn check_update() -> Option<String> {
 /// running executable, and codesign on macOS. Returns a human-readable status
 /// message.
 pub fn self_update() -> Result<String> {
-    let latest = fetch_latest_version()
-        .ok_or_else(|| anyhow!("Could not fetch latest version from GitHub. Check your network."))?;
+    let latest = fetch_latest_version().ok_or_else(|| {
+        anyhow!("Could not fetch latest version from GitHub. Check your network.")
+    })?;
 
     let current = env!("CARGO_PKG_VERSION");
     if !newer_than_current(&latest) {
@@ -43,7 +44,14 @@ pub fn self_update() -> Result<String> {
     // Download to a temp file
     let tmp_archive = exe.with_extension("update.tar.gz");
     let status = std::process::Command::new("curl")
-        .args(["-fsSL", "--max-time", "60", "-o", tmp_archive.to_str().unwrap(), &url])
+        .args([
+            "-fsSL",
+            "--max-time",
+            "60",
+            "-o",
+            tmp_archive.to_str().unwrap(),
+            &url,
+        ])
         .status()
         .map_err(|e| anyhow!("curl not found: {e}"))?;
     if !status.success() {
@@ -54,7 +62,12 @@ pub fn self_update() -> Result<String> {
     let tmp_dir = exe.parent().unwrap().join("yoyo-update-tmp");
     std::fs::create_dir_all(&tmp_dir)?;
     let status = std::process::Command::new("tar")
-        .args(["-C", tmp_dir.to_str().unwrap(), "-xzf", tmp_archive.to_str().unwrap()])
+        .args([
+            "-C",
+            tmp_dir.to_str().unwrap(),
+            "-xzf",
+            tmp_archive.to_str().unwrap(),
+        ])
         .status()
         .map_err(|e| anyhow!("tar not found: {e}"))?;
     std::fs::remove_file(&tmp_archive).ok();
@@ -69,7 +82,10 @@ pub fn self_update() -> Result<String> {
         let fallback = tmp_dir.join("yoyo");
         if !fallback.exists() {
             std::fs::remove_dir_all(&tmp_dir).ok();
-            return Err(anyhow!("Extracted binary not found. Expected: {}", extracted.display()));
+            return Err(anyhow!(
+                "Extracted binary not found. Expected: {}",
+                extracted.display()
+            ));
         }
         std::fs::rename(&fallback, &extracted)?;
     }
@@ -100,7 +116,9 @@ pub fn self_update() -> Result<String> {
     // Invalidate cache so next llm_instructions call reflects the new version
     invalidate_cache();
 
-    Ok(format!("Updated from v{current} to v{latest}. Restart your MCP client to pick up the new binary."))
+    Ok(format!(
+        "Updated from v{current} to v{latest}. Restart your MCP client to pick up the new binary."
+    ))
 }
 
 // --- internal helpers ---
@@ -110,9 +128,12 @@ fn fetch_latest_version() -> Option<String> {
     let output = std::process::Command::new("curl")
         .args([
             "-fsSL",
-            "--max-time", "3",
-            "-H", "Accept: application/vnd.github+json",
-            "-H", "User-Agent: yoyo-updater",
+            "--max-time",
+            "3",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "User-Agent: yoyo-updater",
             &url,
         ])
         .output()

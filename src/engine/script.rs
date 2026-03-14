@@ -42,10 +42,12 @@ fn bool_opt(args: &JsonMap<String, Value>, key: &str) -> Option<bool> {
 }
 
 fn uint_opt(args: &JsonMap<String, Value>, key: &str) -> Option<usize> {
-    args.get(key).and_then(|v| {
-        v.as_u64()
-            .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
-    }).map(|n| n as usize)
+    args.get(key)
+        .and_then(|v| {
+            v.as_u64()
+                .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+        })
+        .map(|n| n as usize)
 }
 
 fn parse_params(val: Option<&Value>) -> Option<Vec<crate::engine::Param>> {
@@ -58,7 +60,11 @@ fn parse_params(val: Option<&Value>) -> Option<Vec<crate::engine::Param>> {
             Some(crate::engine::Param { name, type_str })
         })
         .collect();
-    if params.is_empty() { None } else { Some(params) }
+    if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    }
 }
 
 fn parse_edits(args: &JsonMap<String, Value>) -> Result<Option<Vec<crate::engine::PatchEdit>>> {
@@ -229,8 +235,9 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
                 let args = json_args(args)?;
                 crate::engine::judge_change(
                     Some(rc.clone()),
-                    str_opt(&args, "query")
-                        .ok_or_else(|| anyhow!("Missing required 'query' argument for judge_change"))?,
+                    str_opt(&args, "query").ok_or_else(|| {
+                        anyhow!("Missing required 'query' argument for judge_change")
+                    })?,
                     str_opt(&args, "symbol"),
                     str_opt(&args, "file"),
                     uint_opt(&args, "limit"),
@@ -289,7 +296,13 @@ pub fn run_script(path: Option<String>, code: String) -> Result<String> {
     {
         let rc = r.clone();
         engine.register_fn("health", move || -> Dynamic {
-            call_to_dynamic(crate::engine::health(Some(rc.clone()), None, None, None, None))
+            call_to_dynamic(crate::engine::health(
+                Some(rc.clone()),
+                None,
+                None,
+                None,
+                None,
+            ))
         });
     }
     {
@@ -375,11 +388,7 @@ mod tests {
 
     #[test]
     fn test_run_script_map_result() {
-        let result = run_script(
-            None,
-            r#"let m = #{x: 1, y: "hello"}; m"#.to_string(),
-        )
-        .unwrap();
+        let result = run_script(None, r#"let m = #{x: 1, y: "hello"}; m"#.to_string()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(v["tool"], "script");
         assert_eq!(v["result"]["x"], 1);

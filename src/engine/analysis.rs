@@ -5,13 +5,12 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::types::{
-    build_compact_section, parse_section_cursor, DeadFunction, DEFAULT_COMPACT_LIMIT, DocMatch,
-    DuplicateEntry, DuplicateGroup, FeatureEnvy, FindDocsPayload, GraphDeletePayload,
-    HealthCompactPayload, HealthPayload, InsiderTrading, LargeFunction, LongMethod, ResponseView,
-    ShotgunSurgery,
+    build_compact_section, parse_section_cursor, DeadFunction, DocMatch, DuplicateEntry,
+    DuplicateGroup, FeatureEnvy, FindDocsPayload, GraphDeletePayload, HealthCompactPayload,
+    HealthPayload, InsiderTrading, LargeFunction, LongMethod, ResponseView, ShotgunSurgery,
+    DEFAULT_COMPACT_LIMIT,
 };
 use super::util::{load_bake_index, reindex_files, require_bake_index, resolve_project_root};
-
 
 /// Public entrypoint for the `blast_radius` tool.
 pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) -> Result<String> {
@@ -40,7 +39,8 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
 
     // BFS pass 1: depth-limited — builds the callers list for display.
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_callers: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    let mut seen_callers: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
     let mut affected_files: BTreeSet<String> = BTreeSet::new();
     let mut callers: Vec<serde_json::Value> = Vec::new();
     let mut queue: std::collections::VecDeque<(String, usize)> = std::collections::VecDeque::new();
@@ -76,7 +76,8 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
     // BFS pass 2: unlimited — compute the true transitive caller count.
     let total_callers = {
         let mut all_visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut all_seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+        let mut all_seen: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
         let mut q: std::collections::VecDeque<String> = std::collections::VecDeque::new();
         q.push_back(symbol.clone());
         all_visited.insert(symbol.clone());
@@ -108,7 +109,9 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
     // Import-graph expansion: add files that import the target symbol's defining file
     // or any already-affected file.  Catches file-level deps the call graph misses.
     {
-        let target_file = bake.functions.iter()
+        let target_file = bake
+            .functions
+            .iter()
             .find(|f| f.name == symbol)
             .map(|f| f.file.clone());
 
@@ -123,11 +126,15 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
-            if seed_stem.is_empty() { continue; }
+            if seed_stem.is_empty() {
+                continue;
+            }
 
             for bake_file in &bake.files {
                 let path_str = bake_file.path.to_string_lossy().to_string();
-                if affected_files.contains(&path_str) { continue; }
+                if affected_files.contains(&path_str) {
+                    continue;
+                }
                 if bake_file.imports.iter().any(|imp| imp.contains(&seed_stem)) {
                     affected_files.insert(path_str);
                 }
@@ -153,14 +160,24 @@ pub fn blast_radius(path: Option<String>, symbol: String, depth: Option<usize>) 
 }
 
 /// Public entrypoint for the `find_docs` tool.
-pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<usize>) -> Result<String> {
+pub fn find_docs(
+    path: Option<String>,
+    doc_type: Option<String>,
+    limit: Option<usize>,
+) -> Result<String> {
     let root = resolve_project_root(path)?;
     let doc_type = doc_type.unwrap_or_else(|| "all".to_string());
     let limit = limit.unwrap_or(50);
 
     let mut matches = Vec::new();
 
-    fn walk_docs(dir: &Path, root: &Path, doc_type: &str, limit: usize, out: &mut Vec<DocMatch>) -> Result<()> {
+    fn walk_docs(
+        dir: &Path,
+        root: &Path,
+        doc_type: &str,
+        limit: usize,
+        out: &mut Vec<DocMatch>,
+    ) -> Result<()> {
         if out.len() >= limit {
             return Ok(());
         }
@@ -179,14 +196,21 @@ pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<u
                 walk_docs(&path, root, doc_type, limit, out)?;
             } else if path.is_file() {
                 let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .into_owned();
 
                 let is_match = match doc_type {
                     "readme" => name.to_lowercase().starts_with("readme"),
                     "env" => name.starts_with(".env") || name.to_lowercase() == "env",
                     "config" => {
                         let lc = name.to_lowercase();
-                        lc.contains("config") || lc.ends_with(".toml") || lc.ends_with(".yaml") || lc.ends_with(".yml")
+                        lc.contains("config")
+                            || lc.ends_with(".toml")
+                            || lc.ends_with(".yaml")
+                            || lc.ends_with(".yml")
                     }
                     "docker" => name.to_lowercase().contains("docker"),
                     "all" => true,
@@ -197,10 +221,7 @@ pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<u
                     let snippet = fs::read_to_string(&path)
                         .ok()
                         .map(|s| s.lines().take(5).collect::<Vec<_>>().join("\n"));
-                    out.push(DocMatch {
-                        path: rel,
-                        snippet,
-                    });
+                    out.push(DocMatch { path: rel, snippet });
                 }
             }
         }
@@ -222,7 +243,6 @@ pub fn find_docs(path: Option<String>, doc_type: Option<String>, limit: Option<u
     let json = serde_json::to_string_pretty(&payload)?;
     Ok(json)
 }
-
 
 // ── health ────────────────────────────────────────────────────────────────────
 
@@ -252,7 +272,10 @@ pub fn health(
     // false-positive feature envy when the AST matches them to unrelated modules.
     let mut name_to_files: HashMap<String, Vec<&str>> = HashMap::new();
     for f in &bake.functions {
-        name_to_files.entry(f.name.to_lowercase()).or_default().push(f.file.as_str());
+        name_to_files
+            .entry(f.name.to_lowercase())
+            .or_default()
+            .push(f.file.as_str());
     }
     let name_to_file: HashMap<String, &str> = name_to_files
         .into_iter()
@@ -331,7 +354,12 @@ pub fn health(
         .functions
         .iter()
         .map(|f| {
-            let fan_out = f.calls.iter().map(|c| c.callee.as_str()).collect::<HashSet<_>>().len();
+            let fan_out = f
+                .calls
+                .iter()
+                .map(|c| c.callee.as_str())
+                .collect::<HashSet<_>>()
+                .len();
             let score = f.complexity.saturating_mul(fan_out as u32);
             (f, fan_out, score)
         })
@@ -378,7 +406,10 @@ pub fn health(
                 lines,
                 smell: "Long Method",
                 refactoring: "Extract Function",
-                why: format!("{} lines; threshold: >30 (Fowler: fits on one screen)", lines),
+                why: format!(
+                    "{} lines; threshold: >30 (Fowler: fits on one screen)",
+                    lines
+                ),
             }
         })
         .collect();
@@ -489,7 +520,11 @@ pub fn health(
     for &file_a in &files {
         if let Some(a_calls) = file_to_called_files.get(file_a) {
             for (&file_b, &a_calls_b) in a_calls {
-                let key = if file_a < file_b { (file_a, file_b) } else { (file_b, file_a) };
+                let key = if file_a < file_b {
+                    (file_a, file_b)
+                } else {
+                    (file_b, file_a)
+                };
                 if seen_pairs.contains(&key) {
                     continue;
                 }
@@ -522,9 +557,23 @@ pub fn health(
     // ── 7. Duplicate Code (Fowler: Duplicate Code) ────────────────────────────
     // Group by name stem (strip common verb prefixes). Flag stems appearing in >= 2 files.
     const PREFIXES: &[&str] = &[
-        "get_", "set_", "create_", "update_", "delete_", "handle_", "run_",
-        "fetch_", "load_", "save_", "parse_", "build_", "make_", "init_",
-        "process_", "validate_", "check_",
+        "get_",
+        "set_",
+        "create_",
+        "update_",
+        "delete_",
+        "handle_",
+        "run_",
+        "fetch_",
+        "load_",
+        "save_",
+        "parse_",
+        "build_",
+        "make_",
+        "init_",
+        "process_",
+        "validate_",
+        "check_",
     ];
     let stem = |name: &str| -> String {
         let lc = name.to_lowercase();
@@ -546,7 +595,12 @@ pub fn health(
         .into_iter()
         .filter(|(_, funcs)| {
             funcs.len() >= 2
-                && funcs.iter().map(|f| f.file.as_str()).collect::<HashSet<_>>().len() >= 2
+                && funcs
+                    .iter()
+                    .map(|f| f.file.as_str())
+                    .collect::<HashSet<_>>()
+                    .len()
+                    >= 2
         })
         .map(|(s, funcs)| DuplicateGroup {
             stem: s,
@@ -573,7 +627,9 @@ pub fn health(
         .into_iter()
         .filter(|(_, funcs)| {
             funcs.len() >= 2
-                && funcs.windows(2).any(|w| stem(&w[0].name) != stem(&w[1].name))
+                && funcs
+                    .windows(2)
+                    .any(|w| stem(&w[0].name) != stem(&w[1].name))
         })
         .map(|(h, funcs)| DuplicateGroup {
             stem: format!("sig:{}", &h[..8]),
@@ -608,7 +664,9 @@ pub fn health(
     };
 
     if matches!(view, ResponseView::Compact) {
-        let cursor_ref = cursor.as_ref().map(|(section, offset)| (section.as_str(), *offset));
+        let cursor_ref = cursor
+            .as_ref()
+            .map(|(section, offset)| (section.as_str(), *offset));
         let sections = vec![
             build_compact_section(
                 "dead_code",
@@ -971,7 +1029,12 @@ fn collapse_blank_lines(s: &str) -> String {
 
 /// Remove a function from a file by name. Requires a prior bake.
 /// Pre-flight: refuses to delete if active callers exist, unless `force` is true.
-pub fn graph_delete(path: Option<String>, name: String, file: Option<String>, force: bool) -> Result<String> {
+pub fn graph_delete(
+    path: Option<String>,
+    name: String,
+    file: Option<String>,
+    force: bool,
+) -> Result<String> {
     let root = resolve_project_root(path)?;
     let bake = load_bake_index(&root)?
         .ok_or_else(|| anyhow::anyhow!("No bake index. Run `bake` first."))?;
@@ -1004,12 +1067,18 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>, fo
         return Err(anyhow::anyhow!(
             "Symbol {:?} has {} active caller(s): {}. \
              Run blast_radius to investigate, or pass force=true to delete anyway.",
-            name, callers.len(), callers.join(", ")
+            name,
+            callers.len(),
+            callers.join(", ")
         ));
     }
 
     let warnings: Vec<String> = if !callers.is_empty() {
-        vec![format!("Deleted with {} active caller(s): {}", callers.len(), callers.join(", "))]
+        vec![format!(
+            "Deleted with {} active caller(s): {}",
+            callers.len(),
+            callers.join(", ")
+        )]
     } else {
         vec![]
     };
@@ -1025,7 +1094,10 @@ pub fn graph_delete(path: Option<String>, name: String, file: Option<String>, fo
     if byte_end > bytes.len() || byte_start > byte_end {
         return Err(anyhow::anyhow!(
             "Invalid byte range [{}, {}) for {} (file len {})",
-            byte_start, byte_end, rel_file, bytes.len()
+            byte_start,
+            byte_end,
+            rel_file,
+            bytes.len()
         ));
     }
 

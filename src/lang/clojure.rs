@@ -4,8 +4,8 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::{
-    AstMatch, CallSite, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
-    LanguageAnalyzer, Visibility, module_path_from_file, qualified_name, relative,
+    module_path_from_file, qualified_name, relative, AstMatch, CallSite, IndexedEndpoint,
+    IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, Visibility,
 };
 use crate::engine::types::SyntaxError;
 
@@ -58,15 +58,21 @@ impl LanguageAnalyzer for ClojureAnalyzer {
         let mut functions = Vec::new();
         let (forms, _) = scan_top_level_list_forms(&source);
         for form in forms {
-            let Some(head) = head_symbol(&source, form.start_byte + 1, form.end_byte.saturating_sub(1))
-            else {
+            let Some(head) = head_symbol(
+                &source,
+                form.start_byte + 1,
+                form.end_byte.saturating_sub(1),
+            ) else {
                 continue;
             };
             if !matches!(head.as_str(), "defn" | "defn-" | "defmacro") {
                 continue;
             }
-            let Some(name) = definition_name(&source, form.start_byte + 1, form.end_byte.saturating_sub(1))
-            else {
+            let Some(name) = definition_name(
+                &source,
+                form.start_byte + 1,
+                form.end_byte.saturating_sub(1),
+            ) else {
                 continue;
             };
             functions.push(IndexedFunction {
@@ -226,7 +232,10 @@ fn extract_ns_imports(source: &str) -> Vec<String> {
     while let Some((token, next)) = next_token(source, cursor, end) {
         match token {
             Token::Atom(atom) => {
-                if matches!(atom.as_str(), ":require" | ":require-macros" | ":use" | ":import") {
+                if matches!(
+                    atom.as_str(),
+                    ":require" | ":require-macros" | ":use" | ":import"
+                ) {
                     clause_active = true;
                 } else if clause_active {
                     if let Some(needs_first) = collection_stack.last_mut() {
@@ -322,14 +331,20 @@ fn clojure_ast_search(source: &str, query_lc: &str, context: &str, pattern: &str
     if want_comments && pattern == "all" {
         for (line, text) in comment_tokens(source) {
             if text.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch { line, snippet: line_snippet(source, line) });
+                matches.push(AstMatch {
+                    line,
+                    snippet: line_snippet(source, line),
+                });
             }
         }
     }
     if want_strings && pattern == "all" {
         for (line, text) in string_tokens(source) {
             if text.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch { line, snippet: line_snippet(source, line) });
+                matches.push(AstMatch {
+                    line,
+                    snippet: line_snippet(source, line),
+                });
             }
         }
     }
@@ -342,13 +357,19 @@ fn clojure_ast_search(source: &str, query_lc: &str, context: &str, pattern: &str
                 _ => true,
             };
             if include && head.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch { line, snippet: line_snippet(source, line) });
+                matches.push(AstMatch {
+                    line,
+                    snippet: line_snippet(source, line),
+                });
             }
         }
         if pattern == "all" {
             for (line, symbol) in symbol_tokens(source) {
                 if symbol.to_lowercase().contains(query_lc) {
-                    matches.push(AstMatch { line, snippet: line_snippet(source, line) });
+                    matches.push(AstMatch {
+                        line,
+                        snippet: line_snippet(source, line),
+                    });
                 }
             }
         }
@@ -617,7 +638,9 @@ fn advance_form(source: &str, cursor: usize, end: usize) -> usize {
             }
             next
         }
-        _ => read_atom(source, cursor, end).map(|(_, next)| next).unwrap_or(end),
+        _ => read_atom(source, cursor, end)
+            .map(|(_, next)| next)
+            .unwrap_or(end),
     }
 }
 
@@ -803,8 +826,12 @@ mod tests {
             ]
         );
         assert_eq!(functions.len(), 3);
-        assert!(functions.iter().any(|f| f.name == "greet" && f.qualified_name == "my.app/greet"));
-        assert!(functions.iter().any(|f| f.name == "helper" && f.visibility == Visibility::Private));
+        assert!(functions
+            .iter()
+            .any(|f| f.name == "greet" && f.qualified_name == "my.app/greet"));
+        assert!(functions
+            .iter()
+            .any(|f| f.name == "helper" && f.visibility == Visibility::Private));
         assert!(functions.iter().any(|f| f.name == "unless"));
     }
 
@@ -828,6 +855,8 @@ mod tests {
     fn clojure_syntax_errors_catches_unbalanced_forms() {
         let errors = syntax_errors("(defn greet []\n  (println \"hi\")\n");
         assert!(!errors.is_empty());
-        assert!(errors.iter().any(|err| err.text.contains("unclosed delimiter")));
+        assert!(errors
+            .iter()
+            .any(|err| err.text.contains("unclosed delimiter")));
     }
 }

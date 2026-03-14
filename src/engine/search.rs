@@ -15,7 +15,14 @@ const SOURCE_LINE_CAP: usize = 500;
 
 /// Extract source for a function body, capping at SOURCE_LINE_CAP lines.
 /// Returns the first SOURCE_LINE_CAP lines + a truncation hint when the body is larger.
-fn cap_source(lines: &[&str], s: usize, e: usize, file: &str, start_line: u32, end_line: u32) -> Option<String> {
+fn cap_source(
+    lines: &[&str],
+    s: usize,
+    e: usize,
+    file: &str,
+    start_line: u32,
+    end_line: u32,
+) -> Option<String> {
     if s >= lines.len() || s > e {
         return None;
     }
@@ -82,7 +89,9 @@ fn read_signature_preview(
         return None;
     }
     let max_end = end_line.saturating_sub(1) as usize;
-    let stop = (start.saturating_add(11)).min(max_end).min(lines.len().saturating_sub(1));
+    let stop = (start.saturating_add(11))
+        .min(max_end)
+        .min(lines.len().saturating_sub(1));
     let mut parts = Vec::new();
     for raw in &lines[start..=stop] {
         let trimmed = raw.trim();
@@ -116,8 +125,9 @@ fn read_signature_preview(
 }
 
 fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<String> {
-    let has_structured =
-        !function.params.is_empty() || function.return_type.is_some() || function.receiver.is_some();
+    let has_structured = !function.params.is_empty()
+        || function.return_type.is_some()
+        || function.receiver.is_some();
     if !has_structured {
         return None;
     }
@@ -162,12 +172,14 @@ fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<S
         function
             .params
             .iter()
-            .map(|p| match (p.name.is_empty(), p.type_str.trim().is_empty()) {
-                (false, false) => format!("{}: {}", p.name, p.type_str),
-                (false, true) => p.name.clone(),
-                (true, false) => p.type_str.clone(),
-                (true, true) => String::new(),
-            })
+            .map(
+                |p| match (p.name.is_empty(), p.type_str.trim().is_empty()) {
+                    (false, false) => format!("{}: {}", p.name, p.type_str),
+                    (false, true) => p.name.clone(),
+                    (true, false) => p.type_str.clone(),
+                    (true, true) => String::new(),
+                },
+            )
             .filter(|p| !p.is_empty())
             .collect::<Vec<_>>()
             .join(", ")
@@ -200,7 +212,10 @@ fn render_indexed_signature(function: &crate::lang::IndexedFunction) -> Option<S
                 .filter(|r| !r.trim().is_empty())
                 .map(|r| format!(" {}", r))
                 .unwrap_or_default();
-            Some(format!("func {}{}({}){}", receiver, function.name, params, ret))
+            Some(format!(
+                "func {}{}({}){}",
+                receiver, function.name, params, ret
+            ))
         }
         "typescript" => {
             let params = ts_params();
@@ -237,7 +252,12 @@ fn build_type_method_summary(
         signature: include_signature
             .then(|| {
                 render_indexed_signature(function).or_else(|| {
-                    read_signature_preview(root, &function.file, function.start_line, function.end_line)
+                    read_signature_preview(
+                        root,
+                        &function.file,
+                        function.start_line,
+                        function.end_line,
+                    )
                 })
             })
             .flatten(),
@@ -265,10 +285,7 @@ fn build_type_match(
         bake.impls
             .iter()
             .filter(|i| {
-                i.trait_name
-                    .as_deref()
-                    .map(|tr| tr.to_lowercase())
-                    == Some(type_name.clone())
+                i.trait_name.as_deref().map(|tr| tr.to_lowercase()) == Some(type_name.clone())
             })
             .map(|i| i.type_name.clone())
             .filter(|name| seen.insert(name.clone()))
@@ -294,7 +311,8 @@ fn build_type_match(
             })
             .flatten(),
         visibility: Some(indexed_type.visibility.clone()),
-        module_path: (!indexed_type.module_path.is_empty()).then(|| indexed_type.module_path.clone()),
+        module_path: (!indexed_type.module_path.is_empty())
+            .then(|| indexed_type.module_path.clone()),
         fields: indexed_type.fields.clone(),
         methods,
         implements,
@@ -412,19 +430,96 @@ pub fn symbol(
     // methods even when a project happens to define a function with the same name.
     // Using a denylist is the most reliable signal without AST type-resolution.
     const STDLIB_NOISE: &[&str] = &[
-        "clone", "map", "filter", "from", "into", "len", "is_empty", "push",
-        "pop", "contains", "get", "set", "default", "unwrap", "expect",
-        "is_dir", "is_file", "is_symlink", "metadata", "path", "send", "recv",
-        "iter", "iter_mut", "into_iter", "collect", "fold", "any", "all",
-        "find", "flatten", "chain", "zip", "enumerate", "take", "skip",
-        "to_string", "as_str", "as_bytes", "trim", "split", "join",
-        "chars", "lines", "parse", "is_some", "is_none", "is_ok", "is_err",
-        "ok", "err", "and_then", "or_else", "map_err", "unwrap_or",
-        "write", "flush", "read", "open", "seek", "lock", "drop",
-        "fmt", "hash", "eq", "cmp", "partial_cmp", "borrow", "deref",
-        "index", "add", "sub", "mul", "div", "rem", "neg", "not",
-        "run", "new", "close", "insert", "remove", "clear", "retain",
-        "extend", "append", "drain", "sort", "dedup", "reverse",
+        "clone",
+        "map",
+        "filter",
+        "from",
+        "into",
+        "len",
+        "is_empty",
+        "push",
+        "pop",
+        "contains",
+        "get",
+        "set",
+        "default",
+        "unwrap",
+        "expect",
+        "is_dir",
+        "is_file",
+        "is_symlink",
+        "metadata",
+        "path",
+        "send",
+        "recv",
+        "iter",
+        "iter_mut",
+        "into_iter",
+        "collect",
+        "fold",
+        "any",
+        "all",
+        "find",
+        "flatten",
+        "chain",
+        "zip",
+        "enumerate",
+        "take",
+        "skip",
+        "to_string",
+        "as_str",
+        "as_bytes",
+        "trim",
+        "split",
+        "join",
+        "chars",
+        "lines",
+        "parse",
+        "is_some",
+        "is_none",
+        "is_ok",
+        "is_err",
+        "ok",
+        "err",
+        "and_then",
+        "or_else",
+        "map_err",
+        "unwrap_or",
+        "write",
+        "flush",
+        "read",
+        "open",
+        "seek",
+        "lock",
+        "drop",
+        "fmt",
+        "hash",
+        "eq",
+        "cmp",
+        "partial_cmp",
+        "borrow",
+        "deref",
+        "index",
+        "add",
+        "sub",
+        "mul",
+        "div",
+        "rem",
+        "neg",
+        "not",
+        "run",
+        "new",
+        "close",
+        "insert",
+        "remove",
+        "clear",
+        "retain",
+        "extend",
+        "append",
+        "drain",
+        "sort",
+        "dedup",
+        "reverse",
     ];
 
     // Count incoming calls per callee name — used to rank primary match (#46).
@@ -442,7 +537,9 @@ pub fn symbol(
         .filter_map(|f| {
             let fname = f.name.to_lowercase();
             if fname == needle || fname.contains(&needle) {
-                let calls: Vec<_> = f.calls.iter()
+                let calls: Vec<_> = f
+                    .calls
+                    .iter()
                     .filter(|c| {
                         let lc = c.callee.to_lowercase();
                         project_fns.contains(&lc) && !STDLIB_NOISE.contains(&lc.as_str())
@@ -460,8 +557,16 @@ pub fn symbol(
                     source: None,
                     signature: render_indexed_signature(f),
                     visibility: Some(f.visibility.clone()),
-                    module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
-                    qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
+                    module_path: if f.module_path.is_empty() {
+                        None
+                    } else {
+                        Some(f.module_path.clone())
+                    },
+                    qualified_name: if f.qualified_name.is_empty() {
+                        None
+                    } else {
+                        Some(f.qualified_name.clone())
+                    },
                     calls,
                     parent_type: f.parent_type.clone(),
                     params: f.params.clone(),
@@ -480,14 +585,20 @@ pub fn symbol(
         .chain(bake.types.iter().filter(|t| !t.is_stdlib).filter_map(|t| {
             let tname = t.name.to_lowercase();
             if tname == needle || tname.contains(&needle) {
-                let implements: Vec<String> = bake.impls.iter()
+                let implements: Vec<String> = bake
+                    .impls
+                    .iter()
                     .filter(|i| i.type_name.to_lowercase() == tname)
                     .filter_map(|i| i.trait_name.clone())
                     .collect();
                 let implementors: Vec<String> = if t.kind == "trait" {
                     let mut seen = std::collections::HashSet::new();
-                    bake.impls.iter()
-                        .filter(|i| i.trait_name.as_deref().map(|tr| tr.to_lowercase()) == Some(tname.clone()))
+                    bake.impls
+                        .iter()
+                        .filter(|i| {
+                            i.trait_name.as_deref().map(|tr| tr.to_lowercase())
+                                == Some(tname.clone())
+                        })
                         .map(|i| i.type_name.clone())
                         .filter(|n| seen.insert(n.clone()))
                         .collect()
@@ -505,7 +616,11 @@ pub fn symbol(
                     source: None,
                     signature: None,
                     visibility: Some(t.visibility.clone()),
-                    module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
+                    module_path: if t.module_path.is_empty() {
+                        None
+                    } else {
+                        Some(t.module_path.clone())
+                    },
                     qualified_name: None,
                     calls: vec![],
                     parent_type: None,
@@ -562,7 +677,9 @@ pub fn symbol(
 
     if include_source {
         for m in &mut matches {
-            if m.source.is_some() { continue; }
+            if m.source.is_some() {
+                continue;
+            }
             let full_path = root.join(&m.file);
             if let Ok(content) = fs::read_to_string(&full_path) {
                 let all_lines: Vec<&str> = content.lines().collect();
@@ -580,7 +697,9 @@ pub fn symbol(
         project_root: root,
         name,
         matches,
-        next_hint: Some("Use inspect(name=...) to read the best match or change(...) to modify it."),
+        next_hint: Some(
+            "Use inspect(name=...) to read the best match or change(...) to modify it.",
+        ),
     };
 
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -596,7 +715,14 @@ fn symbol_stdlib(needle: &str, include_source: bool) -> Vec<SymbolMatch> {
             Some(a) => a,
             None => continue,
         };
-        walk_stdlib_dir(&stdlib_dir, needle, &*analyzer, &stdlib_dir, include_source, &mut matches);
+        walk_stdlib_dir(
+            &stdlib_dir,
+            needle,
+            &*analyzer,
+            &stdlib_dir,
+            include_source,
+            &mut matches,
+        );
     }
     matches
 }
@@ -614,7 +740,10 @@ fn walk_stdlib_dir(
         Err(_) => return,
     };
     for entry in entries {
-        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
         let path = entry.path();
         if path.is_dir() {
             walk_stdlib_dir(&path, needle, analyzer, root, include_source, matches);
@@ -630,7 +759,11 @@ fn walk_stdlib_dir(
                 Ok(r) => r,
                 Err(_) => continue,
             };
-            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
             let lines: Vec<&str> = content.lines().collect();
 
             for f in &funcs {
@@ -640,7 +773,9 @@ fn walk_stdlib_dir(
                         let s = (f.start_line.saturating_sub(1) as usize).min(lines.len());
                         let e = (f.end_line.saturating_sub(1) as usize).min(lines.len());
                         cap_source(&lines, s, e, &rel, f.start_line, f.end_line)
-                    } else { None };
+                    } else {
+                        None
+                    };
                     matches.push(SymbolMatch {
                         name: f.name.clone(),
                         file: rel.clone(),
@@ -654,8 +789,16 @@ fn walk_stdlib_dir(
                             read_signature_preview(root, &f.file, f.start_line, f.end_line)
                         }),
                         visibility: Some(f.visibility.clone()),
-                        module_path: if f.module_path.is_empty() { None } else { Some(f.module_path.clone()) },
-                        qualified_name: if f.qualified_name.is_empty() { None } else { Some(f.qualified_name.clone()) },
+                        module_path: if f.module_path.is_empty() {
+                            None
+                        } else {
+                            Some(f.module_path.clone())
+                        },
+                        qualified_name: if f.qualified_name.is_empty() {
+                            None
+                        } else {
+                            Some(f.qualified_name.clone())
+                        },
                         calls: vec![],
                         parent_type: f.parent_type.clone(),
                         params: f.params.clone(),
@@ -676,7 +819,9 @@ fn walk_stdlib_dir(
                         let s = (t.start_line.saturating_sub(1) as usize).min(lines.len());
                         let e = (t.end_line.saturating_sub(1) as usize).min(lines.len());
                         cap_source(&lines, s, e, &rel, t.start_line, t.end_line)
-                    } else { None };
+                    } else {
+                        None
+                    };
                     matches.push(SymbolMatch {
                         name: t.name.clone(),
                         file: rel.clone(),
@@ -688,7 +833,11 @@ fn walk_stdlib_dir(
                         source: src,
                         signature: None,
                         visibility: Some(t.visibility.clone()),
-                        module_path: if t.module_path.is_empty() { None } else { Some(t.module_path.clone()) },
+                        module_path: if t.module_path.is_empty() {
+                            None
+                        } else {
+                            Some(t.module_path.clone())
+                        },
                         qualified_name: None,
                         calls: vec![],
                         parent_type: None,
@@ -761,7 +910,8 @@ pub fn supersearch(
         .collect();
 
     let fallback_queries = fallback_supersearch_queries(&query);
-    let literal_matches = supersearch_matches_for_query(&searchable_files, &root, &q, &context_norm, &pattern_norm);
+    let literal_matches =
+        supersearch_matches_for_query(&searchable_files, &root, &q, &context_norm, &pattern_norm);
     let mut fallback_matches = Vec::new();
 
     for candidate in &fallback_queries {
@@ -780,11 +930,13 @@ pub fn supersearch(
         }
     }
 
-    let mut matches = if should_prefer_fallback_supersearch_results(&query, &fallback_queries, &fallback_matches) {
-        fallback_matches
-    } else {
-        literal_matches
-    };
+    let mut matches =
+        if should_prefer_fallback_supersearch_results(&query, &fallback_queries, &fallback_matches)
+        {
+            fallback_matches
+        } else {
+            literal_matches
+        };
 
     if matches.is_empty() {
         for candidate in fallback_queries {
@@ -882,9 +1034,35 @@ fn line_search_matches(content: &str, file_rel: &str, query_lc: &str) -> Vec<Sup
 
 fn fallback_supersearch_queries(query: &str) -> Vec<String> {
     const STOPWORDS: &[&str] = &[
-        "all", "call", "calls", "caller", "callers", "site", "sites", "usage", "usages",
-        "reference", "references", "refs", "find", "show", "where", "used", "use", "of",
-        "the", "a", "an", "for", "to", "in", "from", "with", "function", "helper", "symbol",
+        "all",
+        "call",
+        "calls",
+        "caller",
+        "callers",
+        "site",
+        "sites",
+        "usage",
+        "usages",
+        "reference",
+        "references",
+        "refs",
+        "find",
+        "show",
+        "where",
+        "used",
+        "use",
+        "of",
+        "the",
+        "a",
+        "an",
+        "for",
+        "to",
+        "in",
+        "from",
+        "with",
+        "function",
+        "helper",
+        "symbol",
     ];
 
     let mut candidates = Vec::new();
@@ -961,9 +1139,15 @@ fn score_fn<F: Fn(&str) -> f32>(
     let mut score = 0.0f32;
     for qt in query_tokens {
         let w = idf(qt);
-        if name_set.contains(qt)   { score += 3.0 * w; }
-        if callee_set.contains(qt) { score += 1.0 * w; }
-        if file_set.contains(qt)   { score += 0.5 * w; }
+        if name_set.contains(qt) {
+            score += 3.0 * w;
+        }
+        if callee_set.contains(qt) {
+            score += 1.0 * w;
+        }
+        if file_set.contains(qt) {
+            score += 0.5 * w;
+        }
     }
     score
 }
@@ -1057,8 +1241,8 @@ mod semantic_note_tests {
     use std::collections::BTreeSet;
     use tempfile::TempDir;
 
-    use crate::engine::types::BakeIndex;
     use crate::engine::types::BakeFile;
+    use crate::engine::types::BakeIndex;
 
     fn write_minimal_bake(dir: &TempDir) {
         let bakes_dir = dir.path().join("bakes/latest");
@@ -1093,11 +1277,20 @@ mod semantic_note_tests {
             "add numbers".into(),
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let note = v["note"].as_str().expect("note field should be present when embeddings not ready");
-        assert!(note.contains("building"), "note should mention building: {note}");
-        assert!(note.contains("TF-IDF"), "note should mention TF-IDF: {note}");
+        let note = v["note"]
+            .as_str()
+            .expect("note field should be present when embeddings not ready");
+        assert!(
+            note.contains("building"),
+            "note should mention building: {note}"
+        );
+        assert!(
+            note.contains("TF-IDF"),
+            "note should mention TF-IDF: {note}"
+        );
     }
 
     #[test]
@@ -1115,7 +1308,10 @@ mod semantic_note_tests {
             None,
         );
         // Should succeed (TF-IDF fallback), not error.
-        assert!(out.is_ok(), "semantic_search should not error without embeddings");
+        assert!(
+            out.is_ok(),
+            "semantic_search should not error without embeddings"
+        );
         let v: serde_json::Value = serde_json::from_str(&out.unwrap()).unwrap();
         assert_eq!(v["tool"], "semantic_search");
     }
@@ -1223,8 +1419,14 @@ mod semantic_note_tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         let first = &v["matches"][0];
         assert_eq!(v["mode"], "symbol");
-        assert_eq!(first["signature"], "pub fn add(left: i32, right: i32) -> i32");
-        assert!(first.get("source").is_none(), "signature-only mode should not return source");
+        assert_eq!(
+            first["signature"],
+            "pub fn add(left: i32, right: i32) -> i32"
+        );
+        assert!(
+            first.get("source").is_none(),
+            "signature-only mode should not return source"
+        );
     }
 
     #[test]
@@ -1294,7 +1496,10 @@ mod semantic_note_tests {
         )
         .unwrap();
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["matches"][0]["signature"], "func Add(left int, right int) int");
+        assert_eq!(
+            v["matches"][0]["signature"],
+            "func Add(left int, right int) int"
+        );
     }
 
     #[test]
@@ -1471,12 +1676,9 @@ pub fn semantic_search(
     // to TF-IDF and surface a note so the caller knows why.
     let embeddings_ready = bake_dir.join("embeddings.db").exists();
     if embeddings_ready {
-        if let Ok(Some(matches)) = crate::engine::embed::vector_search(
-            &bake_dir,
-            &query,
-            limit,
-            file_filter.as_deref(),
-        ) {
+        if let Ok(Some(matches)) =
+            crate::engine::embed::vector_search(&bake_dir, &query, limit, file_filter.as_deref())
+        {
             let results: Vec<SemanticMatch> = matches
                 .into_iter()
                 .map(|m| SemanticMatch {
@@ -1514,8 +1716,7 @@ pub fn semantic_search(
     }
 
     let n = bake.functions.len() as f32;
-    let mut doc_freq: std::collections::HashMap<String, f32> =
-        std::collections::HashMap::new();
+    let mut doc_freq: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
     for func in &bake.functions {
         for tok in tokenize(&func.name)
             .into_iter()
@@ -1539,7 +1740,11 @@ pub fn semantic_search(
         })
         .filter_map(|f| {
             let s = score_fn(f, &query_tokens, &idf);
-            if s > 0.0 { Some((s, f)) } else { None }
+            if s > 0.0 {
+                Some((s, f))
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -1608,7 +1813,9 @@ pub fn file_functions(
                 let mut methods: Vec<_> = bake
                     .functions
                     .iter()
-                    .filter(|f| f.file == rel_file && f.parent_type.as_deref() == Some(t.name.as_str()))
+                    .filter(|f| {
+                        f.file == rel_file && f.parent_type.as_deref() == Some(t.name.as_str())
+                    })
                     .map(|f| build_type_method_summary(&root, f, true))
                     .collect();
                 methods.sort_by(|a, b| a.start_line.cmp(&b.start_line).then(a.name.cmp(&b.name)));
@@ -1761,14 +1968,23 @@ pub fn inspect(
                 parsed,
             )
         }
-    } else if let (Some(file), Some(start_line), Some(end_line)) = (file.clone(), start_line, end_line) {
+    } else if let (Some(file), Some(start_line), Some(end_line)) =
+        (file.clone(), start_line, end_line)
+    {
         let source = fs::read_to_string(root.join(&file))
             .map_err(|e| anyhow!("Failed to read file '{}': {}", file, e))?;
         let all_lines: Vec<&str> = source.lines().collect();
         let start_idx = start_line.saturating_sub(1) as usize;
         let end_idx = end_line.saturating_sub(1) as usize;
         let excerpt = cap_source(&all_lines, start_idx, end_idx, &file, start_line, end_line)
-            .ok_or_else(|| anyhow!("Invalid line range {}..{} for '{}'", start_line, end_line, file))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "Invalid line range {}..{} for '{}'",
+                    start_line,
+                    end_line,
+                    file
+                )
+            })?;
         (
             "lines",
             serde_json::json!({
@@ -1817,7 +2033,10 @@ pub fn inspect(
 
     let mut payload = serde_json::Map::new();
     payload.insert("tool".to_string(), serde_json::json!("inspect"));
-    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert(
+        "version".to_string(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
     payload.insert("project_root".to_string(), serde_json::json!(root));
     payload.insert("mode".to_string(), serde_json::json!(mode));
     payload.insert("target".to_string(), target);
@@ -1827,5 +2046,7 @@ pub fn inspect(
         serde_json::json!(inspect_next_hint(mode)),
     );
 
-    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
+        payload,
+    ))?)
 }

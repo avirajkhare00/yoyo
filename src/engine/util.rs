@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 
 use super::types::{BakeFile, BakeIndex};
 
@@ -14,7 +14,8 @@ pub(crate) struct Snapshot {
 fn requested_root(path: Option<String>) -> Result<PathBuf> {
     if let Some(p) = path {
         let pb = PathBuf::from(p);
-        let meta = fs::metadata(&pb).with_context(|| format!("Failed to stat path: {}", pb.display()))?;
+        let meta =
+            fs::metadata(&pb).with_context(|| format!("Failed to stat path: {}", pb.display()))?;
         if !meta.is_dir() {
             anyhow::bail!("Provided path is not a directory: {}", pb.display());
         }
@@ -37,7 +38,14 @@ fn find_bake_root(start: &Path) -> Option<PathBuf> {
 }
 
 fn find_project_root_hint(start: &Path) -> Option<PathBuf> {
-    const MARKERS: &[&str] = &[".git", "Cargo.toml", "go.mod", "package.json", "pyproject.toml", "Gemfile"];
+    const MARKERS: &[&str] = &[
+        ".git",
+        "Cargo.toml",
+        "go.mod",
+        "package.json",
+        "pyproject.toml",
+        "Gemfile",
+    ];
 
     start
         .ancestors()
@@ -131,8 +139,12 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
         let (fresh, _, _) = build_bake_index(root, &std::collections::HashMap::new())?;
         let bakes_dir = root.join("bakes").join("latest");
         fs::create_dir_all(&bakes_dir)?;
-        super::db::write_bake_to_db(&fresh, &bake_path)
-            .with_context(|| format!("Failed to write refreshed bake index to {}", bake_path.display()))?;
+        super::db::write_bake_to_db(&fresh, &bake_path).with_context(|| {
+            format!(
+                "Failed to write refreshed bake index to {}",
+                bake_path.display()
+            )
+        })?;
         return Ok(Some(fresh));
     }
 
@@ -159,7 +171,10 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
     let mut paths = Vec::new();
 
     // Zig: zig env --json → lib_dir/std
-    if let Ok(out) = std::process::Command::new("zig").args(["env", "--json"]).output() {
+    if let Ok(out) = std::process::Command::new("zig")
+        .args(["env", "--json"])
+        .output()
+    {
         if let Ok(json) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
             if let Some(lib_dir) = json.get("lib_dir").and_then(|v| v.as_str()) {
                 let p = PathBuf::from(lib_dir).join("std");
@@ -171,7 +186,10 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
     }
 
     // Go: go env GOROOT → GOROOT/src
-    if let Ok(out) = std::process::Command::new("go").args(["env", "GOROOT"]).output() {
+    if let Ok(out) = std::process::Command::new("go")
+        .args(["env", "GOROOT"])
+        .output()
+    {
         if let Ok(s) = std::str::from_utf8(&out.stdout) {
             let p = PathBuf::from(s.trim()).join("src");
             if p.is_dir() {
@@ -181,10 +199,17 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
     }
 
     // Rust: rustc --print sysroot → .../lib/rustlib/src/rust/library
-    if let Ok(out) = std::process::Command::new("rustc").args(["--print", "sysroot"]).output() {
+    if let Ok(out) = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .output()
+    {
         if let Ok(s) = std::str::from_utf8(&out.stdout) {
             let p = PathBuf::from(s.trim())
-                .join("lib").join("rustlib").join("src").join("rust").join("library");
+                .join("lib")
+                .join("rustlib")
+                .join("src")
+                .join("rust")
+                .join("library");
             if p.is_dir() {
                 paths.push(("rust".to_string(), p));
             }
@@ -193,14 +218,21 @@ pub(crate) fn detect_stdlib_paths() -> Vec<(String, PathBuf)> {
 
     // TypeScript: try npm, pnpm, yarn in order — first valid dir wins
     let ts_root = [
-        ("npm",  vec!["root", "-g"]),
+        ("npm", vec!["root", "-g"]),
         ("pnpm", vec!["root", "-g"]),
         ("yarn", vec!["global", "dir"]),
     ]
     .iter()
     .find_map(|(cmd, args)| {
-        std::process::Command::new(cmd).args(args.as_slice()).output().ok()
-            .and_then(|out| std::str::from_utf8(&out.stdout).ok().map(|s| s.trim().to_string()))
+        std::process::Command::new(cmd)
+            .args(args.as_slice())
+            .output()
+            .ok()
+            .and_then(|out| {
+                std::str::from_utf8(&out.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            })
             .map(|s| PathBuf::from(s).join("typescript").join("lib"))
             .filter(|p| p.is_dir())
     });
@@ -235,10 +267,10 @@ pub(crate) fn build_bake_index(
     let mut skipped = 0usize;
 
     for result in WalkBuilder::new(root)
-        .hidden(false)       // don't skip hidden files — .gitignore handles exclusions
-        .git_ignore(true)    // respect .gitignore (nested, global, .git/info/exclude)
-        .require_git(false)  // apply .gitignore rules even outside a git repo
-        .filter_entry(|e| e.file_name() != ".git")  // never descend into .git/
+        .hidden(false) // don't skip hidden files — .gitignore handles exclusions
+        .git_ignore(true) // respect .gitignore (nested, global, .git/info/exclude)
+        .require_git(false) // apply .gitignore rules even outside a git repo
+        .filter_entry(|e| e.file_name() != ".git") // never descend into .git/
         .build()
     {
         let entry = match result {
@@ -472,7 +504,10 @@ mod tests {
 
         let err = require_bake_index(&subdir).err().unwrap().to_string();
         assert!(err.contains(&format!("No bake index found under {}", subdir.display())));
-        assert!(err.contains(&format!("Did you mean to pass the project root {}", dir.path().display())));
+        assert!(err.contains(&format!(
+            "Did you mean to pass the project root {}",
+            dir.path().display()
+        )));
     }
 
     #[test]

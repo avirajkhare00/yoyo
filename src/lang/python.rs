@@ -6,9 +6,8 @@ use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
-    Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, IndexedEndpoint,
+    IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds, Visibility,
 };
 
 pub struct PythonAnalyzer;
@@ -28,7 +27,8 @@ impl LanguageAnalyzer for PythonAnalyzer {
     }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
-        source.lines()
+        source
+            .lines()
             .filter_map(|line| {
                 let t = line.trim();
                 if t.starts_with("from ") {
@@ -49,7 +49,12 @@ impl LanguageAnalyzer for PythonAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<crate::lang::IndexedImpl>)> {
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<crate::lang::IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -64,7 +69,16 @@ impl LanguageAnalyzer for PythonAnalyzer {
         let mut types = Vec::new();
         let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&rel_file, "python");
-        walk_py(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
+        walk_py(
+            &source,
+            root,
+            file,
+            tree.root_node(),
+            &mod_path,
+            &mut functions,
+            &mut endpoints,
+            &mut types,
+        );
         Ok((functions, endpoints, types, vec![]))
     }
 
@@ -100,7 +114,10 @@ fn walk_py(
     match node.kind() {
         "class_definition" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     let vis = py_visibility(&name);
@@ -121,7 +138,10 @@ fn walk_py(
         }
         "function_definition" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
                 let vis = py_visibility(&name);
@@ -157,7 +177,10 @@ fn walk_py(
             if let Some(def) = node.child_by_field_name("definition") {
                 if def.kind() == "function_definition" {
                     if let Some(name_node) = def.child_by_field_name("name") {
-                        let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                        let name = name_node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .to_string();
                         let (start_line, end_line) = line_range(&def);
                         let (byte_start, byte_end) = byte_range(&def);
                         let vis = py_visibility(&name);
@@ -190,7 +213,9 @@ fn walk_py(
                         }
                     }
                 } else {
-                    walk_py(source, root, file, def, mod_path, functions, endpoints, types);
+                    walk_py(
+                        source, root, file, def, mod_path, functions, endpoints, types,
+                    );
                 }
                 return;
             }
@@ -200,7 +225,9 @@ fn walk_py(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_py(source, root, file, child, mod_path, functions, endpoints, types);
+        walk_py(
+            source, root, file, child, mod_path, functions, endpoints, types,
+        );
     }
 }
 
@@ -217,9 +244,10 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
         if let Some(func) = node.child_by_field_name("function") {
             let line = node.start_position().row as u32 + 1;
             let (callee, qualifier) = match func.kind() {
-                "identifier" => {
-                    (func.utf8_text(source.as_bytes()).unwrap_or("").to_string(), None)
-                }
+                "identifier" => (
+                    func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+                    None,
+                ),
                 "attribute" => {
                     let callee = func
                         .child_by_field_name("attribute")
@@ -235,7 +263,11 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                 _ => (String::new(), None),
             };
             if !callee.is_empty() {
-                calls.push(crate::lang::CallSite { callee, qualifier, line });
+                calls.push(crate::lang::CallSite {
+                    callee,
+                    qualifier,
+                    line,
+                });
             }
         }
     }
@@ -303,8 +335,16 @@ fn first_string_arg(source: &str, args: Node) -> Option<String> {
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_statement", "elif_clause", "for_statement", "while_statement",
-        "try_statement", "with_statement", "conditional_expression",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_statement",
+            "elif_clause",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "with_statement",
+            "conditional_expression",
+        ],
+    )
 }

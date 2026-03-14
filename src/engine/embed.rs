@@ -4,7 +4,6 @@ use anyhow::Result;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use rusqlite::{params, Connection};
 
-
 const BATCH_SIZE: usize = 64;
 const MODEL: EmbeddingModel = EmbeddingModel::AllMiniLML6V2;
 
@@ -20,22 +19,30 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
     }
 
     // Skip test/bench/example functions — they contaminate semantic results.
-    let production_fns: Vec<_> = bake.functions.iter().filter(|f| {
-        let fl = f.file.to_lowercase();
-        !fl.contains("test") && !fl.contains("/bench") && !fl.contains("example")
-            && !f.name.to_lowercase().starts_with("test")
-            && !f.name.to_lowercase().ends_with("_test")
-    }).collect();
+    let production_fns: Vec<_> = bake
+        .functions
+        .iter()
+        .filter(|f| {
+            let fl = f.file.to_lowercase();
+            !fl.contains("test")
+                && !fl.contains("/bench")
+                && !fl.contains("example")
+                && !f.name.to_lowercase().starts_with("test")
+                && !f.name.to_lowercase().ends_with("_test")
+        })
+        .collect();
 
     if production_fns.is_empty() {
         return Ok(());
     }
 
-    eprintln!("[yoyo] Building embeddings for {} functions (production only)…", production_fns.len());
+    eprintln!(
+        "[yoyo] Building embeddings for {} functions (production only)…",
+        production_fns.len()
+    );
 
-    let mut model = TextEmbedding::try_new(
-        InitOptions::new(MODEL).with_show_download_progress(true),
-    )?;
+    let mut model =
+        TextEmbedding::try_new(InitOptions::new(MODEL).with_show_download_progress(true))?;
 
     let conn = open_db(&db_path)?;
 
@@ -60,7 +67,10 @@ pub fn build_embeddings(bake_dir: &Path) -> Result<()> {
                 crate::lang::Visibility::Module => "module",
                 crate::lang::Visibility::Private => "private",
             };
-            format!("{} {} {} {} {} {}", f.name, f.qualified_name, f.module_path, vis, file_stem, callees)
+            format!(
+                "{} {} {} {} {} {}",
+                f.name, f.qualified_name, f.module_path, vis, file_stem, callees
+            )
         })
         .collect();
 
@@ -110,9 +120,8 @@ pub fn vector_search(
     let query_vec = &query_emb[0];
 
     let conn = Connection::open(&db_path)?;
-    let mut stmt = conn.prepare(
-        "SELECT name, file, start_line, parent_type, embedding FROM embeddings",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT name, file, start_line, parent_type, embedding FROM embeddings")?;
 
     let mut scored: Vec<(f32, VectorMatch)> = stmt
         .query_map([], |row| {
@@ -131,7 +140,16 @@ pub fn vector_search(
         .map(|(name, file, start_line, parent_type, bytes)| {
             let emb = bytes_to_f32_vec(&bytes);
             let score = cosine_sim(query_vec, &emb);
-            (score, VectorMatch { name, file, start_line, parent_type, score })
+            (
+                score,
+                VectorMatch {
+                    name,
+                    file,
+                    start_line,
+                    parent_type,
+                    score,
+                },
+            )
         })
         .collect();
 
@@ -180,5 +198,9 @@ fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let nb = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na * nb) }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na * nb)
+    }
 }

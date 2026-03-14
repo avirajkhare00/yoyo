@@ -461,6 +461,8 @@ pub(crate) struct PatchPayload {
     pub(crate) total_lines: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) patched_source: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) syntax_errors: Vec<SyntaxError>,
 }
@@ -475,6 +477,8 @@ pub(crate) struct PatchBytesPayload {
     pub(crate) byte_start: usize,
     pub(crate) byte_end: usize,
     pub(crate) new_bytes: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) syntax_errors: Vec<SyntaxError>,
 }
@@ -486,6 +490,8 @@ pub(crate) struct MultiPatchPayload {
     pub(crate) project_root: PathBuf,
     pub(crate) files_written: usize,
     pub(crate) edits_applied: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) syntax_errors: Vec<SyntaxError>,
 }
@@ -513,6 +519,8 @@ pub(crate) struct GraphAddPayload {
     pub(crate) name: String,
     pub(crate) file: String,
     pub(crate) inserted_at_byte: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -523,6 +531,8 @@ pub(crate) struct GraphCreatePayload {
     pub(crate) file: String,
     pub(crate) function_name: String,
     pub(crate) language: String,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -534,6 +544,8 @@ pub(crate) struct GraphMovePayload {
     pub(crate) from_file: String,
     pub(crate) to_file: String,
     pub(crate) imports_added: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) warnings: Vec<String>,
 }
 
 #[derive(Serialize)]

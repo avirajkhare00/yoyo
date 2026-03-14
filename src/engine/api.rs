@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
-use super::types::{AllEndpointsPayload, EndpointSummary, FlowHandlerInfo, FlowPayload};
 use super::graph::trace_chain;
+use super::types::{AllEndpointsPayload, EndpointSummary, FlowHandlerInfo, FlowPayload};
 use super::util::{require_bake_index, resolve_project_root};
 
 /// Public entrypoint for the `all_endpoints` tool: list Express-style endpoints.
@@ -52,21 +52,41 @@ pub fn flow(
     let endpoint_lc = endpoint.to_lowercase();
 
     // Find matching endpoint
-    let ep = bake.endpoints.iter().find(|e| {
-        e.path.to_lowercase().contains(&endpoint_lc)
-            && method_uc.as_ref().map(|m| &e.method == m).unwrap_or(true)
-    }).ok_or_else(|| anyhow!("No endpoint matching '{}'. Run `all_endpoints` to list available routes.", endpoint))?;
+    let ep = bake
+        .endpoints
+        .iter()
+        .find(|e| {
+            e.path.to_lowercase().contains(&endpoint_lc)
+                && method_uc.as_ref().map(|m| &e.method == m).unwrap_or(true)
+        })
+        .ok_or_else(|| {
+            anyhow!(
+                "No endpoint matching '{}'. Run `all_endpoints` to list available routes.",
+                endpoint
+            )
+        })?;
 
-    let handler_name = ep.handler_name.clone()
-        .ok_or_else(|| anyhow!("Endpoint '{}' has no resolved handler. It may use an inline/anonymous handler.", ep.path))?;
+    let handler_name = ep.handler_name.clone().ok_or_else(|| {
+        anyhow!(
+            "Endpoint '{}' has no resolved handler. It may use an inline/anonymous handler.",
+            ep.path
+        )
+    })?;
 
     // Find handler function in index
     let handler_lc = handler_name.to_lowercase();
     let ep_file_lc = ep.file.to_lowercase();
-    let start = bake.functions.iter().find(|f| {
-        f.name.to_lowercase() == handler_lc
-            && f.file.to_lowercase().contains(&ep_file_lc)
-    }).or_else(|| bake.functions.iter().find(|f| f.name.to_lowercase() == handler_lc));
+    let start = bake
+        .functions
+        .iter()
+        .find(|f| {
+            f.name.to_lowercase() == handler_lc && f.file.to_lowercase().contains(&ep_file_lc)
+        })
+        .or_else(|| {
+            bake.functions
+                .iter()
+                .find(|f| f.name.to_lowercase() == handler_lc)
+        });
 
     let ep_summary = EndpointSummary {
         method: ep.method.clone(),
@@ -75,7 +95,9 @@ pub fn flow(
         handler_name: ep.handler_name.clone(),
     };
 
-    let (handler_info, call_chain, boundaries, unresolved, chain_warning) = if let Some(start_fn) = start {
+    let (handler_info, call_chain, boundaries, unresolved, chain_warning) = if let Some(start_fn) =
+        start
+    {
         let source = if include_source {
             std::fs::read_to_string(root.join(&start_fn.file))
                 .ok()
@@ -111,10 +133,12 @@ pub fn flow(
         };
 
         let (chain, unresolved) = trace_chain(&bake, start_fn, depth.unwrap_or(5));
-        let boundaries: Vec<String> = chain.iter()
+        let boundaries: Vec<String> = chain
+            .iter()
             .filter_map(|n| n.boundary.clone())
             .collect::<std::collections::HashSet<_>>()
-            .into_iter().collect();
+            .into_iter()
+            .collect();
 
         let handler = FlowHandlerInfo {
             name: start_fn.name.clone(),
@@ -138,15 +162,22 @@ pub fn flow(
     } else {
         format!(" → [{}]", boundaries.join(", "))
     };
-    let chain_str = call_chain.iter()
+    let chain_str = call_chain
+        .iter()
         .filter(|n| n.depth > 0 && n.resolved)
         .map(|n| n.name.as_str())
         .collect::<Vec<_>>()
         .join(" → ");
     let summary = if chain_str.is_empty() {
-        format!("{} {} → {}{}", ep_summary.method, ep_summary.path, handler_info.name, boundary_str)
+        format!(
+            "{} {} → {}{}",
+            ep_summary.method, ep_summary.path, handler_info.name, boundary_str
+        )
     } else {
-        format!("{} {} → {} → {}{}", ep_summary.method, ep_summary.path, handler_info.name, chain_str, boundary_str)
+        format!(
+            "{} {} → {} → {}{}",
+            ep_summary.method, ep_summary.path, handler_info.name, chain_str, boundary_str
+        )
     };
 
     let payload = FlowPayload {
@@ -218,12 +249,17 @@ pub fn impact(
 
     let mut payload = serde_json::Map::new();
     payload.insert("tool".to_string(), serde_json::json!("impact"));
-    payload.insert("version".to_string(), serde_json::json!(env!("CARGO_PKG_VERSION")));
+    payload.insert(
+        "version".to_string(),
+        serde_json::json!(env!("CARGO_PKG_VERSION")),
+    );
     payload.insert("project_root".to_string(), serde_json::json!(root));
     payload.insert("mode".to_string(), serde_json::json!(mode));
     payload.insert("target".to_string(), target);
     payload.extend(parsed);
     payload.insert("next_hint".to_string(), serde_json::json!(next_hint));
 
-    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(payload))?)
+    Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
+        payload,
+    ))?)
 }

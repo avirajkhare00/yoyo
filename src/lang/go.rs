@@ -6,16 +6,19 @@ use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    IndexedEndpoint, IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds,
-    SignatureParam,
-    Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, IndexedEndpoint,
+    IndexedFunction, IndexedType, LanguageAnalyzer, NodeKinds, SignatureParam, Visibility,
 };
 
 pub struct GoAnalyzer;
 
 const KINDS: NodeKinds = NodeKinds {
-    identifiers: &["identifier", "field_identifier", "type_identifier", "package_identifier"],
+    identifiers: &[
+        "identifier",
+        "field_identifier",
+        "type_identifier",
+        "package_identifier",
+    ],
     strings: &["interpreted_string_literal", "raw_string_literal"],
     comments: &["comment"],
     calls: &["call_expression"],
@@ -33,16 +36,28 @@ impl LanguageAnalyzer for GoAnalyzer {
         let mut in_block = false;
         for line in source.lines() {
             let t = line.trim();
-            if t == "import (" { in_block = true; continue; }
-            if in_block && t == ")" { in_block = false; continue; }
+            if t == "import (" {
+                in_block = true;
+                continue;
+            }
+            if in_block && t == ")" {
+                in_block = false;
+                continue;
+            }
             // single: import "pkg" or block entry: "pkg" or _ "pkg" or alias "pkg"
-            let candidate = if in_block { t } else { t.strip_prefix("import ").unwrap_or("") };
+            let candidate = if in_block {
+                t
+            } else {
+                t.strip_prefix("import ").unwrap_or("")
+            };
             // extract content between quotes
             if let Some(start) = candidate.find('"') {
                 let rest = &candidate[start + 1..];
                 if let Some(end) = rest.find('"') {
                     let path = &rest[..end];
-                    if !path.is_empty() { imports.push(path.to_string()); }
+                    if !path.is_empty() {
+                        imports.push(path.to_string());
+                    }
                 }
             }
         }
@@ -53,7 +68,12 @@ impl LanguageAnalyzer for GoAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<crate::lang::IndexedImpl>)> {
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<crate::lang::IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -71,7 +91,16 @@ impl LanguageAnalyzer for GoAnalyzer {
             let rel = relative(root, file);
             module_path_from_file(&rel, "go")
         });
-        walk_go(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut endpoints, &mut types);
+        walk_go(
+            &source,
+            root,
+            file,
+            tree.root_node(),
+            &mod_path,
+            &mut functions,
+            &mut endpoints,
+            &mut types,
+        );
         Ok((functions, endpoints, types, vec![]))
     }
 
@@ -104,7 +133,12 @@ fn go_package_from_source(source: &str) -> Option<String> {
 
 /// Go visibility: exported (capitalized) → Public, unexported → Private.
 fn go_visibility(name: &str) -> Visibility {
-    if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+    if name
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false)
+    {
         Visibility::Public
     } else {
         Visibility::Private
@@ -138,7 +172,8 @@ fn go_parameter_list(node: Node, source: &str) -> Vec<SignatureParam> {
                 let mut type_str = type_node
                     .and_then(|n| node_text(n, source))
                     .unwrap_or_else(|| node_text(child, source).unwrap_or_default());
-                if child.kind() == "variadic_parameter_declaration" && !type_str.starts_with("...") {
+                if child.kind() == "variadic_parameter_declaration" && !type_str.starts_with("...")
+                {
                     type_str = format!("...{}", type_str);
                 }
                 if names.is_empty() {
@@ -177,7 +212,12 @@ fn go_receiver_type(receiver: &str) -> Option<String> {
 fn go_signature_parts(
     node: Node,
     source: &str,
-) -> (Vec<SignatureParam>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Vec<SignatureParam>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     let params = node
         .child_by_field_name("parameters")
         .map(|n| go_parameter_list(n, source))
@@ -206,7 +246,10 @@ fn walk_go(
             for child in node.children(&mut cursor) {
                 if child.kind() == "type_spec" {
                     if let Some(name_node) = child.child_by_field_name("name") {
-                        let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                        let name = name_node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or("")
+                            .to_string();
                         if !name.is_empty() {
                             let kind = child
                                 .child_by_field_name("type")
@@ -237,15 +280,20 @@ fn walk_go(
         }
         "function_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
                 let vis = go_visibility(&name);
                 let qname = qualified_name(mod_path, &name, "go");
                 let (params, return_type, _, _) = go_signature_parts(node, source);
                 let param_types: Vec<String> = params.iter().map(|p| p.type_str.clone()).collect();
-                let sig_hash =
-                    super::compute_sig_hash(&param_types, return_type.as_deref().unwrap_or_default());
+                let sig_hash = super::compute_sig_hash(
+                    &param_types,
+                    return_type.as_deref().unwrap_or_default(),
+                );
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -269,15 +317,20 @@ fn walk_go(
         }
         "method_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 let (start_line, end_line) = line_range(&node);
                 let (byte_start, byte_end) = byte_range(&node);
                 let vis = go_visibility(&name);
                 let qname = qualified_name(mod_path, &name, "go");
                 let (params, return_type, receiver, parent_type) = go_signature_parts(node, source);
                 let param_types: Vec<String> = params.iter().map(|p| p.type_str.clone()).collect();
-                let sig_hash =
-                    super::compute_sig_hash(&param_types, return_type.as_deref().unwrap_or_default());
+                let sig_hash = super::compute_sig_hash(
+                    &param_types,
+                    return_type.as_deref().unwrap_or_default(),
+                );
                 functions.push(IndexedFunction {
                     name,
                     file: relative(root, file),
@@ -311,13 +364,20 @@ fn walk_go(
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        walk_go(source, root, file, child, mod_path, functions, endpoints, types);
+        walk_go(
+            source, root, file, child, mod_path, functions, endpoints, types,
+        );
     }
 }
 
 /// Detect gin/echo/net-http-style route registration calls.
 /// Patterns: r.GET("/path", ...) | http.HandleFunc("/path", ...) | r.Handle("/path", ...)
-fn extract_http_route(source: &str, node: Node, file: &Path, root: &Path) -> Option<IndexedEndpoint> {
+fn extract_http_route(
+    source: &str,
+    node: Node,
+    file: &Path,
+    root: &Path,
+) -> Option<IndexedEndpoint> {
     let func = node.child_by_field_name("function")?;
 
     // Must be a selector expression: <receiver>.<method>
@@ -363,10 +423,17 @@ fn first_string_arg(source: &str, args: Node) -> Option<String> {
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_statement", "for_statement", "expression_switch_statement",
-        "type_switch_statement", "select_statement", "communication_case",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_statement",
+            "for_statement",
+            "expression_switch_statement",
+            "type_switch_statement",
+            "select_statement",
+            "communication_case",
+        ],
+    )
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
@@ -401,7 +468,11 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                 _ => (String::new(), None),
             };
             if !callee.is_empty() {
-                calls.push(crate::lang::CallSite { callee, qualifier, line });
+                calls.push(crate::lang::CallSite {
+                    callee,
+                    qualifier,
+                    line,
+                });
             }
         }
     }

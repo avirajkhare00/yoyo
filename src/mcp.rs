@@ -157,7 +157,12 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
                 "instructions": instructions
             });
 
-            JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(result), error: None }
+            JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: req.id,
+                result: Some(result),
+                error: None,
+            }
         }
         "ping" => JsonRpcResponse {
             jsonrpc: "2.0",
@@ -172,19 +177,30 @@ async fn handle_request(req: JsonRpcRequest) -> JsonRpcResponse {
             error: None,
         },
         "call_tool" | "tools/call" => match call_tool(req.params).await {
-            Ok(v) => JsonRpcResponse { jsonrpc: "2.0", id: req.id, result: Some(v), error: None },
+            Ok(v) => JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: req.id,
+                result: Some(v),
+                error: None,
+            },
             Err(e) => JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: req.id,
                 result: None,
-                error: Some(JsonRpcError { code: -32000, message: e.to_string() }),
+                error: Some(JsonRpcError {
+                    code: -32000,
+                    message: e.to_string(),
+                }),
             },
         },
         _ => JsonRpcResponse {
             jsonrpc: "2.0",
             id: req.id,
             result: None,
-            error: Some(JsonRpcError { code: -32601, message: "Method not found".to_string() }),
+            error: Some(JsonRpcError {
+                code: -32601,
+                message: "Method not found".to_string(),
+            }),
         },
     }
 }
@@ -208,13 +224,24 @@ impl ToolEntry {
 }
 
 fn build_registry() -> Vec<ToolEntry> {
-    fn s(desc: &str) -> Value { json!({"type": "string", "description": desc}) }
-    fn i(desc: &str) -> Value { json!({"type": "integer", "description": desc}) }
-    fn b(desc: &str) -> Value { json!({"type": "boolean", "description": desc}) }
-    fn p() -> Value { s("Optional path to project directory") }
+    fn s(desc: &str) -> Value {
+        json!({"type": "string", "description": desc})
+    }
+    fn i(desc: &str) -> Value {
+        json!({"type": "integer", "description": desc})
+    }
+    fn b(desc: &str) -> Value {
+        json!({"type": "boolean", "description": desc})
+    }
+    fn p() -> Value {
+        s("Optional path to project directory")
+    }
 
     let catalog: std::collections::HashMap<&'static str, &'static str> =
-        crate::engine::tool_catalog().into_iter().map(|t| (t.name, t.description)).collect();
+        crate::engine::tool_catalog()
+            .into_iter()
+            .map(|t| (t.name, t.description))
+            .collect();
     let d = |name: &'static str| -> &'static str { catalog.get(name).copied().unwrap_or(name) };
 
     fn schema(name: &str, desc: &str, props: Value) -> Value {
@@ -235,54 +262,70 @@ fn build_registry() -> Vec<ToolEntry> {
             handler: Box::new(|_a, path| crate::engine::bake(path)),
         },
         ToolEntry {
-            schema: schema("inspect", d("inspect"), json!({
-                "path": p(),
-                "name": s("Function name for symbol mode."),
-                "file": s("File path for file or line-range mode."),
-                "start_line": i("1-based start line for line-range mode."),
-                "end_line": i("1-based end line for line-range mode."),
-                "include_source": b("Include function body in symbol mode."),
-                "signature_only": b("Return declaration/signature text only in symbol mode."),
-                "type_only": b("Return a type surface instead of generic symbol matches."),
-                "include_summaries": b("Include summaries in file mode."),
-                "depth": s("File structure depth in file mode: 1, 2, or all."),
-                "limit": i("Maximum number of symbol matches."),
-                "stdlib": b("Include stdlib matches in symbol mode.")
-            })),
-            handler: Box::new(|a, path| crate::engine::inspect(
-                path,
-                a.str_opt("name"),
-                a.str_opt("file"),
-                a.uint_opt("start_line").map(|v| v as u32),
-                a.uint_opt("end_line").map(|v| v as u32),
-                a.bool_opt("include_source"),
-                a.bool_opt("include_summaries"),
-                a.uint_opt("limit"),
-                a.bool_opt("stdlib"),
-                a.bool_opt("signature_only"),
-                a.bool_opt("type_only"),
-                a.str_opt("depth"),
-            )),
+            schema: schema(
+                "inspect",
+                d("inspect"),
+                json!({
+                    "path": p(),
+                    "name": s("Function name for symbol mode."),
+                    "file": s("File path for file or line-range mode."),
+                    "start_line": i("1-based start line for line-range mode."),
+                    "end_line": i("1-based end line for line-range mode."),
+                    "include_source": b("Include function body in symbol mode."),
+                    "signature_only": b("Return declaration/signature text only in symbol mode."),
+                    "type_only": b("Return a type surface instead of generic symbol matches."),
+                    "include_summaries": b("Include summaries in file mode."),
+                    "depth": s("File structure depth in file mode: 1, 2, or all."),
+                    "limit": i("Maximum number of symbol matches."),
+                    "stdlib": b("Include stdlib matches in symbol mode.")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::inspect(
+                    path,
+                    a.str_opt("name"),
+                    a.str_opt("file"),
+                    a.uint_opt("start_line").map(|v| v as u32),
+                    a.uint_opt("end_line").map(|v| v as u32),
+                    a.bool_opt("include_source"),
+                    a.bool_opt("include_summaries"),
+                    a.uint_opt("limit"),
+                    a.bool_opt("stdlib"),
+                    a.bool_opt("signature_only"),
+                    a.bool_opt("type_only"),
+                    a.str_opt("depth"),
+                )
+            }),
         },
         // ── read-indexed ─────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema("map", d("map"), json!({
-                "path": p(),
-                "intent": s("Intent description, e.g. \"user handler\" or \"auth service\""),
-                "limit": {"type": "integer", "description": "Max directories to return (default 100)."}
-            })),
-            handler: Box::new(|a, path| crate::engine::architecture_map(path, a.str_opt("intent"), a.uint_opt("limit"))),
+            schema: schema(
+                "map",
+                d("map"),
+                json!({
+                    "path": p(),
+                    "intent": s("Intent description, e.g. \"user handler\" or \"auth service\""),
+                    "limit": {"type": "integer", "description": "Max directories to return (default 100)."}
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::architecture_map(path, a.str_opt("intent"), a.uint_opt("limit"))
+            }),
         },
         ToolEntry {
-            schema: schema("search", d("search"), json!({
-                "path": p(),
-                "query": s("Search query text"),
-                "context": s("Search context: all | strings | comments | identifiers"),
-                "pattern": s("Pattern: all | call | assign | return"),
-                "exclude_tests": b("Whether to exclude likely test files"),
-                "file": s("Optional file path substring to restrict scope"),
-                "limit": i("Max matches to return (default 200).")
-            })),
+            schema: schema(
+                "search",
+                d("search"),
+                json!({
+                    "path": p(),
+                    "query": s("Search query text"),
+                    "context": s("Search context: all | strings | comments | identifiers"),
+                    "pattern": s("Pattern: all | call | assign | return"),
+                    "exclude_tests": b("Whether to exclude likely test files"),
+                    "file": s("Optional file path substring to restrict scope"),
+                    "limit": i("Max matches to return (default 200).")
+                }),
+            ),
             handler: Box::new(|a, path| {
                 const MODES: &[&str] = &["all", "call", "assign", "return"];
                 let raw_pattern = a.str_opt("pattern");
@@ -292,10 +335,14 @@ fn build_registry() -> Vec<ToolEntry> {
                     if !MODES.contains(&p.as_str()) {
                         p.clone()
                     } else {
-                        return Err(anyhow::anyhow!("Missing required 'query' argument for search"));
+                        return Err(anyhow::anyhow!(
+                            "Missing required 'query' argument for search"
+                        ));
                     }
                 } else {
-                    return Err(anyhow::anyhow!("Missing required 'query' argument for search"));
+                    return Err(anyhow::anyhow!(
+                        "Missing required 'query' argument for search"
+                    ));
                 };
                 let pattern = raw_pattern
                     .filter(|p| MODES.contains(&p.as_str()))
@@ -312,125 +359,186 @@ fn build_registry() -> Vec<ToolEntry> {
             }),
         },
         ToolEntry {
-            schema: schema("ask", d("ask"), json!({
-                "path": p(),
-                "query": s("Natural-language description, e.g. 'validate user token'"),
-                "limit": i("Max results (default 10, max 50)"),
-                "file": s("Optional file path substring to restrict scope")
-            })),
-            handler: Box::new(|a, path| crate::engine::semantic_search(
-                path,
-                a.str_req("query", "ask")?,
-                a.uint_opt("limit"),
-                a.str_opt("file"),
-            )),
+            schema: schema(
+                "ask",
+                d("ask"),
+                json!({
+                    "path": p(),
+                    "query": s("Natural-language description, e.g. 'validate user token'"),
+                    "limit": i("Max results (default 10, max 50)"),
+                    "file": s("Optional file path substring to restrict scope")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::semantic_search(
+                    path,
+                    a.str_req("query", "ask")?,
+                    a.uint_opt("limit"),
+                    a.str_opt("file"),
+                )
+            }),
         },
         ToolEntry {
             schema: schema("routes", d("routes"), json!({"path": p()})),
             handler: Box::new(|_a, path| crate::engine::all_endpoints(path)),
         },
         ToolEntry {
-            schema: schema_req("judge_change", d("judge_change"), &["query"], json!({
-                "path": p(),
-                "query": s("Engineering question, issue text, or failing-test summary."),
-                "symbol": s("Optional symbol hint to bias the judgment toward a known name."),
-                "file": s("Optional file path substring to restrict the search surface."),
-                "limit": i("Maximum number of candidate symbols to return (default 3, max 5).")
-            })),
-            handler: Box::new(|a, path| crate::engine::judge_change(
-                path,
-                a.str_req("query", "judge_change")?,
-                a.str_opt("symbol"),
-                a.str_opt("file"),
-                a.uint_opt("limit"),
-            )),
+            schema: schema_req(
+                "judge_change",
+                d("judge_change"),
+                &["query"],
+                json!({
+                    "path": p(),
+                    "query": s("Engineering question, issue text, or failing-test summary."),
+                    "symbol": s("Optional symbol hint to bias the judgment toward a known name."),
+                    "file": s("Optional file path substring to restrict the search surface."),
+                    "limit": i("Maximum number of candidate symbols to return (default 3, max 5).")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::judge_change(
+                    path,
+                    a.str_req("query", "judge_change")?,
+                    a.str_opt("symbol"),
+                    a.str_opt("file"),
+                    a.uint_opt("limit"),
+                )
+            }),
         },
         ToolEntry {
-            schema: schema("impact", d("impact"), json!({
-                "path": p(),
-                "symbol": s("Function name for symbol-impact mode."),
-                "endpoint": s("URL path substring for endpoint-impact mode."),
-                "method": s("Optional HTTP method filter for endpoint mode."),
-                "depth": i("Max caller/call-chain depth."),
-                "include_source": b("Include handler source inline in endpoint mode.")
-            })),
-            handler: Box::new(|a, path| crate::engine::impact(
-                path,
-                a.str_opt("symbol"),
-                a.str_opt("endpoint"),
-                a.str_opt("method"),
-                a.uint_opt("depth"),
-                a.bool_opt("include_source"),
-            )),
+            schema: schema(
+                "impact",
+                d("impact"),
+                json!({
+                    "path": p(),
+                    "symbol": s("Function name for symbol-impact mode."),
+                    "endpoint": s("URL path substring for endpoint-impact mode."),
+                    "method": s("Optional HTTP method filter for endpoint mode."),
+                    "depth": i("Max caller/call-chain depth."),
+                    "include_source": b("Include handler source inline in endpoint mode.")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::impact(
+                    path,
+                    a.str_opt("symbol"),
+                    a.str_opt("endpoint"),
+                    a.str_opt("method"),
+                    a.uint_opt("depth"),
+                    a.bool_opt("include_source"),
+                )
+            }),
         },
         ToolEntry {
-            schema: schema("health", d("health"), json!({
-                "path": p(),
-                "top": i("Max results per category (default 10)"),
-                "view": s("Response view: compact | full | raw"),
-                "limit": i("Items per section when view=compact (default 3)"),
-                "cursor": s("Section cursor in the form <section>:<offset>")
-            })),
-            handler: Box::new(|a, path| crate::engine::health(
-                path,
-                a.uint_opt("top"),
-                a.str_opt("view"),
-                a.uint_opt("limit"),
-                a.str_opt("cursor"),
-            )),
+            schema: schema(
+                "health",
+                d("health"),
+                json!({
+                    "path": p(),
+                    "top": i("Max results per category (default 10)"),
+                    "view": s("Response view: compact | full | raw"),
+                    "limit": i("Items per section when view=compact (default 3)"),
+                    "cursor": s("Section cursor in the form <section>:<offset>")
+                }),
+            ),
+            handler: Box::new(|a, path| {
+                crate::engine::health(
+                    path,
+                    a.uint_opt("top"),
+                    a.str_opt("view"),
+                    a.uint_opt("limit"),
+                    a.str_opt("cursor"),
+                )
+            }),
         },
         // ── write ────────────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema_req("change", d("change"), &["action"], json!({
-                "path": p(),
-                "action": s("Write action: edit | bulk_edit | rename | move | delete | create | add."),
-                "name": s("Symbol name for edit/rename/move/delete/add."),
-                "file": s("File path for edit/create/add."),
-                "start_line": i("1-based start line for line-range edit."),
-                "end_line": i("1-based end line for line-range edit."),
-                "new_content": s("Replacement content for edit."),
-                "old_string": s("Exact content-match source for edit."),
-                "new_string": s("Content-match replacement for edit."),
-                "match_index": i("0-based symbol disambiguation for edit."),
-                "edits": json!({
-                    "type": "array",
-                    "description": "Edit list for bulk_edit action.",
-                    "items": {
-                        "type": "object",
-                        "required": ["file", "byte_start", "byte_end", "new_content"],
-                        "properties": {
-                            "file": {"type": "string"},
-                            "byte_start": {"type": "integer"},
-                            "byte_end": {"type": "integer"},
-                            "new_content": {"type": "string"}
+            schema: schema_req(
+                "change",
+                d("change"),
+                &["action"],
+                json!({
+                    "path": p(),
+                    "action": s("Write action: edit | bulk_edit | rename | move | delete | create | add."),
+                    "name": s("Symbol name for edit/rename/move/delete/add."),
+                    "file": s("File path for edit/create/add."),
+                    "start_line": i("1-based start line for line-range edit."),
+                    "end_line": i("1-based end line for line-range edit."),
+                    "new_content": s("Replacement content for edit."),
+                    "old_string": s("Exact content-match source for edit."),
+                    "new_string": s("Content-match replacement for edit."),
+                    "match_index": i("0-based symbol disambiguation for edit."),
+                    "edits": json!({
+                        "type": "array",
+                        "description": "Edit list for bulk_edit action.",
+                        "items": {
+                            "type": "object",
+                            "required": ["file", "byte_start", "byte_end", "new_content"],
+                            "properties": {
+                                "file": {"type": "string"},
+                                "byte_start": {"type": "integer"},
+                                "byte_end": {"type": "integer"},
+                                "new_content": {"type": "string"}
+                            }
                         }
-                    }
+                    }),
+                    "new_name": s("Rename target."),
+                    "to_file": s("Destination file for move."),
+                    "force": b("Allow delete even with callers."),
+                    "function_name": s("Function name for create."),
+                    "entity_type": s("Scaffold type for add."),
+                    "after_symbol": s("Insert add scaffold after an existing symbol."),
+                    "language": s("Optional language override for create/add."),
+                    "params": s("Optional typed params JSON for create/add."),
+                    "returns": s("Optional return type for create/add."),
+                    "on": s("Optional receiver/owner type for add.")
                 }),
-                "new_name": s("Rename target."),
-                "to_file": s("Destination file for move."),
-                "force": b("Allow delete even with callers."),
-                "function_name": s("Function name for create."),
-                "entity_type": s("Scaffold type for add."),
-                "after_symbol": s("Insert add scaffold after an existing symbol."),
-                "language": s("Optional language override for create/add."),
-                "params": s("Optional typed params JSON for create/add."),
-                "returns": s("Optional return type for create/add."),
-                "on": s("Optional receiver/owner type for add.")
-            })),
+            ),
             handler: Box::new(|a, path| {
                 let edits = match a.0.get("edits").and_then(|v| v.as_array()) {
                     Some(items) => {
                         let mut edits = Vec::new();
                         for item in items {
-                            let file = item.get("file").and_then(|v| v.as_str())
-                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'file' field"))?.to_string();
-                            let byte_start = item.get("byte_start").and_then(|v| v.as_u64())
-                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'byte_start' field"))? as usize;
-                            let byte_end = item.get("byte_end").and_then(|v| v.as_u64())
-                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'byte_end' field"))? as usize;
-                            let new_content = item.get("new_content").and_then(|v| v.as_str())
-                                .ok_or_else(|| anyhow::anyhow!("Each change.edits item must have a 'new_content' field"))?.to_string();
-                            edits.push(crate::engine::PatchEdit { file, byte_start, byte_end, new_content });
+                            let file = item
+                                .get("file")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Each change.edits item must have a 'file' field"
+                                    )
+                                })?
+                                .to_string();
+                            let byte_start = item
+                                .get("byte_start")
+                                .and_then(|v| v.as_u64())
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Each change.edits item must have a 'byte_start' field"
+                                    )
+                                })? as usize;
+                            let byte_end = item
+                                .get("byte_end")
+                                .and_then(|v| v.as_u64())
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Each change.edits item must have a 'byte_end' field"
+                                    )
+                                })? as usize;
+                            let new_content = item
+                                .get("new_content")
+                                .and_then(|v| v.as_str())
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Each change.edits item must have a 'new_content' field"
+                                    )
+                                })?
+                                .to_string();
+                            edits.push(crate::engine::PatchEdit {
+                                file,
+                                byte_start,
+                                byte_end,
+                                new_content,
+                            });
                         }
                         Some(edits)
                     }
@@ -462,12 +570,17 @@ fn build_registry() -> Vec<ToolEntry> {
             }),
         },
         ToolEntry {
-            schema: schema_req("retry_plan", d("retry_plan"), &["text"], json!({
-                "path": p(),
-                "text": s("Failed write output containing a `guard_failure: {...}` line, or a raw guard_failure JSON object."),
-                "max_retries": i("Maximum retry attempts the caller should allow before stopping (default 2)."),
-                "context_lines": i("Context lines to include above and below the failing range (default 3).")
-            })),
+            schema: schema_req(
+                "retry_plan",
+                d("retry_plan"),
+                &["text"],
+                json!({
+                    "path": p(),
+                    "text": s("Failed write output containing a `guard_failure: {...}` line, or a raw guard_failure JSON object."),
+                    "max_retries": i("Maximum retry attempts the caller should allow before stopping (default 2)."),
+                    "context_lines": i("Context lines to include above and below the failing range (default 3).")
+                }),
+            ),
             handler: Box::new(|a, path| {
                 crate::engine::guard_retry_plan(
                     path,
@@ -479,22 +592,30 @@ fn build_registry() -> Vec<ToolEntry> {
         },
         // ── orchestration ────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema_req("script", d("script"), &["code"], json!({
-                "path": p(),
-                "code": s("Rhai script to execute. Task-shaped functions: boot(), index(), inspect(#{...}), search(\"...\") or search(#{...}), ask(\"...\") or ask(#{...}), map(\"...\") or map(#{...}), routes(), judge_change(#{...}), impact(#{...}), health() or health(#{...}), change(#{...}), help(\"...\").")
-            })),
+            schema: schema_req(
+                "script",
+                d("script"),
+                &["code"],
+                json!({
+                    "path": p(),
+                    "code": s("Rhai script to execute. Task-shaped functions: boot(), index(), inspect(#{...}), search(\"...\") or search(#{...}), ask(\"...\") or ask(#{...}), map(\"...\") or map(#{...}), routes(), judge_change(#{...}), impact(#{...}), health() or health(#{...}), change(#{...}), help(\"...\").")
+                }),
+            ),
             handler: Box::new(|a, path| {
                 crate::engine::run_script(path, a.str_req("code", "script")?)
             }),
         },
         // ── discovery ────────────────────────────────────────────────────────
         ToolEntry {
-            schema: schema_req("help", d("help"), &["name"], json!({
-                "name": s("Tool name to get help for")
-            })),
-            handler: Box::new(|a, _path| {
-                crate::engine::tool_help(a.str_req("name", "help")?)
-            }),
+            schema: schema_req(
+                "help",
+                d("help"),
+                &["name"],
+                json!({
+                    "name": s("Tool name to get help for")
+                }),
+            ),
+            handler: Box::new(|a, _path| crate::engine::tool_help(a.str_req("name", "help")?)),
         },
     ]
 }
@@ -521,7 +642,10 @@ struct Args(Value);
 
 impl Args {
     fn str_opt(&self, key: &str) -> Option<String> {
-        self.0.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+        self.0
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
     fn str_req(&self, key: &str, tool: &str) -> Result<String> {
         self.str_opt(key)
@@ -531,21 +655,32 @@ impl Args {
         self.0.get(key).and_then(|v| v.as_bool())
     }
     fn uint_opt(&self, key: &str) -> Option<usize> {
-        self.0.get(key).and_then(|v| {
-            v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
-        }).map(|n| n as usize)
+        self.0
+            .get(key)
+            .and_then(|v| {
+                v.as_u64()
+                    .or_else(|| v.as_str().and_then(|s| s.parse::<u64>().ok()))
+            })
+            .map(|n| n as usize)
     }
 }
 
 /// Parse `[{"name":"x","type":"i32"},...]` into `Vec<Param>`. Returns None if absent or malformed.
 fn parse_params(val: Option<&Value>) -> Option<Vec<crate::engine::Param>> {
     let arr = val?.as_array()?;
-    let params: Vec<_> = arr.iter().filter_map(|item| {
-        let name = item.get("name")?.as_str()?.to_string();
-        let type_str = item.get("type")?.as_str()?.to_string();
-        Some(crate::engine::Param { name, type_str })
-    }).collect();
-    if params.is_empty() { None } else { Some(params) }
+    let params: Vec<_> = arr
+        .iter()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?.to_string();
+            let type_str = item.get("type")?.as_str()?.to_string();
+            Some(crate::engine::Param { name, type_str })
+        })
+        .collect();
+    if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    }
 }
 
 fn ok_text(text: String) -> Result<Value> {
@@ -573,8 +708,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn fixture_src() -> std::path::PathBuf {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/sample_project")
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample_project")
     }
 
     fn copy_dir(src: &Path, dst: &Path) {
@@ -583,7 +717,11 @@ mod tests {
             let entry = entry.unwrap();
             let s = entry.path();
             let d = dst.join(entry.file_name());
-            if s.is_dir() { copy_dir(&s, &d); } else { std::fs::copy(&s, &d).unwrap(); }
+            if s.is_dir() {
+                copy_dir(&s, &d);
+            } else {
+                std::fs::copy(&s, &d).unwrap();
+            }
         }
     }
 
@@ -615,11 +753,21 @@ mod tests {
             "name": "search",
             "arguments": {"path": root, "pattern": "add", "context": "identifiers"}
         })));
-        assert!(result.is_ok(), "should succeed when pattern is not a mode value: {:?}", result.err());
-        let text = result.unwrap()["content"][0]["text"].as_str().unwrap().to_string();
+        assert!(
+            result.is_ok(),
+            "should succeed when pattern is not a mode value: {:?}",
+            result.err()
+        );
+        let text = result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert!(
-            v["matches"].as_array().map(|a| !a.is_empty()).unwrap_or(false),
+            v["matches"]
+                .as_array()
+                .map(|a| !a.is_empty())
+                .unwrap_or(false),
             "should find matches for 'add'"
         );
     }
@@ -633,7 +781,11 @@ mod tests {
             "name": "search",
             "arguments": {"path": root, "query": "add", "pattern": "all", "context": "identifiers"}
         })));
-        assert!(result.is_ok(), "should succeed with explicit query and pattern mode: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "should succeed with explicit query and pattern mode: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -645,7 +797,10 @@ mod tests {
             "name": "search",
             "arguments": {"path": root, "pattern": "call"}
         })));
-        assert!(result.is_err(), "should error when pattern is a mode value and query is absent");
+        assert!(
+            result.is_err(),
+            "should error when pattern is a mode value and query is absent"
+        );
     }
 
     #[test]
@@ -668,7 +823,8 @@ mod tests {
             "src/lib.rs".to_string(),
             1,
             3,
-            "pub fn greet() -> &'static str {\n    let msg: i32 = \"hi\";\n    msg\n}\n".to_string(),
+            "pub fn greet() -> &'static str {\n    let msg: i32 = \"hi\";\n    msg\n}\n"
+                .to_string(),
         )
         .unwrap_err();
 
@@ -676,9 +832,16 @@ mod tests {
             "name": "retry_plan",
             "arguments": {"path": root, "text": err.to_string(), "max_retries": 2, "context_lines": 2}
         })));
-        assert!(result.is_ok(), "retry_plan tool should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "retry_plan tool should succeed: {:?}",
+            result.err()
+        );
 
-        let text = result.unwrap()["content"][0]["text"].as_str().unwrap().to_string();
+        let text = result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
         let payload: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(payload["tool"], "guard_retry_plan");
         assert_eq!(payload["retryable"], true);
@@ -689,18 +852,25 @@ mod tests {
 
     #[test]
     fn registry_and_catalog_names_are_in_sync() {
-        let catalog_names: HashSet<&str> =
-            crate::engine::tool_catalog().iter().map(|t| t.name).collect();
-        let registry_names: HashSet<&str> =
-            get_registry().iter().map(|t| t.name()).collect();
+        let catalog_names: HashSet<&str> = crate::engine::tool_catalog()
+            .iter()
+            .map(|t| t.name)
+            .collect();
+        let registry_names: HashSet<&str> = get_registry().iter().map(|t| t.name()).collect();
 
         let only_in_catalog: Vec<_> = catalog_names.difference(&registry_names).copied().collect();
         let only_in_registry: Vec<_> = registry_names.difference(&catalog_names).copied().collect();
 
-        assert!(only_in_catalog.is_empty(),
-            "In tool_catalog() but not build_registry(): {:?}", only_in_catalog);
-        assert!(only_in_registry.is_empty(),
-            "In build_registry() but not tool_catalog(): {:?}", only_in_registry);
+        assert!(
+            only_in_catalog.is_empty(),
+            "In tool_catalog() but not build_registry(): {:?}",
+            only_in_catalog
+        );
+        assert!(
+            only_in_registry.is_empty(),
+            "In build_registry() but not tool_catalog(): {:?}",
+            only_in_registry
+        );
     }
 
     #[test]
@@ -718,8 +888,11 @@ mod tests {
             .to_string();
 
         assert!(instructions.contains("Think in tasks, not raw primitives"));
-        assert!(instructions.contains("before any repo exploration, call boot and index in parallel"));
-        assert!(instructions.contains("judge_change INSTEAD OF chaining search/inspect/impact manually"));
+        assert!(
+            instructions.contains("before any repo exploration, call boot and index in parallel")
+        );
+        assert!(instructions
+            .contains("judge_change INSTEAD OF chaining search/inspect/impact manually"));
         assert!(instructions.contains("help('judge change' | 'inspect code' | 'safe delete' | 'trace request' | 'find by intent' | 'assess impact')"));
     }
 }

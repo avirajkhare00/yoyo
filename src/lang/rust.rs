@@ -10,9 +10,9 @@ use serde::Deserialize;
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, SignatureParam,
-    LanguageAnalyzer, NodeKinds, Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, FieldInfo,
+    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, NodeKinds,
+    SignatureParam, Visibility,
 };
 
 pub struct RustAnalyzer;
@@ -34,11 +34,17 @@ impl LanguageAnalyzer for RustAnalyzer {
     }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
-        source.lines()
+        source
+            .lines()
             .filter_map(|line| {
                 let t = line.trim();
                 if t.starts_with("use ") {
-                    Some(t.trim_start_matches("use ").trim_end_matches(';').trim().to_string())
+                    Some(
+                        t.trim_start_matches("use ")
+                            .trim_end_matches(';')
+                            .trim()
+                            .to_string(),
+                    )
                 } else {
                     None
                 }
@@ -50,7 +56,12 @@ impl LanguageAnalyzer for RustAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)> {
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -141,7 +152,11 @@ fn rust_visibility(node: Node, source: &str) -> Visibility {
     for child in node.children(&mut cursor) {
         if child.kind() == "visibility_modifier" {
             let text = child.utf8_text(source.as_bytes()).unwrap_or("");
-            return if text == "pub" { Visibility::Public } else { Visibility::Module };
+            return if text == "pub" {
+                Visibility::Public
+            } else {
+                Visibility::Module
+            };
         }
     }
     Visibility::Private
@@ -273,9 +288,9 @@ fn scan_children(
                         let (start_line, end_line) = line_range(&child);
                         let kind = match child.kind() {
                             "struct_item" => "struct",
-                            "enum_item"   => "enum",
-                            "trait_item"  => "trait",
-                            _             => "type",
+                            "enum_item" => "enum",
+                            "trait_item" => "trait",
+                            _ => "type",
                         };
                         let vis = rust_visibility(child, source);
                         let fields = if kind == "struct" {
@@ -332,9 +347,7 @@ fn root_receiver<'a>(node: Node<'a>, source: &str) -> Option<String> {
         "field_expression" => node
             .child_by_field_name("value")
             .and_then(|v| root_receiver(v, source)),
-        "await_expression" => node
-            .named_child(0)
-            .and_then(|c| root_receiver(c, source)),
+        "await_expression" => node.named_child(0).and_then(|c| root_receiver(c, source)),
         _ => None,
     }
 }
@@ -350,9 +363,10 @@ fn collect_calls_inner(
         "call_expression" => {
             if let Some(func) = node.child_by_field_name("function") {
                 let (callee, qualifier) = match func.kind() {
-                    "identifier" => {
-                        (func.utf8_text(source.as_bytes()).unwrap_or("").to_string(), None)
-                    }
+                    "identifier" => (
+                        func.utf8_text(source.as_bytes()).unwrap_or("").to_string(),
+                        None,
+                    ),
                     "scoped_identifier" => {
                         let callee = func
                             .child_by_field_name("name")
@@ -379,7 +393,11 @@ fn collect_calls_inner(
                     _ => (String::new(), None),
                 };
                 if !callee.is_empty() {
-                    calls.push(crate::lang::CallSite { callee, qualifier, line });
+                    calls.push(crate::lang::CallSite {
+                        callee,
+                        qualifier,
+                        line,
+                    });
                 }
             }
             if let Some(arguments) = node.child_by_field_name("arguments") {
@@ -388,12 +406,19 @@ fn collect_calls_inner(
         }
         "method_call_expression" => {
             if let Some(method) = node.child_by_field_name("method") {
-                let callee = method.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let callee = method
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 let qualifier = node
                     .child_by_field_name("receiver")
                     .and_then(|r| root_receiver(r, source));
                 if !callee.is_empty() {
-                    calls.push(crate::lang::CallSite { callee, qualifier, line });
+                    calls.push(crate::lang::CallSite {
+                        callee,
+                        qualifier,
+                        line,
+                    });
                 }
             }
             if let Some(arguments) = node.child_by_field_name("arguments") {
@@ -546,7 +571,11 @@ fn scan_macro_body_calls(
         if j < bytes.len() && ((bytes[j] as char == '(') || (bytes[j] as char == '!')) {
             if let Some((callee, qualifier)) = split_qualified_name(token) {
                 if !is_rust_keyword(&callee) && preceding_keyword(text, start) != Some("fn") {
-                    out.push(crate::lang::CallSite { callee, qualifier, line });
+                    out.push(crate::lang::CallSite {
+                        callee,
+                        qualifier,
+                        line,
+                    });
                 }
             }
             continue;
@@ -555,8 +584,8 @@ fn scan_macro_body_calls(
         if known_functions.contains(token) {
             let prev = text[..start].chars().rev().find(|c| !c.is_whitespace());
             let next = text[j..].chars().find(|c| !c.is_whitespace());
-            let looks_like_arg_ref = matches!(prev, Some('(' | ',' | '['))
-                && matches!(next, Some(',' | ')' | ']'));
+            let looks_like_arg_ref =
+                matches!(prev, Some('(' | ',' | '[')) && matches!(next, Some(',' | ')' | ']'));
             if looks_like_arg_ref {
                 out.push(crate::lang::CallSite {
                     callee: token.to_string(),
@@ -599,7 +628,11 @@ fn scan_macro_invocations(text: &str, base_line: u32) -> Vec<crate::lang::CallSi
         if let Some((callee, qualifier)) = split_qualified_name(token) {
             if !is_rust_keyword(&callee) {
                 let line = base_line + text[..start].chars().filter(|c| *c == '\n').count() as u32;
-                out.push(crate::lang::CallSite { callee, qualifier, line });
+                out.push(crate::lang::CallSite {
+                    callee,
+                    qualifier,
+                    line,
+                });
             }
         }
     }
@@ -723,10 +756,16 @@ fn find_string_in_token_tree(source: &str, node: Node) -> Option<String> {
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_expression", "match_expression", "while_expression",
-        "for_expression", "loop_expression",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_expression",
+            "match_expression",
+            "while_expression",
+            "for_expression",
+            "loop_expression",
+        ],
+    )
 }
 
 /// Extract named fields from a struct_item node.
@@ -751,7 +790,11 @@ fn collect_struct_fields(struct_node: &Node, source: &str) -> Vec<FieldInfo> {
                         .to_string();
                     if !name.is_empty() {
                         let vis = rust_visibility(field, source);
-                        fields.push(FieldInfo { name, type_str, visibility: vis });
+                        fields.push(FieldInfo {
+                            name,
+                            type_str,
+                            visibility: vis,
+                        });
                     }
                 }
             }
@@ -820,8 +863,7 @@ fn normalize_call_sites(calls: &mut Vec<crate::lang::CallSite>) {
         .collect();
 
     calls.retain(|call| {
-        call.qualifier.is_some()
-            || !qualified_on_line.contains(&(call.callee.clone(), call.line))
+        call.qualifier.is_some() || !qualified_on_line.contains(&(call.callee.clone(), call.line))
     });
 }
 
@@ -897,7 +939,11 @@ fn cargo_expand_root_uncached(root: &Path) -> Option<String> {
         }
         _ => return None,
     }
-    let output = cmd.arg("--").arg("-Zunpretty=expanded,identified").output().ok()?;
+    let output = cmd
+        .arg("--")
+        .arg("-Zunpretty=expanded,identified")
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -919,12 +965,24 @@ fn select_expand_target(manifest_path: &Path) -> Option<ExpandTarget> {
     }
     let metadata: CargoMetadata = serde_json::from_slice(&output.stdout).ok()?;
     let pkg = metadata.packages.first()?;
-    let bin = pkg.targets.iter().find(|t| t.kind.iter().any(|k| k == "bin"));
+    let bin = pkg
+        .targets
+        .iter()
+        .find(|t| t.kind.iter().any(|k| k == "bin"));
     if let Some(target) = bin {
-        return Some(ExpandTarget { kind: "bin".to_string(), name: target.name.clone() });
+        return Some(ExpandTarget {
+            kind: "bin".to_string(),
+            name: target.name.clone(),
+        });
     }
-    let lib = pkg.targets.iter().find(|t| t.kind.iter().any(|k| k == "lib"));
-    lib.map(|target| ExpandTarget { kind: "lib".to_string(), name: target.name.clone() })
+    let lib = pkg
+        .targets
+        .iter()
+        .find(|t| t.kind.iter().any(|k| k == "lib"));
+    lib.map(|target| ExpandTarget {
+        kind: "lib".to_string(),
+        name: target.name.clone(),
+    })
 }
 
 #[derive(Deserialize)]

@@ -621,7 +621,7 @@ struct RuntimeFeedbackConfig {
     runtime_checks: Vec<RuntimeSmokeCheck>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct RuntimeSmokeCheck {
     language: String,
     command: Vec<String>,
@@ -639,6 +639,17 @@ struct PreparedRuntimeCheck {
     kind: String,
     argv: Vec<String>,
     timeout_ms: u64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(super) struct WriteGuardOutcome {
+    pub(super) warnings: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct PreparedRuntimeChecks {
+    checks: Vec<PreparedRuntimeCheck>,
+    warnings: Vec<String>,
 }
 
 struct RuntimeCommandOutput {
@@ -663,6 +674,82 @@ fn load_runtime_feedback_config(root: &PathBuf) -> Result<Option<RuntimeFeedback
     let config = serde_json::from_slice::<RuntimeFeedbackConfig>(&bytes)
         .with_context(|| format!("Failed to parse runtime config {}", path.display()))?;
     Ok(Some(config))
+}
+
+fn default_runtime_check_for_language(language: &str) -> Option<RuntimeSmokeCheck> {
+    let command = match language {
+        "python" => vec!["python3".to_string(), "{{file}}".to_string()],
+        "javascript" => vec!["node".to_string(), "{{file}}".to_string()],
+        "ruby" => vec!["ruby".to_string(), "{{file}}".to_string()],
+        "php" => vec!["php".to_string(), "{{file}}".to_string()],
+        "bash" => vec!["bash".to_string(), "{{file}}".to_string()],
+        "clojure" => vec!["clojure".to_string(), "{{file}}".to_string()],
+        _ => return None,
+    };
+    Some(RuntimeSmokeCheck {
+        language: language.to_string(),
+        command,
+        sandbox_prefix: vec![],
+        allow_unsandboxed: false,
+        kind: Some(format!("{}-runtime", language)),
+        timeout_ms: Some(1_000),
+    })
+}
+
+fn bootstrap_runtime_feedback_config(
+    root: &PathBuf,
+    writes: &[PendingWrite<'_>],
+) -> Result<Option<String>> {
+    if runtime_config_path(root).is_some() {
+        return Ok(None);
+    }
+
+    let mut languages = Vec::new();
+    let mut checks = Vec::new();
+    for write in writes {
+        let language = detect_language(write.full_path);
+        if languages.iter().any(|seen| seen == language) {
+            continue;
+        }
+        let Some(check) = default_runtime_check_for_language(language) else {
+            continue;
+        };
+        languages.push(language.to_string());
+        checks.push(check);
+    }
+
+    if checks.is_empty() {
+        return Ok(None);
+    }
+
+    let path = root.join(".yoyo").join("runtime.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create runtime config directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let payload = serde_json::json!({
+        "runtime_checks": checks,
+        "notes": [
+            "Created by yoyo with least-privilege defaults.",
+            "Runtime checks stay disabled until you add sandbox_prefix or set allow_unsandboxed to true.",
+            "Edit this file manually if you want more access."
+        ]
+    });
+    let bytes = serde_json::to_vec_pretty(&payload)?;
+    fs::write(&path, bytes)
+        .with_context(|| format!("Failed to write runtime config {}", path.display()))?;
+
+    Ok(Some(format!(
+        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit it and add sandbox_prefix or set allow_unsandboxed to true. Edit this file manually if you want more access.",
+        path.strip_prefix(root)
+            .unwrap_or(path.as_path())
+            .display(),
+        languages.join(", ")
+    )))
 }
 
 fn runtime_timeout_ms(check: &RuntimeSmokeCheck) -> u64 {
@@ -783,9 +870,20 @@ fn validate_runtime_command_parts(parts: &[String], context: &str) -> Result<()>
 fn prepare_runtime_checks(
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
-) -> Result<Vec<PreparedRuntimeCheck>> {
-    let Some(config) = load_runtime_feedback_config(root)? else {
-        return Ok(vec![]);
+) -> Result<PreparedRuntimeChecks> {
+    let mut warnings = Vec::new();
+    let mut config = load_runtime_feedback_config(root)?;
+    if config.is_none() {
+        if let Some(message) = bootstrap_runtime_feedback_config(root, writes)? {
+            warnings.push(message);
+        }
+        config = load_runtime_feedback_config(root)?;
+    }
+    let Some(config) = config else {
+        return Ok(PreparedRuntimeChecks {
+            checks: vec![],
+            warnings,
+        });
     };
 
     let mut prepared = Vec::new();
@@ -842,7 +940,10 @@ fn prepare_runtime_checks(
         }
     }
 
-    Ok(prepared)
+    Ok(PreparedRuntimeChecks {
+        checks: prepared,
+        warnings,
+    })
 }
 
 fn temp_capture_path(prefix: &str) -> Result<PathBuf> {
@@ -1181,8 +1282,12 @@ pub fn guard_retry_plan(
 
     let mut targets = Vec::new();
     for file_payload in &payload.files {
-        let (start_line, end_line) =
-            guard_retry_window(&root, &file_payload.file, &file_payload.errors, context_lines);
+        let (start_line, end_line) = guard_retry_window(
+            &root,
+            &file_payload.file,
+            &file_payload.errors,
+            context_lines,
+        );
         let inspect_result = crate::engine::inspect(
             Some(root.to_string_lossy().into_owned()),
             None,
@@ -1353,10 +1458,10 @@ pub(super) fn write_batch_with_compiler_guard(
     root: &PathBuf,
     writes: &[PendingWrite<'_>],
     operation: &str,
-) -> Result<()> {
+) -> Result<WriteGuardOutcome> {
     let baselines = collect_project_wide_baselines(root, writes);
-    let runtime_checks = prepare_runtime_checks(root, writes)?;
-    let runtime_baseline = collect_runtime_feedback_errors(root, &runtime_checks)?;
+    let runtime = prepare_runtime_checks(root, writes)?;
+    let runtime_baseline = collect_runtime_feedback_errors(root, &runtime.checks)?;
     let originals: Vec<Option<Vec<u8>>> = writes
         .iter()
         .map(|write| fs::read(write.full_path).ok())
@@ -1374,17 +1479,19 @@ pub(super) fn write_batch_with_compiler_guard(
     }
 
     let mut errors_by_file = batch_semantic_check_errors(root, writes, &baselines);
-    if errors_by_file.is_empty() && !runtime_checks.is_empty() {
+    if errors_by_file.is_empty() && !runtime.checks.is_empty() {
         merge_error_maps(
             &mut errors_by_file,
             diff_error_maps(
-                collect_runtime_feedback_errors(root, &runtime_checks)?,
+                collect_runtime_feedback_errors(root, &runtime.checks)?,
                 &runtime_baseline,
             ),
         );
     }
     if errors_by_file.is_empty() {
-        return Ok(());
+        return Ok(WriteGuardOutcome {
+            warnings: runtime.warnings,
+        });
     }
 
     restore_batch_originals(writes, &originals)?;
@@ -1407,7 +1514,7 @@ pub(super) fn write_bytes_with_compiler_guard(
     file: &str,
     new_bytes: &[u8],
     operation: &str,
-) -> Result<()> {
+) -> Result<WriteGuardOutcome> {
     let writes = [PendingWrite {
         full_path,
         file,
@@ -1425,7 +1532,7 @@ fn write_with_compiler_guard(
     new_text: &str,
     _ext: &str,
     operation: &str,
-) -> Result<()> {
+) -> Result<WriteGuardOutcome> {
     write_bytes_with_compiler_guard(root, full_path, file, new_text.as_bytes(), operation)
 }
 
@@ -1791,7 +1898,7 @@ pub fn patch(
     new_content: String,
 ) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let (file, start, end, total_lines) =
+    let (file, start, end, total_lines, warnings) =
         apply_patch_to_range(&root, &file, start, end, &new_content)?;
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
@@ -1804,6 +1911,7 @@ pub fn patch(
         end,
         total_lines,
         patched_source: Some(new_content),
+        warnings,
         syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
@@ -1857,7 +1965,7 @@ pub fn patch_string(
         )));
     }
 
-    write_with_compiler_guard(&root, &full_path, &file, &new_content, ext, "patch")?;
+    let guard = write_with_compiler_guard(&root, &full_path, &file, &new_content, ext, "patch")?;
 
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
@@ -1871,6 +1979,7 @@ pub fn patch_string(
         end: end_line,
         total_lines,
         patched_source: Some(new_string),
+        warnings: guard.warnings,
         syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -1934,7 +2043,7 @@ pub fn patch_by_symbol(
     }
 
     let (file, start, end, _, _) = &matches[idx];
-    let (file, start, end, total_lines) =
+    let (file, start, end, total_lines, warnings) =
         apply_patch_to_range(&root, file.as_str(), *start, *end, &new_content)?;
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
@@ -1947,6 +2056,7 @@ pub fn patch_by_symbol(
         end,
         total_lines,
         patched_source: Some(new_content),
+        warnings,
         syntax_errors,
     };
     let json = serde_json::to_string_pretty(&payload)?;
@@ -2153,7 +2263,7 @@ pub fn patch_bytes(
         }
     }
 
-    write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes, "patch_bytes")?;
+    let guard = write_bytes_with_compiler_guard(&root, &full_path, &file, &bytes, "patch_bytes")?;
     let _ = reindex_files(&root, &[file.as_str()]);
     let syntax_errors = syntax_check(&root, &file);
     let payload = PatchBytesPayload {
@@ -2164,6 +2274,7 @@ pub fn patch_bytes(
         byte_start,
         byte_end,
         new_bytes: new_byte_count,
+        warnings: guard.warnings,
         syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -2302,7 +2413,7 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
             bytes: bytes.as_slice(),
         })
         .collect();
-    write_batch_with_compiler_guard(&root, &writes, "multi_patch")?;
+    let guard = write_batch_with_compiler_guard(&root, &writes, "multi_patch")?;
 
     let refs: Vec<&str> = files_for_reindex.iter().map(|s| s.as_str()).collect();
     let _ = reindex_files(&root, &refs);
@@ -2316,6 +2427,7 @@ pub fn multi_patch(path: Option<String>, edits: Vec<PatchEdit>) -> Result<String
         project_root: root,
         files_written,
         edits_applied: total_edits,
+        warnings: guard.warnings,
         syntax_errors,
     };
     Ok(serde_json::to_string_pretty(&payload)?)
@@ -2328,7 +2440,7 @@ fn apply_patch_to_range(
     start: u32,
     end: u32,
     new_content: &str,
-) -> Result<(String, u32, u32, u32)> {
+) -> Result<(String, u32, u32, u32, Vec<String>)> {
     if start == 0 || end == 0 || end < start {
         return Err(anyhow!(
             "Invalid range: start and end must be >= 1 and end >= start (got start={}, end={})",
@@ -2385,9 +2497,9 @@ fn apply_patch_to_range(
         )));
     }
 
-    write_with_compiler_guard(&root, &full_path, file, &new_text, ext, "patch")?;
+    let guard = write_with_compiler_guard(&root, &full_path, file, &new_text, ext, "patch")?;
 
-    Ok((file.to_string(), start, end, total_lines))
+    Ok((file.to_string(), start, end, total_lines, guard.warnings))
 }
 
 #[cfg(test)]
@@ -3208,6 +3320,42 @@ mod tests {
     }
 
     #[test]
+    fn write_with_compiler_guard_bootstraps_runtime_config_with_least_privilege_defaults() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().to_path_buf();
+        let full_path = root.join("main.py");
+        write_file(&dir, "main.py", "print(\"ok\")\n");
+
+        let outcome = write_with_compiler_guard(
+            &root,
+            &full_path,
+            "main.py",
+            "print(\"still ok\")\n",
+            "py",
+            "patch",
+        )
+        .unwrap();
+
+        let config_path = dir.path().join(".yoyo").join("runtime.json");
+        assert!(config_path.exists());
+        let config: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(config_path).unwrap()).unwrap();
+        assert_eq!(config["runtime_checks"][0]["language"], "python");
+        assert_eq!(config["runtime_checks"][0]["command"][0], "python3");
+        assert_eq!(config["runtime_checks"][0]["command"][1], "{{file}}");
+        assert_eq!(config["runtime_checks"][0]["allow_unsandboxed"], false);
+        assert!(
+            outcome.warnings.iter().any(|warning| {
+                warning.contains(".yoyo/runtime.json")
+                    && warning.contains("least-privilege defaults")
+                    && warning.contains("allow_unsandboxed to true")
+            }),
+            "warnings: {:?}",
+            outcome.warnings
+        );
+    }
+
+    #[test]
     fn write_with_compiler_guard_rejects_inline_runtime_command_config() {
         if !command_available("python3", "--version") {
             return;
@@ -3383,6 +3531,53 @@ mod tests {
             v["patched_source"],
             "fn greet() {\n    println!(\"bye\");\n}"
         );
+    }
+
+    #[test]
+    fn change_edit_by_range_surfaces_runtime_bootstrap_warning() {
+        let dir = TempDir::new().unwrap();
+        write_file(&dir, "main.py", "print(\"ok\")\n");
+
+        let out = change(
+            Some(dir.path().to_string_lossy().into_owned()),
+            "edit".into(),
+            None,
+            Some("main.py".into()),
+            Some(1),
+            Some(1),
+            Some("print(\"still ok\")\n".into()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let warnings = v["warnings"].as_array().unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert!(
+            warnings[0]
+                .as_str()
+                .unwrap()
+                .contains("Edit this file manually")
+                || warnings[0]
+                    .as_str()
+                    .unwrap()
+                    .contains("allow_unsandboxed to true"),
+            "warning: {:?}",
+            warnings
+        );
+        assert!(dir.path().join(".yoyo").join("runtime.json").exists());
     }
 
     #[test]

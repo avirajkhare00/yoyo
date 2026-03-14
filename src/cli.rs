@@ -138,7 +138,6 @@ pub struct IndexArgs {
     pub path: Option<String>,
 }
 
-
 #[derive(Args, Debug)]
 pub struct SymbolArgs {
     /// Optional path to the project directory to analyze.
@@ -719,7 +718,10 @@ pub async fn run(command: Option<Command>) -> anyhow::Result<()> {
             let exe = std::env::current_exe()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| "/usr/local/bin/yoyo".to_string());
-            println!("yoyo v{} — code intelligence MCP server", env!("CARGO_PKG_VERSION"));
+            println!(
+                "yoyo v{} — code intelligence MCP server",
+                env!("CARGO_PKG_VERSION")
+            );
             println!();
             println!("Getting started:");
             println!();
@@ -804,7 +806,14 @@ async fn run_index(args: IndexArgs) -> anyhow::Result<()> {
 }
 
 async fn run_symbol(args: SymbolArgs) -> anyhow::Result<()> {
-    let json = crate::engine::symbol(args.path, args.name, args.include_source, args.file, args.limit, args.stdlib)?;
+    let json = crate::engine::symbol(
+        args.path,
+        args.name,
+        args.include_source,
+        args.file,
+        args.limit,
+        args.stdlib,
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -848,19 +857,20 @@ async fn run_impact(args: ImpactArgs) -> anyhow::Result<()> {
 }
 
 async fn run_judge_change(args: JudgeChangeArgs) -> anyhow::Result<()> {
-    let json = crate::engine::judge_change(
-        args.path,
-        args.query,
-        args.symbol,
-        args.file,
-        args.limit,
-    )?;
+    let json =
+        crate::engine::judge_change(args.path, args.query, args.symbol, args.file, args.limit)?;
     println!("{json}");
     Ok(())
 }
 
 async fn run_flow(args: FlowArgs) -> anyhow::Result<()> {
-    let json = crate::engine::flow(args.path, args.endpoint, args.method, args.depth, args.include_source)?;
+    let json = crate::engine::flow(
+        args.path,
+        args.endpoint,
+        args.method,
+        args.depth,
+        args.include_source,
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -928,19 +938,26 @@ async fn run_docs(args: DocsArgs) -> anyhow::Result<()> {
 async fn run_change(args: ChangeArgs) -> anyhow::Result<()> {
     let edits = match (args.edits_json, args.edits_file) {
         (Some(_), Some(_)) => anyhow::bail!("Use either --edits-json or --edits-file, not both"),
-        (Some(raw), None) => Some(serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw)
-            .map_err(|e| anyhow::anyhow!("Failed to parse --edits-json: {}", e))?),
+        (Some(raw), None) => Some(
+            serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw)
+                .map_err(|e| anyhow::anyhow!("Failed to parse --edits-json: {}", e))?,
+        ),
         (None, Some(path)) => {
             let raw = std::fs::read_to_string(&path)
                 .map_err(|e| anyhow::anyhow!("Failed to read --edits-file '{}': {}", path, e))?;
-            Some(serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw)
-                .map_err(|e| anyhow::anyhow!("Failed to parse --edits-file '{}': {}", path, e))?)
+            Some(
+                serde_json::from_str::<Vec<crate::engine::PatchEdit>>(&raw).map_err(|e| {
+                    anyhow::anyhow!("Failed to parse --edits-file '{}': {}", path, e)
+                })?,
+            )
         }
         (None, None) => None,
     };
     let params = match args.params_json {
-        Some(raw) => Some(serde_json::from_str::<Vec<crate::engine::Param>>(&raw)
-            .map_err(|e| anyhow::anyhow!("Failed to parse --params-json: {}", e))?),
+        Some(raw) => Some(
+            serde_json::from_str::<Vec<crate::engine::Param>>(&raw)
+                .map_err(|e| anyhow::anyhow!("Failed to parse --params-json: {}", e))?,
+        ),
         None => None,
     };
     let json = crate::engine::change(
@@ -987,9 +1004,12 @@ async fn run_edit(args: EditArgs) -> anyhow::Result<()> {
 async fn run_retry_plan(args: RetryPlanArgs) -> anyhow::Result<()> {
     let text = match (args.text, args.text_file) {
         (Some(text), None) => text,
-        (None, Some(path)) => std::fs::read_to_string(&path)
-            .map_err(|err| anyhow::anyhow!("Failed to read retry input file '{}': {}", path, err))?,
-        (Some(_), Some(_)) => anyhow::bail!("retry-plan accepts either --text or --text-file, not both"),
+        (None, Some(path)) => std::fs::read_to_string(&path).map_err(|err| {
+            anyhow::anyhow!("Failed to read retry input file '{}': {}", path, err)
+        })?,
+        (Some(_), Some(_)) => {
+            anyhow::bail!("retry-plan accepts either --text or --text-file, not both")
+        }
         (None, None) => anyhow::bail!("retry-plan requires either --text or --text-file"),
     };
     let json = crate::engine::guard_retry_plan(
@@ -1015,7 +1035,14 @@ async fn run_rename(args: RenameArgs) -> anyhow::Result<()> {
 }
 
 async fn run_create(args: CreateArgs) -> anyhow::Result<()> {
-    let json = crate::engine::graph_create(args.path, args.file, args.function_name, args.language, None, None)?;
+    let json = crate::engine::graph_create(
+        args.path,
+        args.file,
+        args.function_name,
+        args.language,
+        None,
+        None,
+    )?;
     println!("{json}");
     Ok(())
 }
@@ -1028,7 +1055,9 @@ async fn run_add(args: AddArgs) -> anyhow::Result<()> {
         args.file,
         args.after_symbol,
         args.language,
-        None, None, None,
+        None,
+        None,
+        None,
     )?;
     println!("{json}");
     Ok(())

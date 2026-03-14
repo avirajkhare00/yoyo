@@ -55,7 +55,11 @@ pub fn judge_change(
 
     if let Some(ref hint) = symbol {
         let needle = hint.to_lowercase();
-        for func in bake.functions.iter().filter(|f| f.name.to_lowercase() == needle) {
+        for func in bake
+            .functions
+            .iter()
+            .filter(|f| f.name.to_lowercase() == needle)
+        {
             if matches_file_filter(&func.file, file_filter.as_deref()) {
                 upsert_candidate(
                     &mut candidates,
@@ -65,7 +69,10 @@ pub fn judge_change(
                         start_line: func.start_line,
                         kind: "function",
                         score: 100.0,
-                        why_parts: BTreeSet::from([format!("Matches explicit symbol hint '{}'.", hint)]),
+                        why_parts: BTreeSet::from([format!(
+                            "Matches explicit symbol hint '{}'.",
+                            hint
+                        )]),
                         incoming_callers: caller_names_by_symbol
                             .get(&needle)
                             .map(|s| s.len())
@@ -81,7 +88,11 @@ pub fn judge_change(
             }
         }
 
-        for ty in bake.types.iter().filter(|t| t.name.to_lowercase() == needle) {
+        for ty in bake
+            .types
+            .iter()
+            .filter(|t| t.name.to_lowercase() == needle)
+        {
             if matches_file_filter(&ty.file, file_filter.as_deref()) {
                 upsert_candidate(
                     &mut candidates,
@@ -91,7 +102,10 @@ pub fn judge_change(
                         start_line: ty.start_line,
                         kind: "type",
                         score: 95.0,
-                        why_parts: BTreeSet::from([format!("Matches explicit symbol hint '{}'.", hint)]),
+                        why_parts: BTreeSet::from([format!(
+                            "Matches explicit symbol hint '{}'.",
+                            hint
+                        )]),
                         incoming_callers: 0,
                         caller_files: 0,
                         parent_type: None,
@@ -103,7 +117,9 @@ pub fn judge_change(
     }
 
     let semantic_limit = limit.max(3) * 4;
-    for (score, func) in semantic_candidates(&root, &bake, &query, file_filter.as_deref(), semantic_limit) {
+    for (score, func) in
+        semantic_candidates(&root, &bake, &query, file_filter.as_deref(), semantic_limit)
+    {
         upsert_candidate(
             &mut candidates,
             Candidate {
@@ -169,7 +185,10 @@ pub fn judge_change(
             start_line: c.start_line,
             kind: c.kind,
             reason: if c.score < top_candidates[0].score {
-                format!("Lower ranked than the top ownership candidate ({:.2} vs {:.2}).", c.score, top_candidates[0].score)
+                format!(
+                    "Lower ranked than the top ownership candidate ({:.2} vs {:.2}).",
+                    c.score, top_candidates[0].score
+                )
             } else {
                 "Relevant, but less central to the judged ownership layer.".to_string()
             },
@@ -226,7 +245,9 @@ fn semantic_candidates<'a>(
     limit: usize,
 ) -> Vec<(f32, &'a crate::lang::IndexedFunction)> {
     let bake_dir = root.join("bakes").join("latest");
-    if let Ok(Some(matches)) = crate::engine::embed::vector_search(&bake_dir, query, limit, file_filter) {
+    if let Ok(Some(matches)) =
+        crate::engine::embed::vector_search(&bake_dir, query, limit, file_filter)
+    {
         let lookup: HashMap<(&str, &str, u32), &crate::lang::IndexedFunction> = bake
             .functions
             .iter()
@@ -298,7 +319,9 @@ fn upsert_candidate(
             if existing.visibility.is_none() {
                 existing.visibility = candidate.visibility.clone();
             }
-            existing.why_parts.extend(candidate.why_parts.iter().cloned());
+            existing
+                .why_parts
+                .extend(candidate.why_parts.iter().cloned());
         })
         .or_insert(candidate);
 }
@@ -329,7 +352,10 @@ fn candidate_files(candidates: &[Candidate]) -> Vec<JudgeCandidateFile> {
                 "primary".to_string()
             },
             why: if symbol_count > 1 {
-                format!("Multiple top-ranked symbols cluster in this file ({} candidates).", symbol_count)
+                format!(
+                    "Multiple top-ranked symbols cluster in this file ({} candidates).",
+                    symbol_count
+                )
             } else {
                 "Contains a top-ranked ownership candidate.".to_string()
             },
@@ -492,22 +518,34 @@ fn verification_commands(root: &Path, top: Option<&Candidate>) -> Vec<JudgeComma
     if root.join("Cargo.toml").exists() {
         commands.push(JudgeCommand {
             command: "cargo test".to_string(),
-            why: format!("Project uses Cargo; rerun the Rust test suite after changing {}.", top_name),
+            why: format!(
+                "Project uses Cargo; rerun the Rust test suite after changing {}.",
+                top_name
+            ),
         });
     } else if root.join("go.mod").exists() {
         commands.push(JudgeCommand {
             command: "go test ./...".to_string(),
-            why: format!("Project uses Go modules; rerun package tests after changing {}.", top_name),
+            why: format!(
+                "Project uses Go modules; rerun package tests after changing {}.",
+                top_name
+            ),
         });
     } else if root.join("pyproject.toml").exists() || root.join("pytest.ini").exists() {
         commands.push(JudgeCommand {
             command: "pytest".to_string(),
-            why: format!("Project uses pytest-style Python tests; rerun them after changing {}.", top_name),
+            why: format!(
+                "Project uses pytest-style Python tests; rerun them after changing {}.",
+                top_name
+            ),
         });
     } else if root.join("package.json").exists() {
         commands.push(JudgeCommand {
             command: "npm test".to_string(),
-            why: format!("Project has package.json; rerun JS/TS tests after changing {}.", top_name),
+            why: format!(
+                "Project has package.json; rerun JS/TS tests after changing {}.",
+                top_name
+            ),
         });
     }
 
@@ -580,7 +618,11 @@ fn score_fn<F: Fn(&str) -> f32>(
     idf: F,
 ) -> f32 {
     let name_set: HashSet<String> = tokenize(&func.name).into_iter().collect();
-    let callee_set: HashSet<String> = func.calls.iter().flat_map(|c| tokenize(&c.callee)).collect();
+    let callee_set: HashSet<String> = func
+        .calls
+        .iter()
+        .flat_map(|c| tokenize(&c.callee))
+        .collect();
     let module_set: HashSet<String> = tokenize(&func.module_path).into_iter().collect();
     let file_set: HashSet<String> = tokenize(&func.file).into_iter().collect();
 

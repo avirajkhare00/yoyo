@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 use crate::engine::types::{BakeFile, BakeIndex};
 use crate::lang::{
@@ -99,17 +99,17 @@ CREATE INDEX IF NOT EXISTS idx_type_file    ON types(file);
 
 fn vis_str(v: &Visibility) -> &'static str {
     match v {
-        Visibility::Public  => "public",
-        Visibility::Module  => "module",
+        Visibility::Public => "public",
+        Visibility::Module => "module",
         Visibility::Private => "private",
     }
 }
 
 fn str_vis(s: &str) -> Visibility {
     match s {
-        "public"  => Visibility::Public,
-        "module"  => Visibility::Module,
-        _         => Visibility::Private,
+        "public" => Visibility::Public,
+        "module" => Visibility::Module,
+        _ => Visibility::Private,
     }
 }
 
@@ -133,15 +133,15 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
     // meta
     tx.execute(
         "INSERT OR REPLACE INTO meta (key, value) VALUES ('version', ?1), ('project_root', ?2)",
-        params![
-            bake.version,
-            bake.project_root.to_string_lossy().as_ref(),
-        ],
+        params![bake.version, bake.project_root.to_string_lossy().as_ref(),],
     )?;
 
     // languages
     for lang in &bake.languages {
-        tx.execute("INSERT OR IGNORE INTO languages (name) VALUES (?1)", params![lang])?;
+        tx.execute(
+            "INSERT OR IGNORE INTO languages (name) VALUES (?1)",
+            params![lang],
+        )?;
     }
 
     // files
@@ -224,7 +224,12 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
             ])?;
             let ty_id = tx.last_insert_rowid();
             for field in &t.fields {
-                field_stmt.execute(params![ty_id, field.name, field.type_str, vis_str(&field.visibility)])?;
+                field_stmt.execute(params![
+                    ty_id,
+                    field.name,
+                    field.type_str,
+                    vis_str(&field.visibility)
+                ])?;
             }
         }
     }
@@ -245,7 +250,14 @@ pub fn write_bake_to_db(bake: &BakeIndex, db_path: &Path) -> Result<()> {
             "INSERT INTO endpoints (method, path, file, handler_name, language, framework) VALUES (?1,?2,?3,?4,?5,?6)",
         )?;
         for e in &bake.endpoints {
-            ep_stmt.execute(params![e.method, e.path, e.file, e.handler_name, e.language, e.framework])?;
+            ep_stmt.execute(params![
+                e.method,
+                e.path,
+                e.file,
+                e.handler_name,
+                e.language,
+                e.framework
+            ])?;
         }
     }
 
@@ -265,7 +277,11 @@ pub fn load_file_fingerprints(db_path: &Path) -> std::collections::HashMap<Strin
         return std::collections::HashMap::new();
     };
     let Ok(rows) = stmt.query_map([], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, i64>(2)?,
+        ))
     }) else {
         return std::collections::HashMap::new();
     };
@@ -291,9 +307,7 @@ pub fn write_bake_incremental(
 
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
     // Migrate older DBs that predate the mtime_ns column (error is ignored when column exists).
-    let _ = conn.execute_batch(
-        "ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0",
-    );
+    let _ = conn.execute_batch("ALTER TABLE files ADD COLUMN mtime_ns INTEGER NOT NULL DEFAULT 0");
     // Ensure all tables and indexes exist (no-op when schema is current).
     conn.execute_batch(SCHEMA)?;
 
@@ -308,14 +322,21 @@ pub fn write_bake_incremental(
 
         // Upsert languages (adds new ones, leaves existing untouched).
         for lang in &bake.languages {
-            tx.execute("INSERT OR IGNORE INTO languages (name) VALUES (?1)", params![lang])?;
+            tx.execute(
+                "INSERT OR IGNORE INTO languages (name) VALUES (?1)",
+                params![lang],
+            )?;
         }
 
         // Collect all paths that need to be deleted: removed files + every changed/new file.
         let paths_to_delete: Vec<String> = removed
             .iter()
             .cloned()
-            .chain(bake.files.iter().map(|f| f.path.to_string_lossy().into_owned()))
+            .chain(
+                bake.files
+                    .iter()
+                    .map(|f| f.path.to_string_lossy().into_owned()),
+            )
             .collect();
 
         for path in &paths_to_delete {
@@ -363,11 +384,24 @@ pub fn write_bake_incremental(
             for f in &bake.functions {
                 let params_json = serde_json::to_string(&f.params).unwrap_or_else(|_| "[]".into());
                 fn_stmt.execute(params![
-                    f.name, f.file, f.language, f.start_line, f.end_line, f.complexity,
-                    f.byte_start as i64, f.byte_end as i64, f.module_path, f.qualified_name,
-                    vis_str(&f.visibility), f.parent_type, f.implemented_trait, params_json,
-                    f.return_type, f.receiver,
-                    f.is_stdlib as i32, f.sig_hash,
+                    f.name,
+                    f.file,
+                    f.language,
+                    f.start_line,
+                    f.end_line,
+                    f.complexity,
+                    f.byte_start as i64,
+                    f.byte_end as i64,
+                    f.module_path,
+                    f.qualified_name,
+                    vis_str(&f.visibility),
+                    f.parent_type,
+                    f.implemented_trait,
+                    params_json,
+                    f.return_type,
+                    f.receiver,
+                    f.is_stdlib as i32,
+                    f.sig_hash,
                 ])?;
                 let fn_id = tx.last_insert_rowid();
                 for c in &f.calls {
@@ -386,13 +420,23 @@ pub fn write_bake_incremental(
             )?;
             for t in &bake.types {
                 ty_stmt.execute(params![
-                    t.name, t.file, t.language, t.start_line, t.end_line, t.kind,
-                    t.module_path, vis_str(&t.visibility), t.is_stdlib as i32,
+                    t.name,
+                    t.file,
+                    t.language,
+                    t.start_line,
+                    t.end_line,
+                    t.kind,
+                    t.module_path,
+                    vis_str(&t.visibility),
+                    t.is_stdlib as i32,
                 ])?;
                 let ty_id = tx.last_insert_rowid();
                 for field in &t.fields {
                     field_stmt.execute(params![
-                        ty_id, field.name, field.type_str, vis_str(&field.visibility),
+                        ty_id,
+                        field.name,
+                        field.type_str,
+                        vis_str(&field.visibility),
                     ])?;
                 }
             }
@@ -413,7 +457,12 @@ pub fn write_bake_incremental(
             )?;
             for e in &bake.endpoints {
                 ep_stmt.execute(params![
-                    e.method, e.path, e.file, e.handler_name, e.language, e.framework,
+                    e.method,
+                    e.path,
+                    e.file,
+                    e.handler_name,
+                    e.language,
+                    e.framework,
                 ])?;
             }
         }
@@ -426,10 +475,7 @@ pub fn write_bake_incremental(
         .query_row("SELECT COUNT(*) FROM files", [], |r| r.get::<_, i64>(0))
         .unwrap_or(0) as usize;
     let mut lang_stmt = conn.prepare("SELECT name FROM languages")?;
-    let languages: Vec<String> = lang_stmt
-        .query_map([], |r| r.get(0))?
-        .flatten()
-        .collect();
+    let languages: Vec<String> = lang_stmt.query_map([], |r| r.get(0))?.flatten().collect();
 
     Ok((total_files, languages))
 }
@@ -444,10 +490,14 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
 
     // meta
     let version: String = conn
-        .query_row("SELECT value FROM meta WHERE key='version'", [], |r| r.get(0))
+        .query_row("SELECT value FROM meta WHERE key='version'", [], |r| {
+            r.get(0)
+        })
         .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
     let root_str: String = conn
-        .query_row("SELECT value FROM meta WHERE key='project_root'", [], |r| r.get(0))
+        .query_row("SELECT value FROM meta WHERE key='project_root'", [], |r| {
+            r.get(0)
+        })
         .unwrap_or_default();
     let project_root = PathBuf::from(root_str);
 
@@ -456,13 +506,16 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
     {
         let mut stmt = conn.prepare("SELECT name FROM languages")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        for row in rows { languages.insert(row?); }
+        for row in rows {
+            languages.insert(row?);
+        }
     }
 
     // files
     let mut files: Vec<BakeFile> = Vec::new();
     {
-        let mut stmt = conn.prepare("SELECT path, language, bytes, mtime_ns, origin, imports FROM files")?;
+        let mut stmt =
+            conn.prepare("SELECT path, language, bytes, mtime_ns, origin, imports FROM files")?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -520,11 +573,30 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
             ))
         })?;
         for row in rows {
-            let (id, name, file, language, start_line, end_line, complexity,
-                 byte_start, byte_end, module_path, qualified_name, visibility,
-                 parent_type, implemented_trait, params_json, return_type, receiver, is_stdlib, sig_hash) = row?;
+            let (
+                id,
+                name,
+                file,
+                language,
+                start_line,
+                end_line,
+                complexity,
+                byte_start,
+                byte_end,
+                module_path,
+                qualified_name,
+                visibility,
+                parent_type,
+                implemented_trait,
+                params_json,
+                return_type,
+                receiver,
+                is_stdlib,
+                sig_hash,
+            ) = row?;
             fn_ids.push(id);
-            let params: Vec<SignatureParam> = serde_json::from_str(&params_json).unwrap_or_default();
+            let params: Vec<SignatureParam> =
+                serde_json::from_str(&params_json).unwrap_or_default();
             functions.push(IndexedFunction {
                 name,
                 file,
@@ -568,7 +640,11 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         for row in rows {
             let (fn_id, callee, qualifier, line) = row?;
             if let Some(&idx) = id_to_idx.get(&fn_id) {
-                functions[idx].calls.push(CallSite { callee, qualifier, line });
+                functions[idx].calls.push(CallSite {
+                    callee,
+                    qualifier,
+                    line,
+                });
             }
         }
     }
@@ -596,10 +672,27 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         })?;
         let mut ty_ids: Vec<i64> = Vec::new();
         for row in ty_rows {
-            let (id, name, file, language, start_line, end_line, kind, module_path, visibility, is_stdlib) = row?;
+            let (
+                id,
+                name,
+                file,
+                language,
+                start_line,
+                end_line,
+                kind,
+                module_path,
+                visibility,
+                is_stdlib,
+            ) = row?;
             ty_ids.push(id);
             types.push(IndexedType {
-                name, file, language, start_line, end_line, kind, module_path,
+                name,
+                file,
+                language,
+                start_line,
+                end_line,
+                kind,
+                module_path,
                 visibility: str_vis(&visibility),
                 is_stdlib: is_stdlib != 0,
                 fields: vec![],
@@ -607,16 +700,29 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
         }
         // attach fields
         if !ty_ids.is_empty() {
-            let mut id_to_idx: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
-            for (idx, &id) in ty_ids.iter().enumerate() { id_to_idx.insert(id, idx); }
-            let mut f_stmt = conn.prepare("SELECT type_id, name, type_str, visibility FROM type_fields")?;
+            let mut id_to_idx: std::collections::HashMap<i64, usize> =
+                std::collections::HashMap::new();
+            for (idx, &id) in ty_ids.iter().enumerate() {
+                id_to_idx.insert(id, idx);
+            }
+            let mut f_stmt =
+                conn.prepare("SELECT type_id, name, type_str, visibility FROM type_fields")?;
             let f_rows = f_stmt.query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
             })?;
             for row in f_rows {
                 let (ty_id, name, type_str, vis) = row?;
                 if let Some(&idx) = id_to_idx.get(&ty_id) {
-                    types[idx].fields.push(FieldInfo { name, type_str, visibility: str_vis(&vis) });
+                    types[idx].fields.push(FieldInfo {
+                        name,
+                        type_str,
+                        visibility: str_vis(&vis),
+                    });
                 }
             }
         }
@@ -634,7 +740,9 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 start_line: r.get(3)?,
             })
         })?;
-        for row in rows { impls.push(row?); }
+        for row in rows {
+            impls.push(row?);
+        }
     }
 
     // endpoints
@@ -653,10 +761,21 @@ pub fn read_bake_from_db(db_path: &Path) -> Result<BakeIndex> {
                 framework: r.get(5)?,
             })
         })?;
-        for row in rows { endpoints.push(row?); }
+        for row in rows {
+            endpoints.push(row?);
+        }
     }
 
-    Ok(BakeIndex { version, project_root, languages, files, functions, endpoints, types, impls })
+    Ok(BakeIndex {
+        version,
+        project_root,
+        languages,
+        files,
+        functions,
+        endpoints,
+        types,
+        impls,
+    })
 }
 
 // ── tests ──────────────────────────────────────────────────────────────────────
@@ -669,8 +788,11 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::lang::{CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, SignatureParam, Visibility};
     use crate::engine::types::{BakeFile, BakeIndex};
+    use crate::lang::{
+        CallSite, FieldInfo, IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType,
+        SignatureParam, Visibility,
+    };
 
     fn empty_bake(root: &std::path::Path) -> BakeIndex {
         BakeIndex {
@@ -755,12 +877,20 @@ mod tests {
         });
         let out = roundtrip(bake);
         assert_eq!(out.files.len(), 2);
-        let main = out.files.iter().find(|f| f.path == PathBuf::from("src/main.rs")).unwrap();
+        let main = out
+            .files
+            .iter()
+            .find(|f| f.path == PathBuf::from("src/main.rs"))
+            .unwrap();
         assert_eq!(main.language, "rust");
         assert_eq!(main.bytes, 1024);
         assert_eq!(main.origin, "local");
         assert_eq!(main.imports, vec!["std::fs", "anyhow"]);
-        let lib = out.files.iter().find(|f| f.path == PathBuf::from("src/lib.rs")).unwrap();
+        let lib = out
+            .files
+            .iter()
+            .find(|f| f.path == PathBuf::from("src/lib.rs"))
+            .unwrap();
         assert!(lib.imports.is_empty());
     }
 
@@ -864,7 +994,10 @@ mod tests {
         let mut f = make_fn("method");
         f.parent_type = Some("MyStruct".to_string());
         f.implemented_trait = Some("Display".to_string());
-        f.params = vec![SignatureParam { name: "value".to_string(), type_str: "i32".to_string() }];
+        f.params = vec![SignatureParam {
+            name: "value".to_string(),
+            type_str: "i32".to_string(),
+        }];
         f.return_type = Some("String".to_string());
         f.receiver = Some("&self".to_string());
         f.is_stdlib = true;
@@ -889,13 +1022,23 @@ mod tests {
         let mut bake = empty_bake(dir.path());
         let mut caller = make_fn("caller");
         caller.calls = vec![
-            CallSite { callee: "foo".to_string(), qualifier: Some("bar".to_string()), line: 15 },
-            CallSite { callee: "baz".to_string(), qualifier: None, line: 18 },
+            CallSite {
+                callee: "foo".to_string(),
+                qualifier: Some("bar".to_string()),
+                line: 15,
+            },
+            CallSite {
+                callee: "baz".to_string(),
+                qualifier: None,
+                line: 18,
+            },
         ];
         let mut other = make_fn("other");
-        other.calls = vec![
-            CallSite { callee: "qux".to_string(), qualifier: None, line: 11 },
-        ];
+        other.calls = vec![CallSite {
+            callee: "qux".to_string(),
+            qualifier: None,
+            line: 11,
+        }];
         bake.functions.extend([caller, other]);
         let out = roundtrip(bake);
 
@@ -973,9 +1116,21 @@ mod tests {
         let mut bake = empty_bake(dir.path());
         let mut t = make_type("Config", "struct");
         t.fields = vec![
-            FieldInfo { name: "host".to_string(), type_str: "String".to_string(), visibility: Visibility::Public },
-            FieldInfo { name: "port".to_string(), type_str: "u16".to_string(), visibility: Visibility::Private },
-            FieldInfo { name: "timeout".to_string(), type_str: "Duration".to_string(), visibility: Visibility::Module },
+            FieldInfo {
+                name: "host".to_string(),
+                type_str: "String".to_string(),
+                visibility: Visibility::Public,
+            },
+            FieldInfo {
+                name: "port".to_string(),
+                type_str: "u16".to_string(),
+                visibility: Visibility::Private,
+            },
+            FieldInfo {
+                name: "timeout".to_string(),
+                type_str: "Duration".to_string(),
+                visibility: Visibility::Module,
+            },
         ];
         bake.types.push(t);
         let out = roundtrip(bake);
@@ -995,11 +1150,23 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let mut bake = empty_bake(dir.path());
         let mut a = make_type("Alpha", "struct");
-        a.fields = vec![FieldInfo { name: "x".to_string(), type_str: "i32".to_string(), visibility: Visibility::Public }];
+        a.fields = vec![FieldInfo {
+            name: "x".to_string(),
+            type_str: "i32".to_string(),
+            visibility: Visibility::Public,
+        }];
         let mut b = make_type("Beta", "enum");
         b.fields = vec![
-            FieldInfo { name: "One".to_string(), type_str: "()".to_string(), visibility: Visibility::Public },
-            FieldInfo { name: "Two".to_string(), type_str: "String".to_string(), visibility: Visibility::Public },
+            FieldInfo {
+                name: "One".to_string(),
+                type_str: "()".to_string(),
+                visibility: Visibility::Public,
+            },
+            FieldInfo {
+                name: "Two".to_string(),
+                type_str: "String".to_string(),
+                visibility: Visibility::Public,
+            },
         ];
         bake.types.extend([a, b]);
         let out = roundtrip(bake);
@@ -1130,14 +1297,18 @@ mod tests {
         });
         let mut f = make_fn("handler");
         f.parent_type = Some("Server".to_string());
-        f.calls = vec![
-            CallSite { callee: "respond".to_string(), qualifier: None, line: 12 },
-        ];
+        f.calls = vec![CallSite {
+            callee: "respond".to_string(),
+            qualifier: None,
+            line: 12,
+        }];
         bake.functions.push(f);
         let mut t = make_type("Server", "struct");
-        t.fields = vec![
-            FieldInfo { name: "addr".to_string(), type_str: "SocketAddr".to_string(), visibility: Visibility::Public },
-        ];
+        t.fields = vec![FieldInfo {
+            name: "addr".to_string(),
+            type_str: "SocketAddr".to_string(),
+            visibility: Visibility::Public,
+        }];
         bake.types.push(t);
         bake.impls.push(IndexedImpl {
             type_name: "Server".to_string(),
@@ -1236,7 +1407,12 @@ mod tests {
 
     // ── write_bake_incremental ────────────────────────────────────────────────
 
-    fn make_bake_with_file(root: &std::path::Path, rel_path: &str, mtime_ns: i64, bytes: u64) -> BakeIndex {
+    fn make_bake_with_file(
+        root: &std::path::Path,
+        rel_path: &str,
+        mtime_ns: i64,
+        bytes: u64,
+    ) -> BakeIndex {
         let mut bake = empty_bake(root);
         bake.files.push(BakeFile {
             path: PathBuf::from(rel_path),
@@ -1266,8 +1442,14 @@ mod tests {
         assert_eq!(total, 2);
         let out = read_bake_from_db(&db).unwrap();
         assert_eq!(out.files.len(), 2);
-        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/a.rs")));
-        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/b.rs")));
+        assert!(out
+            .files
+            .iter()
+            .any(|f| f.path == PathBuf::from("src/a.rs")));
+        assert!(out
+            .files
+            .iter()
+            .any(|f| f.path == PathBuf::from("src/b.rs")));
     }
 
     #[test]
@@ -1290,17 +1472,23 @@ mod tests {
 
         // Remove src/b.rs.
         let empty_changed = empty_bake(dir.path());
-        let (total, _) = write_bake_incremental(
-            &empty_changed,
-            &["src/b.rs".to_string()],
-            &db,
-        ).unwrap();
+        let (total, _) =
+            write_bake_incremental(&empty_changed, &["src/b.rs".to_string()], &db).unwrap();
 
         assert_eq!(total, 2);
         let out = read_bake_from_db(&db).unwrap();
-        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/a.rs")));
-        assert!(!out.files.iter().any(|f| f.path == PathBuf::from("src/b.rs")));
-        assert!(out.files.iter().any(|f| f.path == PathBuf::from("src/c.rs")));
+        assert!(out
+            .files
+            .iter()
+            .any(|f| f.path == PathBuf::from("src/a.rs")));
+        assert!(!out
+            .files
+            .iter()
+            .any(|f| f.path == PathBuf::from("src/b.rs")));
+        assert!(out
+            .files
+            .iter()
+            .any(|f| f.path == PathBuf::from("src/c.rs")));
     }
 
     #[test]

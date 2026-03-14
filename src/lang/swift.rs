@@ -6,9 +6,8 @@ use ast_grep_language::{LanguageExt, SupportLang};
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
-    NodeKinds, Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, IndexedEndpoint,
+    IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, NodeKinds, Visibility,
 };
 
 pub struct SwiftAnalyzer;
@@ -23,27 +22,55 @@ const KINDS: NodeKinds = NodeKinds {
 };
 
 impl LanguageAnalyzer for SwiftAnalyzer {
-    fn language(&self) -> &str { "swift" }
+    fn language(&self) -> &str {
+        "swift"
+    }
 
     fn extract_imports(&self, source: &str) -> Vec<String> {
-        source.lines()
+        source
+            .lines()
             .filter_map(|l| {
                 let t = l.trim();
                 let s = t.strip_prefix("import ")?;
-                if s.is_empty() { None } else { Some(s.to_string()) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
             })
             .collect()
     }
 
-    fn analyze_file(&self, root: &Path, file: &Path) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)> {
+    fn analyze_file(
+        &self,
+        root: &Path,
+        file: &Path,
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
-        parser.set_language(&SupportLang::Swift.get_ts_language()).expect("Swift grammar");
-        let tree = parser.parse(&source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+        parser
+            .set_language(&SupportLang::Swift.get_ts_language())
+            .expect("Swift grammar");
+        let tree = parser
+            .parse(&source, None)
+            .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
         let mod_path = module_path_from_file(&relative(root, file), "swift");
         let mut functions = Vec::new();
         let mut types = Vec::new();
-        walk_swift(&source, root, file, tree.root_node(), &mod_path, &mut functions, &mut types);
+        walk_swift(
+            &source,
+            root,
+            file,
+            tree.root_node(),
+            &mod_path,
+            &mut functions,
+            &mut types,
+        );
         Ok((functions, vec![], types, vec![]))
     }
 
@@ -55,7 +82,15 @@ impl LanguageAnalyzer for SwiftAnalyzer {
     }
 }
 
-fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str, functions: &mut Vec<IndexedFunction>, types: &mut Vec<IndexedType>) {
+fn walk_swift(
+    source: &str,
+    root: &Path,
+    file: &Path,
+    node: Node,
+    mod_path: &str,
+    functions: &mut Vec<IndexedFunction>,
+    types: &mut Vec<IndexedType>,
+) {
     match node.kind() {
         "function_declaration" | "initializer_declaration" => {
             let name = if node.kind() == "initializer_declaration" {
@@ -63,7 +98,8 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
             } else {
                 node.child_by_field_name("name")
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                    .unwrap_or("").to_string()
+                    .unwrap_or("")
+                    .to_string()
             };
             if !name.is_empty() {
                 let (start_line, end_line) = line_range(&node);
@@ -72,10 +108,12 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
                     name: name.clone(),
                     file: relative(root, file),
                     language: "swift".to_string(),
-                    start_line, end_line,
+                    start_line,
+                    end_line,
                     complexity: estimate_complexity(node, source),
                     calls: collect_calls(node, source),
-                    byte_start, byte_end,
+                    byte_start,
+                    byte_end,
                     module_path: mod_path.to_string(),
                     qualified_name: qualified_name(mod_path, &name, "swift"),
                     visibility: swift_visibility(node, source.as_bytes()),
@@ -84,7 +122,10 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
                 });
             }
         }
-        "class_declaration" | "struct_declaration" | "protocol_declaration" | "enum_declaration" => {
+        "class_declaration"
+        | "struct_declaration"
+        | "protocol_declaration"
+        | "enum_declaration" => {
             if let Some(n) = node.child_by_field_name("name") {
                 let name = n.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                 if !name.is_empty() {
@@ -96,9 +137,15 @@ fn walk_swift(source: &str, root: &Path, file: &Path, node: Node, mod_path: &str
                     };
                     let (start_line, end_line) = line_range(&node);
                     types.push(IndexedType {
-                        name, file: relative(root, file), language: "swift".to_string(),
-                        start_line, end_line, kind: kind.to_string(),
-                        module_path: mod_path.to_string(), visibility: Visibility::Public, fields: vec![],
+                        name,
+                        file: relative(root, file),
+                        language: "swift".to_string(),
+                        start_line,
+                        end_line,
+                        kind: kind.to_string(),
+                        module_path: mod_path.to_string(),
+                        visibility: Visibility::Public,
+                        fields: vec![],
                         ..Default::default()
                     });
                 }
@@ -117,19 +164,34 @@ fn swift_visibility(node: Node, source: &[u8]) -> Visibility {
     for child in node.children(&mut cursor) {
         if child.kind() == "modifiers" {
             let text = child.utf8_text(source).unwrap_or("");
-            if text.contains("public") || text.contains("open") { return Visibility::Public; }
-            if text.contains("internal") { return Visibility::Module; }
-            if text.contains("private") || text.contains("fileprivate") { return Visibility::Private; }
+            if text.contains("public") || text.contains("open") {
+                return Visibility::Public;
+            }
+            if text.contains("internal") {
+                return Visibility::Module;
+            }
+            if text.contains("private") || text.contains("fileprivate") {
+                return Visibility::Private;
+            }
         }
     }
     Visibility::Module // Swift default is internal
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_statement", "for_statement", "while_statement", "repeat_while_statement",
-        "switch_statement", "catch_block", "guard_statement", "ternary_expression",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "repeat_while_statement",
+            "switch_statement",
+            "catch_block",
+            "guard_statement",
+            "ternary_expression",
+        ],
+    )
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<super::CallSite> {
@@ -147,12 +209,20 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<super::CallSite
             let text = func.utf8_text(source.as_bytes()).unwrap_or("").to_string();
             if let Some(dot) = text.rfind('.') {
                 let qualifier = text[..dot].to_string();
-                let callee = text[dot+1..].to_string();
+                let callee = text[dot + 1..].to_string();
                 if !callee.is_empty() {
-                    calls.push(super::CallSite { callee, qualifier: Some(qualifier), line });
+                    calls.push(super::CallSite {
+                        callee,
+                        qualifier: Some(qualifier),
+                        line,
+                    });
                 }
             } else if !text.is_empty() {
-                calls.push(super::CallSite { callee: text, qualifier: None, line });
+                calls.push(super::CallSite {
+                    callee: text,
+                    qualifier: None,
+                    line,
+                });
             }
         }
     }

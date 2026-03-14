@@ -5,9 +5,8 @@ use anyhow::Result;
 use tree_sitter::{Node, Parser};
 
 use super::{
-    byte_range, line_range, module_path_from_file, qualified_name, relative,
-    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer,
-    NodeKinds, Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, IndexedEndpoint,
+    IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, NodeKinds, Visibility,
 };
 
 pub struct ZigAnalyzer;
@@ -49,8 +48,12 @@ impl LanguageAnalyzer for ZigAnalyzer {
         &self,
         root: &Path,
         file: &Path,
-    ) -> Result<(Vec<IndexedFunction>, Vec<IndexedEndpoint>, Vec<IndexedType>, Vec<IndexedImpl>)>
-    {
+    ) -> Result<(
+        Vec<IndexedFunction>,
+        Vec<IndexedEndpoint>,
+        Vec<IndexedType>,
+        Vec<IndexedImpl>,
+    )> {
         let source = fs::read_to_string(file)?;
         let mut parser = Parser::new();
         parser
@@ -125,7 +128,10 @@ fn walk_zig(
     match node.kind() {
         "function_declaration" => {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
                 if !name.is_empty() {
                     let (start_line, end_line) = line_range(&node);
                     let (byte_start, byte_end) = byte_range(&node);
@@ -196,10 +202,18 @@ fn extract_type_decl(node: Node, source: &str) -> Option<(String, String)> {
                     name = Some(text);
                 }
             }
-            "struct_declaration" => { kind = Some("struct"); }
-            "enum_declaration" => { kind = Some("enum"); }
-            "union_declaration" => { kind = Some("union"); }
-            "opaque_declaration" => { kind = Some("opaque"); }
+            "struct_declaration" => {
+                kind = Some("struct");
+            }
+            "enum_declaration" => {
+                kind = Some("enum");
+            }
+            "union_declaration" => {
+                kind = Some("union");
+            }
+            "opaque_declaration" => {
+                kind = Some("opaque");
+            }
             _ => {}
         }
     }
@@ -211,11 +225,20 @@ fn extract_type_decl(node: Node, source: &str) -> Option<(String, String)> {
 }
 
 fn estimate_complexity(node: Node, _source: &str) -> u32 {
-    super::estimate_complexity_for(node, &[
-        "if_expression", "if_statement", "for_expression", "for_statement",
-        "while_expression", "while_statement", "switch_expression",
-        "catch_expression", "try_expression",
-    ])
+    super::estimate_complexity_for(
+        node,
+        &[
+            "if_expression",
+            "if_statement",
+            "for_expression",
+            "for_statement",
+            "while_expression",
+            "while_statement",
+            "switch_expression",
+            "catch_expression",
+            "try_expression",
+        ],
+    )
 }
 
 fn collect_calls(node: Node, source: &str) -> Vec<crate::lang::CallSite> {
@@ -256,7 +279,11 @@ fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<crate::lang::Ca
                 }
             };
             if !callee.is_empty() {
-                calls.push(crate::lang::CallSite { callee, qualifier, line });
+                calls.push(crate::lang::CallSite {
+                    callee,
+                    qualifier,
+                    line,
+                });
             }
         }
     }
