@@ -6,6 +6,14 @@
 
 **Grounded codebase answers for AI coding agents.**
 
+<a href="https://peerlist.io/avirajkhare00/project/yoyo" target="_blank" rel="noreferrer">
+				<img
+					src="https://peerlist.io/api/v1/projects/embed/PRJHDNDNMEQQ6O87M2NQQKM9BO8JNG?showUpvote=true&theme=light"
+					alt="YoYo"
+					style="width: auto; height: 72px;"
+				/>
+			</a>
+
 yoyo is a local MCP server for repository reading and change work. It exists to make coding agents less hallucinated, more grounded, and more truthful when they answer questions about a real codebase.
 
 The core product is not generic search. It is a smaller and more reliable interface to the repository:
