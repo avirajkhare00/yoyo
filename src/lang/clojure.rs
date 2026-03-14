@@ -2,22 +2,15 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::Result;
+use tree_sitter::{Node, Parser};
 
 use super::{
-    module_path_from_file, qualified_name, relative, AstMatch, CallSite, IndexedEndpoint,
-    IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, Visibility,
+    byte_range, line_range, module_path_from_file, qualified_name, relative, AstMatch, CallSite,
+    IndexedEndpoint, IndexedFunction, IndexedImpl, IndexedType, LanguageAnalyzer, Visibility,
 };
 use crate::engine::types::SyntaxError;
 
 pub struct ClojureAnalyzer;
-
-#[derive(Clone, Copy, Debug)]
-struct FormSpan {
-    start_byte: usize,
-    end_byte: usize,
-    start_line: u32,
-    end_line: u32,
-}
 
 const SPECIAL_FORMS: &[&str] = &[
     "binding", "case", "catch", "cond", "cond->", "cond->>", "def", "defmacro", "defn", "defn-",
@@ -54,37 +47,33 @@ impl LanguageAnalyzer for ClojureAnalyzer {
         Vec<IndexedImpl>,
     )> {
         let source = fs::read_to_string(file)?;
+        let tree = parse_clojure(&source)
+            .ok_or_else(|| anyhow::anyhow!("failed to parse {}", file.display()))?;
+        let rel_file = relative(root, file);
         let mod_path = module_path_from_file(&relative(root, file), "clojure");
         let mut functions = Vec::new();
-        let (forms, _) = scan_top_level_list_forms(&source);
-        for form in forms {
-            let Some(head) = head_symbol(
-                &source,
-                form.start_byte + 1,
-                form.end_byte.saturating_sub(1),
-            ) else {
+        for form in top_level_list_forms(tree.root_node()) {
+            let Some(head) = list_head_text(form, &source) else {
                 continue;
             };
             if !matches!(head.as_str(), "defn" | "defn-" | "defmacro") {
                 continue;
             }
-            let Some(name) = definition_name(
-                &source,
-                form.start_byte + 1,
-                form.end_byte.saturating_sub(1),
-            ) else {
+            let Some(name) = definition_name(form, &source) else {
                 continue;
             };
+            let (start_line, end_line) = line_range(&form);
+            let (byte_start, byte_end) = byte_range(&form);
             functions.push(IndexedFunction {
                 name: name.clone(),
-                file: relative(root, file),
+                file: rel_file.clone(),
                 language: "clojure".to_string(),
-                start_line: form.start_line,
-                end_line: form.end_line,
-                complexity: estimate_complexity(&source, form.start_byte, form.end_byte),
-                calls: collect_calls(&source, form.start_byte, form.end_byte),
-                byte_start: form.start_byte,
-                byte_end: form.end_byte,
+                start_line,
+                end_line,
+                complexity: estimate_complexity(form, &source),
+                calls: collect_calls(form, &source),
+                byte_start,
+                byte_end,
                 module_path: mod_path.clone(),
                 qualified_name: qualified_name(&mod_path, &name, "clojure"),
                 visibility: if head == "defn-" {
@@ -99,8 +88,8 @@ impl LanguageAnalyzer for ClojureAnalyzer {
         Ok((functions, vec![], vec![], vec![]))
     }
 
-    fn supports_ast_search(&self) -> bool {
-        true
+    fn ts_language(&self) -> Option<tree_sitter::Language> {
+        Some(tree_sitter_clojure::LANGUAGE.into())
     }
 
     fn ast_search(
@@ -115,154 +104,92 @@ impl LanguageAnalyzer for ClojureAnalyzer {
 }
 
 pub(crate) fn syntax_errors(source: &str) -> Vec<SyntaxError> {
-    let (_, errors) = scan_top_level_list_forms(source);
+    let Some(tree) = parse_clojure(source) else {
+        return vec![SyntaxError {
+            line: 1,
+            kind: "clojure".to_string(),
+            text: "failed to parse source".to_string(),
+        }];
+    };
+    if !tree.root_node().has_error() {
+        return vec![];
+    }
+    let mut errors = Vec::new();
+    collect_syntax_errors(tree.root_node(), source, &mut errors);
+    if errors.is_empty() {
+        errors.push(SyntaxError {
+            line: 1,
+            kind: "clojure".to_string(),
+            text: "syntax error".to_string(),
+        });
+    }
+    errors.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
+    errors.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     errors
 }
 
-fn scan_top_level_list_forms(source: &str) -> (Vec<FormSpan>, Vec<SyntaxError>) {
-    let mut forms = Vec::new();
-    let mut errors = Vec::new();
-    let mut stack: Vec<(char, usize, u32)> = Vec::new();
-    let mut chars = source.char_indices().peekable();
-    let mut line = 1u32;
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut in_comment = false;
-
-    while let Some((idx, ch)) = chars.next() {
-        if in_comment {
-            if ch == '\n' {
-                in_comment = false;
-                line += 1;
-            }
-            continue;
-        }
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            } else if ch == '\n' {
-                line += 1;
-            }
-            continue;
-        }
-
-        match ch {
-            '\n' => line += 1,
-            ';' => in_comment = true,
-            '"' => in_string = true,
-            '\\' => {
-                if let Some((_, next)) = chars.next() {
-                    if next == '\n' {
-                        line += 1;
-                    }
-                }
-            }
-            '(' | '[' | '{' => stack.push((ch, idx, line)),
-            ')' | ']' | '}' => {
-                let Some(&(open, start_byte, start_line)) = stack.last() else {
-                    errors.push(SyntaxError {
-                        line,
-                        kind: "clojure".to_string(),
-                        text: format!("unmatched closing delimiter '{}'", ch),
-                    });
-                    continue;
-                };
-                if !delimiters_match(open, ch) {
-                    errors.push(SyntaxError {
-                        line,
-                        kind: "clojure".to_string(),
-                        text: format!("mismatched delimiter '{}'", ch),
-                    });
-                    continue;
-                }
-                stack.pop();
-                if stack.is_empty() && open == '(' {
-                    forms.push(FormSpan {
-                        start_byte,
-                        end_byte: idx + ch.len_utf8(),
-                        start_line,
-                        end_line: line,
-                    });
-                }
-            }
-            _ => {}
-        }
-    }
-
-    if in_string {
-        errors.push(SyntaxError {
-            line,
-            kind: "clojure".to_string(),
-            text: "unterminated string literal".to_string(),
-        });
-    }
-    for (open, _, open_line) in stack {
-        errors.push(SyntaxError {
-            line: open_line,
-            kind: "clojure".to_string(),
-            text: format!("unclosed delimiter '{}'", open),
-        });
-    }
-    (forms, errors)
+fn parse_clojure(source: &str) -> Option<tree_sitter::Tree> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_clojure::LANGUAGE.into())
+        .expect("failed to load Clojure grammar");
+    parser.parse(source, None)
 }
 
-fn delimiters_match(open: char, close: char) -> bool {
-    matches!((open, close), ('(', ')') | ('[', ']') | ('{', '}'))
+fn top_level_list_forms(root: Node) -> Vec<Node> {
+    let mut cursor = root.walk();
+    root.named_children(&mut cursor)
+        .filter(|child| child.kind() == "list_lit")
+        .collect()
+}
+
+fn semantic_children(node: Node) -> Vec<Node> {
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .filter(|child| !matches!(child.kind(), "comment" | "dis_expr"))
+        .collect()
+}
+
+fn node_text(node: Node, source: &str) -> String {
+    node.utf8_text(source.as_bytes()).unwrap_or("").to_string()
+}
+
+fn list_head_node(node: Node) -> Option<Node> {
+    semantic_children(node)
+        .into_iter()
+        .find(|child| matches!(child.kind(), "sym_lit" | "kwd_lit"))
+}
+
+fn list_head_text(node: Node, source: &str) -> Option<String> {
+    list_head_node(node).map(|child| node_text(child, source))
 }
 
 fn extract_ns_imports(source: &str) -> Vec<String> {
-    let (forms, _) = scan_top_level_list_forms(source);
-    let ns_form = forms.into_iter().find(|form| {
-        head_symbol(source, form.start_byte + 1, form.end_byte.saturating_sub(1)).as_deref()
-            == Some("ns")
-    });
+    let Some(tree) = parse_clojure(source) else {
+        return vec![];
+    };
+    let ns_form = top_level_list_forms(tree.root_node())
+        .into_iter()
+        .find(|form| list_head_text(*form, source).as_deref() == Some("ns"));
     let Some(form) = ns_form else {
         return vec![];
     };
     let mut imports = Vec::new();
-    let mut cursor = form.start_byte + 1;
-    let end = form.end_byte.saturating_sub(1);
-    let mut clause_active = false;
-    let mut collection_stack: Vec<bool> = Vec::new();
-
-    while let Some((token, next)) = next_token(source, cursor, end) {
-        match token {
-            Token::Atom(atom) => {
-                if matches!(
-                    atom.as_str(),
-                    ":require" | ":require-macros" | ":use" | ":import"
-                ) {
-                    clause_active = true;
-                } else if clause_active {
-                    if let Some(needs_first) = collection_stack.last_mut() {
-                        if *needs_first && namespace_like(&atom) {
-                            imports.push(atom);
-                            *needs_first = false;
-                        }
-                    } else if namespace_like(&atom) {
-                        imports.push(atom);
-                    }
-                }
-            }
-            Token::Open(ch) => {
-                if matches!(ch, '[' | '(') && clause_active {
-                    collection_stack.push(true);
-                } else {
-                    collection_stack.push(false);
-                }
-            }
-            Token::Close => {
-                collection_stack.pop();
-            }
-            Token::String => {}
+    for clause in semantic_children(form).into_iter().skip(2) {
+        if clause.kind() != "list_lit" {
+            continue;
         }
-        cursor = next;
+        let Some(head) = list_head_text(clause, source) else {
+            continue;
+        };
+        if !matches!(
+            head.as_str(),
+            ":require" | ":require-macros" | ":use" | ":import"
+        ) {
+            continue;
+        }
+        collect_clause_imports(clause, source, &mut imports);
     }
-
     imports.sort();
     imports.dedup();
     imports
@@ -279,40 +206,231 @@ fn namespace_like(atom: &str) -> bool {
         .any(|ch| matches!(ch, '.' | '/' | '-' | '_') || ch.is_ascii_alphabetic())
 }
 
-fn definition_name(source: &str, start: usize, end: usize) -> Option<String> {
-    let (_, after_head) = next_plain_symbol(source, start, end)?;
-    let (name, _) = next_plain_symbol(source, after_head, end)?;
-    Some(name)
+fn collect_clause_imports(node: Node, source: &str, imports: &mut Vec<String>) {
+    for child in semantic_children(node).into_iter().skip(1) {
+        collect_import_targets(child, source, imports);
+    }
 }
 
-fn estimate_complexity(source: &str, start: usize, end: usize) -> u32 {
-    let mut count = 1u32;
-    for_each_list_head(source, start, end, |head, _line| {
-        if COMPLEXITY_FORMS.contains(&head.as_str()) {
-            count += 1;
+fn collect_import_targets(node: Node, source: &str, imports: &mut Vec<String>) {
+    match node.kind() {
+        "sym_lit" => {
+            let text = node_text(node, source);
+            if namespace_like(&text) {
+                imports.push(text);
+            }
         }
-    });
+        "vec_lit" | "list_lit" => {
+            if let Some(ns) = first_namespace_symbol(node, source) {
+                imports.push(ns);
+            }
+            for child in semantic_children(node) {
+                if matches!(child.kind(), "vec_lit" | "list_lit") {
+                    collect_import_targets(child, source, imports);
+                }
+            }
+        }
+        _ => {
+            for child in semantic_children(node) {
+                collect_import_targets(child, source, imports);
+            }
+        }
+    }
+}
+
+fn first_namespace_symbol(node: Node, source: &str) -> Option<String> {
+    for child in semantic_children(node) {
+        if child.kind() != "sym_lit" {
+            continue;
+        }
+        let text = node_text(child, source);
+        if namespace_like(&text) {
+            return Some(text);
+        }
+    }
+    None
+}
+
+fn definition_name(node: Node, source: &str) -> Option<String> {
+    semantic_children(node)
+        .into_iter()
+        .skip(1)
+        .find(|child| child.kind() == "sym_lit")
+        .map(|child| node_text(child, source))
+}
+
+fn estimate_complexity(node: Node, source: &str) -> u32 {
+    let mut count = 1u32;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "list_lit" {
+            if let Some(head) = list_head_text(child, source) {
+                if COMPLEXITY_FORMS.contains(&head.as_str()) {
+                    count += 1;
+                }
+            }
+        }
+        count += estimate_complexity(child, source).saturating_sub(1);
+    }
     count
 }
 
-fn collect_calls(source: &str, start: usize, end: usize) -> Vec<CallSite> {
+fn collect_calls(node: Node, source: &str) -> Vec<CallSite> {
     let mut calls = Vec::new();
-    for_each_list_head(source, start, end, |head, line| {
-        if SPECIAL_FORMS.contains(&head.as_str()) {
-            return;
-        }
-        let (callee, qualifier) = split_qualified_symbol(&head);
-        if !callee.is_empty() {
-            calls.push(CallSite {
-                callee,
-                qualifier,
-                line,
-            });
-        }
-    });
+    collect_calls_inner(node, source, &mut calls);
     calls.sort_by(|a, b| a.callee.cmp(&b.callee).then(a.line.cmp(&b.line)));
     calls.dedup_by(|a, b| a.callee == b.callee && a.qualifier == b.qualifier && a.line == b.line);
     calls
+}
+
+fn collect_calls_inner(node: Node, source: &str, calls: &mut Vec<CallSite>) {
+    if node.kind() == "list_lit" {
+        if let Some(head_node) = list_head_node(node) {
+            let head = node_text(head_node, source);
+            if !SPECIAL_FORMS.contains(&head.as_str()) {
+                let (callee, qualifier) = split_qualified_symbol(&head);
+                if !callee.is_empty() {
+                    calls.push(CallSite {
+                        callee,
+                        qualifier,
+                        line: (head_node.start_position().row + 1) as u32,
+                    });
+                }
+            }
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_calls_inner(child, source, calls);
+    }
+}
+
+fn collect_syntax_errors(node: Node, source: &str, errors: &mut Vec<SyntaxError>) {
+    if node.is_missing() {
+        errors.push(SyntaxError {
+            line: (node.start_position().row + 1) as u32,
+            kind: "clojure".to_string(),
+            text: format!("missing {}", node.kind()),
+        });
+        return;
+    }
+    if node.is_error() {
+        let snippet = node_text(node, source);
+        let text = if snippet.trim().is_empty() {
+            "syntax error".to_string()
+        } else {
+            let snippet = snippet.trim().replace('\n', " ");
+            let truncated: String = snippet.chars().take(40).collect();
+            format!("syntax error near {}", truncated)
+        };
+        errors.push(SyntaxError {
+            line: (node.start_position().row + 1) as u32,
+            kind: "clojure".to_string(),
+            text,
+        });
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_syntax_errors(child, source, errors);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct SearchState {
+    in_call: bool,
+    in_assign: bool,
+    in_return: bool,
+}
+
+fn clojure_ast_search(source: &str, query_lc: &str, context: &str, pattern: &str) -> Vec<AstMatch> {
+    let Some(tree) = parse_clojure(source) else {
+        return vec![];
+    };
+    let lines: Vec<&str> = source.lines().collect();
+    let mut matches = Vec::new();
+    walk_search(
+        tree.root_node(),
+        source,
+        &lines,
+        query_lc,
+        context,
+        pattern,
+        SearchState::default(),
+        &mut matches,
+    );
+    matches.sort_by_key(|m| m.line);
+    matches.dedup_by(|a, b| a.line == b.line);
+    matches
+}
+
+fn walk_search(
+    node: Node,
+    source: &str,
+    lines: &[&str],
+    query_lc: &str,
+    context: &str,
+    pattern: &str,
+    state: SearchState,
+    matches: &mut Vec<AstMatch>,
+) {
+    let mut state = state;
+    if node.kind() == "list_lit" {
+        if let Some(head) = list_head_text(node, source) {
+            if !SPECIAL_FORMS.contains(&head.as_str()) {
+                state.in_call = true;
+            }
+            if ASSIGN_FORMS.contains(&head.as_str()) {
+                state.in_assign = true;
+            }
+            if RETURN_FORMS.contains(&head.as_str()) {
+                state.in_return = true;
+            }
+        }
+    }
+
+    let kind = node.kind();
+    let is_identifier = matches!(kind, "sym_lit" | "sym_val_lit");
+    let is_string = matches!(kind, "str_lit" | "char_lit" | "regex_lit");
+    let is_comment = kind == "comment";
+
+    if is_identifier || is_string || is_comment {
+        let text = node_text(node, source);
+        if text.to_lowercase().contains(query_lc) {
+            let context_ok = match context {
+                "all" => true,
+                "strings" => is_string,
+                "comments" => is_comment,
+                "identifiers" => is_identifier,
+                _ => true,
+            };
+            let pattern_ok = match pattern {
+                "all" => true,
+                "call" => state.in_call,
+                "assign" => state.in_assign,
+                "return" => state.in_return,
+                _ => true,
+            };
+            if context_ok && pattern_ok {
+                let row = node.start_position().row as usize;
+                let snippet = lines
+                    .get(row)
+                    .map(|line| line.trim().to_string())
+                    .unwrap_or_else(|| text.trim().to_string());
+                matches.push(AstMatch {
+                    line: (row + 1) as u32,
+                    snippet,
+                });
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_search(
+            child, source, lines, query_lc, context, pattern, state, matches,
+        );
+    }
 }
 
 fn split_qualified_symbol(symbol: &str) -> (String, Option<String>) {
@@ -320,474 +438,6 @@ fn split_qualified_symbol(symbol: &str) -> (String, Option<String>) {
         return (callee.to_string(), Some(qualifier.to_string()));
     }
     (symbol.to_string(), None)
-}
-
-fn clojure_ast_search(source: &str, query_lc: &str, context: &str, pattern: &str) -> Vec<AstMatch> {
-    let mut matches = Vec::new();
-    let want_identifiers = context == "all" || context == "identifiers";
-    let want_strings = context == "all" || context == "strings";
-    let want_comments = context == "all" || context == "comments";
-
-    if want_comments && pattern == "all" {
-        for (line, text) in comment_tokens(source) {
-            if text.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch {
-                    line,
-                    snippet: line_snippet(source, line),
-                });
-            }
-        }
-    }
-    if want_strings && pattern == "all" {
-        for (line, text) in string_tokens(source) {
-            if text.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch {
-                    line,
-                    snippet: line_snippet(source, line),
-                });
-            }
-        }
-    }
-    if want_identifiers && matches!(pattern, "all" | "call" | "assign" | "return") {
-        for (line, head) in list_heads(source) {
-            let include = match pattern {
-                "call" => !SPECIAL_FORMS.contains(&head.as_str()),
-                "assign" => ASSIGN_FORMS.contains(&head.as_str()),
-                "return" => RETURN_FORMS.contains(&head.as_str()),
-                _ => true,
-            };
-            if include && head.to_lowercase().contains(query_lc) {
-                matches.push(AstMatch {
-                    line,
-                    snippet: line_snippet(source, line),
-                });
-            }
-        }
-        if pattern == "all" {
-            for (line, symbol) in symbol_tokens(source) {
-                if symbol.to_lowercase().contains(query_lc) {
-                    matches.push(AstMatch {
-                        line,
-                        snippet: line_snippet(source, line),
-                    });
-                }
-            }
-        }
-    }
-
-    matches.sort_by_key(|m| m.line);
-    matches.dedup_by(|a, b| a.line == b.line);
-    matches
-}
-
-fn list_heads(source: &str) -> Vec<(u32, String)> {
-    let mut heads = Vec::new();
-    for_each_list_head(source, 0, source.len(), |head, line| {
-        heads.push((line, head));
-    });
-    heads
-}
-
-fn symbol_tokens(source: &str) -> Vec<(u32, String)> {
-    let mut tokens = Vec::new();
-    let mut cursor = 0;
-    while let Some((token, next)) = next_token(source, cursor, source.len()) {
-        if let Token::Atom(atom) = token {
-            if !atom.starts_with(':') && !atom.starts_with('^') {
-                let line = line_number_at(source, cursor);
-                tokens.push((line, atom));
-            }
-        }
-        cursor = next;
-    }
-    tokens
-}
-
-fn comment_tokens(source: &str) -> Vec<(u32, String)> {
-    let mut comments = Vec::new();
-    let mut line = 1u32;
-    let mut chars = source.char_indices().peekable();
-    let mut in_string = false;
-    let mut escaped = false;
-    while let Some((_, ch)) = chars.next() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            } else if ch == '\n' {
-                line += 1;
-            }
-            continue;
-        }
-        match ch {
-            '\n' => line += 1,
-            '"' => in_string = true,
-            ';' => {
-                let mut comment = String::new();
-                while let Some((_, next)) = chars.next() {
-                    if next == '\n' {
-                        line += 1;
-                        break;
-                    }
-                    comment.push(next);
-                }
-                comments.push((line, comment.trim().to_string()));
-            }
-            '\\' => {
-                let _ = chars.next();
-            }
-            _ => {}
-        }
-    }
-    comments
-}
-
-fn string_tokens(source: &str) -> Vec<(u32, String)> {
-    let mut strings = Vec::new();
-    let mut line = 1u32;
-    let mut chars = source.char_indices().peekable();
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut current = String::new();
-    let mut string_line = line;
-
-    while let Some((_, ch)) = chars.next() {
-        if in_string {
-            if escaped {
-                current.push(ch);
-                escaped = false;
-                continue;
-            }
-            match ch {
-                '\\' => escaped = true,
-                '"' => {
-                    strings.push((string_line, current.clone()));
-                    current.clear();
-                    in_string = false;
-                }
-                '\n' => {
-                    current.push(ch);
-                    line += 1;
-                }
-                _ => current.push(ch),
-            }
-            continue;
-        }
-        match ch {
-            '\n' => line += 1,
-            '"' => {
-                in_string = true;
-                string_line = line;
-            }
-            ';' => {
-                while let Some((_, next)) = chars.next() {
-                    if next == '\n' {
-                        line += 1;
-                        break;
-                    }
-                }
-            }
-            '\\' => {
-                let _ = chars.next();
-            }
-            _ => {}
-        }
-    }
-
-    strings
-}
-
-fn for_each_list_head<F>(source: &str, start: usize, end: usize, mut f: F)
-where
-    F: FnMut(String, u32),
-{
-    let mut chars = source[start..end].char_indices().peekable();
-    let mut line = line_number_at(source, start);
-    let mut in_string = false;
-    let mut escaped = false;
-    let mut in_comment = false;
-
-    while let Some((offset, ch)) = chars.next() {
-        if in_comment {
-            if ch == '\n' {
-                in_comment = false;
-                line += 1;
-            }
-            continue;
-        }
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            } else if ch == '\n' {
-                line += 1;
-            }
-            continue;
-        }
-        match ch {
-            '\n' => line += 1,
-            ';' => in_comment = true,
-            '"' => in_string = true,
-            '\\' => {
-                let _ = chars.next();
-            }
-            '(' => {
-                let absolute = start + offset + ch.len_utf8();
-                if let Some(head) = head_symbol(source, absolute, end) {
-                    f(head, line);
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn head_symbol(source: &str, start: usize, end: usize) -> Option<String> {
-    next_plain_symbol(source, start, end).map(|(symbol, _)| symbol)
-}
-
-fn next_plain_symbol(source: &str, start: usize, end: usize) -> Option<(String, usize)> {
-    let mut cursor = start;
-    while cursor < end {
-        cursor = skip_ws_comments(source, cursor, end);
-        if cursor >= end {
-            return None;
-        }
-        let ch = source[cursor..].chars().next()?;
-        if ch == '^' {
-            cursor += ch.len_utf8();
-            cursor = skip_ws_comments(source, cursor, end);
-            if cursor < end {
-                cursor = advance_form(source, cursor, end);
-            }
-            continue;
-        }
-        if ch == '#' {
-            let mut iter = source[cursor..].chars();
-            let _ = iter.next();
-            if matches!(iter.next(), Some('_')) {
-                cursor += 2;
-                cursor = skip_ws_comments(source, cursor, end);
-                if cursor < end {
-                    cursor = advance_form(source, cursor, end);
-                }
-                continue;
-            }
-        }
-        if matches!(ch, '(' | '[' | '{' | '"') {
-            cursor = advance_form(source, cursor, end);
-            continue;
-        }
-        let (token, next) = read_atom(source, cursor, end)?;
-        if token.starts_with(':') || token.starts_with('^') || token == "&" {
-            cursor = next;
-            continue;
-        }
-        return Some((token, next));
-    }
-    None
-}
-
-fn skip_ws_comments(source: &str, mut cursor: usize, end: usize) -> usize {
-    while cursor < end {
-        let ch = match source[cursor..].chars().next() {
-            Some(ch) => ch,
-            None => break,
-        };
-        if ch.is_whitespace() || ch == ',' {
-            cursor += ch.len_utf8();
-            continue;
-        }
-        if ch == ';' {
-            while cursor < end {
-                let next = match source[cursor..].chars().next() {
-                    Some(next) => next,
-                    None => break,
-                };
-                cursor += next.len_utf8();
-                if next == '\n' {
-                    break;
-                }
-            }
-            continue;
-        }
-        break;
-    }
-    cursor
-}
-
-fn advance_form(source: &str, cursor: usize, end: usize) -> usize {
-    let ch = match source[cursor..].chars().next() {
-        Some(ch) => ch,
-        None => return end,
-    };
-    match ch {
-        '"' => advance_string(source, cursor, end),
-        '(' | '[' | '{' => advance_collection(source, cursor, end),
-        ';' => skip_ws_comments(source, cursor, end),
-        '\\' => {
-            let mut next = cursor + ch.len_utf8();
-            if let Some(ch) = source[next..].chars().next() {
-                next += ch.len_utf8();
-            }
-            next
-        }
-        _ => read_atom(source, cursor, end)
-            .map(|(_, next)| next)
-            .unwrap_or(end),
-    }
-}
-
-fn advance_string(source: &str, start: usize, end: usize) -> usize {
-    let mut cursor = start;
-    let mut escaped = false;
-    while cursor < end {
-        let ch = match source[cursor..].chars().next() {
-            Some(ch) => ch,
-            None => return end,
-        };
-        cursor += ch.len_utf8();
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' {
-            escaped = true;
-        } else if ch == '"' && cursor > start + 1 {
-            return cursor;
-        }
-    }
-    end
-}
-
-fn advance_collection(source: &str, start: usize, end: usize) -> usize {
-    let open = match source[start..].chars().next() {
-        Some(ch) => ch,
-        None => return end,
-    };
-    let close = match open {
-        '(' => ')',
-        '[' => ']',
-        '{' => '}',
-        _ => return start + open.len_utf8(),
-    };
-    let mut cursor = start + open.len_utf8();
-    let mut depth = 1u32;
-    let mut in_string = false;
-    let mut escaped = false;
-    while cursor < end {
-        let ch = match source[cursor..].chars().next() {
-            Some(ch) => ch,
-            None => return end,
-        };
-        if in_string {
-            cursor += ch.len_utf8();
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        match ch {
-            '"' => {
-                in_string = true;
-                cursor += ch.len_utf8();
-            }
-            ';' => {
-                cursor = skip_ws_comments(source, cursor, end);
-            }
-            '\\' => {
-                cursor += ch.len_utf8();
-                if cursor < end {
-                    if let Some(next) = source[cursor..].chars().next() {
-                        cursor += next.len_utf8();
-                    }
-                }
-            }
-            c if c == open => {
-                depth += 1;
-                cursor += c.len_utf8();
-            }
-            c if c == close => {
-                depth -= 1;
-                cursor += c.len_utf8();
-                if depth == 0 {
-                    return cursor;
-                }
-            }
-            _ => cursor += ch.len_utf8(),
-        }
-    }
-    end
-}
-
-#[derive(Debug)]
-enum Token {
-    Atom(String),
-    String,
-    Open(char),
-    Close,
-}
-
-fn next_token(source: &str, start: usize, end: usize) -> Option<(Token, usize)> {
-    let cursor = skip_ws_comments(source, start, end);
-    if cursor >= end {
-        return None;
-    }
-    let ch = source[cursor..].chars().next()?;
-    match ch {
-        '(' | '[' | '{' => Some((Token::Open(ch), cursor + ch.len_utf8())),
-        ')' | ']' | '}' => Some((Token::Close, cursor + ch.len_utf8())),
-        '"' => {
-            let next = advance_string(source, cursor, end);
-            Some((Token::String, next))
-        }
-        _ => read_atom(source, cursor, end).map(|(atom, next)| (Token::Atom(atom), next)),
-    }
-}
-
-fn read_atom(source: &str, start: usize, end: usize) -> Option<(String, usize)> {
-    let mut cursor = start;
-    while cursor < end {
-        let ch = source[cursor..].chars().next()?;
-        if ch.is_whitespace()
-            || ch == ','
-            || matches!(ch, '(' | ')' | '[' | ']' | '{' | '}' | '"' | ';')
-        {
-            break;
-        }
-        cursor += ch.len_utf8();
-    }
-    if cursor == start {
-        None
-    } else {
-        Some((source[start..cursor].to_string(), cursor))
-    }
-}
-
-fn line_number_at(source: &str, byte_idx: usize) -> u32 {
-    source[..byte_idx.min(source.len())]
-        .bytes()
-        .filter(|b| *b == b'\n')
-        .count() as u32
-        + 1
-}
-
-fn line_snippet(source: &str, line: u32) -> String {
-    source
-        .lines()
-        .nth(line.saturating_sub(1) as usize)
-        .map(|line| line.trim().to_string())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -855,8 +505,6 @@ mod tests {
     fn clojure_syntax_errors_catches_unbalanced_forms() {
         let errors = syntax_errors("(defn greet []\n  (println \"hi\")\n");
         assert!(!errors.is_empty());
-        assert!(errors
-            .iter()
-            .any(|err| err.text.contains("unclosed delimiter")));
+        assert!(errors.iter().all(|err| err.kind == "clojure"));
     }
 }

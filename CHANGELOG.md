@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-03-14
+
+### Fixed
+
+- Clojure indexing, import extraction, and search now use a true tree-sitter-backed analyzer instead of the lightweight s-expression fallback.
+- Clojure write guards now derive syntax failures from the parser-backed analyzer, keeping the indexed language slice and guarded write path aligned.
+
 ## [1.12.0] - 2026-03-14
 
 ### Added

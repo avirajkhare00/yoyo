@@ -1,0 +1,3 @@
+[submodule "grammar-src"]
+	path = grammar-src
+	url = https://github.com/sogaiu/tree-sitter-clojure.git
