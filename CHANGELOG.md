@@ -2,15 +2,22 @@
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-03-14
+
 ### Added
 
 - Initial Clojure support for `bake`/`symbol`/`supersearch`: function indexing, namespace import extraction, and structured search via a lightweight s-expression analyzer.
+- Retry-loop eval coverage now spans Rust and Python fixtures, proving `guard_failure -> inspect -> retry -> success` across compiler-backed and interpreter-backed write guards.
 
 ### Changed
 
 - Clojure source files (`.clj`, `.cljs`, `.cljc`) now participate in write guards through a safe syntax check for unbalanced delimiters and unterminated strings.
 - Configured runtime feedback now treats `clojure`, `clj`, and `bb` like other interpreters: file-targeted commands are allowed, inline eval forms are rejected, and Clojure runtime failures roll writes back through the shared guard path.
 - Fixed Python/Clojure module path normalization so `src/`, `lib/`, and `test/` roots no longer leak into qualified names.
+
+### Fixed
+
+- Release automation now checks out the yoyo source repo before updating the Homebrew tap, so `packaging/homebrew/yoyo.rb.template` is available during formula generation.
 
 ## [1.10.0] - 2026-03-14
 

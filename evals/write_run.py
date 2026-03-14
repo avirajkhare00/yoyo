@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 
 YOYO = Path(os.environ.get("YOYO_BIN", str(Path.home() / ".local/bin/yoyo")))
+CURRENT_VERIFY_COMMAND: list[str] | None = None
+CURRENT_VERIFY_TIMEOUT = 300
 
 PASS = "✓"
 FAIL = "✗"
@@ -79,10 +81,8 @@ def count_max_blank_run(filepath: str) -> int:
 
 
 def compile_check(path: str) -> tuple[bool, str]:
-    code, _, err = run(
-        ["cargo", "build", "--manifest-path", f"{path}/Cargo.toml"],
-        timeout=300,
-    )
+    cmd = CURRENT_VERIFY_COMMAND or ["cargo", "build", "--manifest-path", f"{path}/Cargo.toml"]
+    code, _, err = run(cmd, cwd=path, timeout=CURRENT_VERIFY_TIMEOUT)
     return code == 0, err[-500:] if err else ""
 
 
@@ -614,13 +614,18 @@ RUNNERS = {
     "rw-004": run_rw004,
     "rw-005": run_rw005,
     "rw-006": run_rw006,
+    "rw-007": run_rw006,
 }
 
 def run_eval(task_file: str, filter_ids: list[str] | None, compile_enabled: bool) -> dict:
     with open(task_file) as f:
         suite = json.load(f)
 
+    global CURRENT_VERIFY_COMMAND, CURRENT_VERIFY_TIMEOUT
+
     src = resolve_codebase_path(task_file, suite["codebase_path"])
+    CURRENT_VERIFY_COMMAND = suite.get("verify_command")
+    CURRENT_VERIFY_TIMEOUT = suite.get("verify_timeout", 300)
     tasks = suite["tasks"]
     if filter_ids:
         tasks = [t for t in tasks if t["id"] in filter_ids]

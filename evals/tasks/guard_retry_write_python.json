@@ -1,0 +1,26 @@
+{
+  "codebase": "guard-retry-python",
+  "codebase_path": "../fixtures/guard_retry_python",
+  "pinned_commit": "local-fixture",
+  "verify_command": ["python3", "-m", "py_compile", "main.py"],
+  "verify_timeout": 60,
+  "tasks": [
+    {
+      "id": "rw-007",
+      "type": "guard_failure_retry",
+      "description": "Patch greet with a Python runtime failure, parse guard_failure, inspect targeted lines, then retry with a fixed body",
+      "operation": {
+        "name": "greet",
+        "file": "main.py",
+        "broken_new_content": "def greet():\n    return missing_name\n",
+        "fixed_new_content": "def greet():\n    msg = \"hi\"\n    return msg\n"
+      },
+      "ground_truth": {
+        "guard_failure_phase": "post_write_guard",
+        "retry_succeeds": true,
+        "attempts": 2,
+        "max_retries": 1
+      }
+    }
+  ]
+}

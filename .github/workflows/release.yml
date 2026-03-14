@@ -84,6 +84,11 @@ jobs:
     needs: build-and-upload
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout yoyo source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
       - name: Get release version
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
@@ -117,7 +122,7 @@ jobs:
           import os
           from pathlib import Path
 
-          template = Path("packaging/homebrew/yoyo.rb.template").read_text()
+          template = Path("source/packaging/homebrew/yoyo.rb.template").read_text()
           rendered = (
               template.replace("__VERSION__", os.environ["VERSION"])
               .replace("__SHA_MACOS__", os.environ["SHA_MACOS"])

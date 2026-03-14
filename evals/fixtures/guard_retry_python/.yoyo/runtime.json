@@ -1,0 +1,11 @@
+{
+  "runtime_checks": [
+    {
+      "language": "python",
+      "command": ["python3", "{{file}}"],
+      "allow_unsandboxed": true,
+      "kind": "python-runtime",
+      "timeout_ms": 1000
+    }
+  ]
+}
