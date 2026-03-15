@@ -295,8 +295,8 @@
       <div class="eyebrow">Grounded codebase work</div>
       <h1>Your agent should read the code that is there, not the code it imagines.</h1>
       <p class="lead">
-        yoyo is a local MCP server for codebase reading and change work. It exists to make coding agents
-        less hallucinated, more grounded, and more truthful when they answer questions about a real repository.
+        yoyo is a local MCP server for codebase reading and change work. It is built for agents first,
+        so they start from repo truth instead of model memory.
       </p>
       <p class="lead">
         The core product is not a bag of search tricks. It is a smaller and more reliable interface to the codebase:
@@ -346,7 +346,7 @@
             for toy projects and dangerous for real ones.
           </p>
           <p>
-            yoyo narrows that gap. It gives the model a grounded index, a judgment surface before edits, a cheaper
+            yoyo narrows that gap. It gives the agent a grounded index, a judgment surface before edits, a cheaper
             read surface for signatures and types, and a structured write path when a direct file mutation is the wrong tool.
           </p>
           <div class="tool-line">
@@ -416,14 +416,12 @@
         </div>
 
         <aside class="note">
-          <strong>Least-privilege by default</strong>
+          <strong>Agent-first config</strong>
           <p class="muted">
-            If <code>yoyo.json</code> is missing, yoyo now creates a starter config automatically for
-            supported interpreted languages. The file is still restrictive: file-targeted commands only,
-            no inline eval, and runtime execution remains disabled until an agent widens access explicitly. The
-            <code>boot</code> payload also points to <code>yoyo.json</code> as the agent-managed, git-trackable config,
-            loads repo conventions from it, shows a concrete example for enabling unsandboxed file-targeted runtime checks, and keeps
-            <code>.bakes/</code> separate as managed cache.
+            If <code>yoyo.json</code> is missing, yoyo now creates it automatically for supported interpreted
+            languages. Agents keep repo rules, common commands, and runtime policy in that tracked file instead
+            of asking for the same context again and again. <code>boot</code> points to that file directly and
+            keeps <code>.bakes/</code> separate as managed cache.
           </p>
         </aside>
       </div>
