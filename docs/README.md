@@ -1,6 +1,6 @@
 # yoyo — full documentation
 
-yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. Every answer comes from the AST, not model memory. The product goal is more truthful, more grounded codebase answers with less hallucination. No API keys, no SaaS, no telemetry.
+yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, or OpenCode a curated task-shaped MCP surface for reading and editing code. It is built for agents first. Every answer should come from the repo and AST, not model memory. No API keys, no SaaS, no telemetry.
 
 Essays:
 
@@ -79,8 +79,8 @@ The important write-side concepts are now:
 - **Runtime guard** — this is the post-write check for interpreted languages where parsing is not enough. It catches failures like Python `NameError`, JavaScript module-load errors, and Clojure namespace/load-time failures.
 - **`guard_failure`** — failed guarded writes return machine-readable failure payloads, not just prose, so the next tool call can reason about `operation`, `phase`, `retryable`, `files_restored`, and the implicated files.
 - **`retry_plan`** — yoyo can turn that failure into a bounded recovery workflow with a targeted `inspect` window and explicit stop conditions.
-- **Least-privilege runtime bootstrap** — if `yoyo.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages. The file is intentionally restrictive: file-targeted commands, no inline eval, and `allow_unsandboxed: false` until an agent updates it.
-- **Managed bake cache** — `.bakes/` is yoyo-managed cache, not user config. In git repos, yoyo adds `.bakes/` to the repo exclude file automatically. The repo-level agent contract is `yoyo.json`: runtime policy plus project styling, frameworks, and common commands.
+- **Least-privilege runtime bootstrap** — if `yoyo.json` is missing, yoyo now creates it automatically for supported interpreted languages. The file is intentionally restrictive: file-targeted commands, no inline eval, and `allow_unsandboxed: false` until an agent updates the policy.
+- **Managed bake cache** — `.bakes/` is yoyo-managed cache, not repo config. In git repos, yoyo adds `.bakes/` to the repo exclude file automatically. The repo-level agent contract is `yoyo.json`: project styling, frameworks, common commands, and runtime policy in one file.
 
 Concrete example:
 
@@ -106,7 +106,7 @@ Each agent session follows this sequence:
 5. **Write** — `change` is the MCP write verb and the error-bounded write surface. It routes to the underlying write mechanisms and auto-reindexes. The agent does not edit files directly when a yoyo write tool applies.
 6. **Discover** — `help` returns params, output shape, example, and limitations for any tool on demand. No need to memorize schemas.
 
-Result: agents answer from facts, not memory. More grounded. Less hallucinated. No stale function names.
+Result: agents start with repo context already loaded, answer from facts instead of memory, and stop asking for the same style or framework instructions every session.
 
 ---
 
