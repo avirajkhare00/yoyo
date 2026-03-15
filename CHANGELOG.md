@@ -2,13 +2,24 @@
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-03-15
+
+### Added
+
+- `yoyo.json` can now store project conventions such as languages, frameworks, style rules, and recurring commands so agents can pick up repo context without being re-prompted each session.
+
+### Changed
+
+- `boot` now surfaces `project_conventions` from `yoyo.json` alongside runtime policy guidance, making repo style and framework context part of the base MCP session payload.
+- Guarded runtime bootstrap now creates `yoyo.json` as the single repo contract for runtime policy and conventions, with agent-managed guidance instead of the old hidden config model.
+
 ## [1.13.1] - 2026-03-15
 
 ### Changed
 
 - Bake artifacts now live under `.bakes/latest/` instead of `bakes/latest/`.
 - `bake` now adds `.bakes/` to the git exclude file automatically for git repos, including worktree-style `gitdir:` checkouts.
-- yoyo now treats `.bakes/` as managed cache and skips both `.bakes/` and legacy `bakes/` artifact directories during indexing and project snapshots; the user-editable runtime file is `yoyo.json`.
+- yoyo now treats `.bakes/` as managed cache and skips both `.bakes/` and legacy `bakes/` artifact directories during indexing and project snapshots; the repo runtime contract lives in `yoyo.json`.
 
 ## [1.13.0] - 2026-03-15
 

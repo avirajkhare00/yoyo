@@ -182,15 +182,17 @@ fn runtime_access_hint() -> serde_json::Value {
             "file": "yoyo.json"
         },
         "enable_unsandboxed_example": {
-            "runtime_checks": [
-                {
-                    "language": "python",
-                    "command": ["python3", "{{file}}"],
-                    "allow_unsandboxed": true,
-                    "kind": "python-runtime",
-                    "timeout_ms": 1000
-                }
-            ]
+            "runtime": {
+                "checks": [
+                    {
+                        "language": "python",
+                        "command": ["python3", "{{file}}"],
+                        "allow_unsandboxed": true,
+                        "kind": "python-runtime",
+                        "timeout_ms": 1000
+                    }
+                ]
+            }
         },
         "limits": [
             "Commands must target the changed file with {{file}} or {{abs_file}}.",
@@ -1387,7 +1389,8 @@ mod tests {
         assert_eq!(runtime_access["recommended_action"]["action"], "edit");
         assert_eq!(runtime_access["recommended_action"]["file"], "yoyo.json");
         assert_eq!(
-            runtime_access["enable_unsandboxed_example"]["runtime_checks"][0]["allow_unsandboxed"],
+            runtime_access["enable_unsandboxed_example"]["runtime"]["checks"][0]
+                ["allow_unsandboxed"],
             true
         );
 
