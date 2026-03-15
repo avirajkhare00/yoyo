@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-03-15
+
+### Changed
+
+- Bake artifacts now live under `.bakes/latest/` instead of `bakes/latest/`.
+- `bake` now adds `.bakes/` to the git exclude file automatically for git repos, including worktree-style `gitdir:` checkouts.
+- yoyo now treats `.bakes/` as managed cache and skips both `.bakes/` and legacy `bakes/` artifact directories during indexing and project snapshots; the user-editable runtime file remains `.yoyo/runtime.json`.
+
 ## [1.13.0] - 2026-03-15
 
 ### Added

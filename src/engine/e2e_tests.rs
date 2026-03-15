@@ -958,8 +958,10 @@ function bulkDeleteWorkflowFixture() {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
 
         // .git/ blobs must not appear in the file list
-        let bake =
-            crate::engine::db::read_bake_from_db(&root_path.join("bakes/latest/bake.db")).unwrap();
+        let bake = crate::engine::db::read_bake_from_db(
+            &crate::engine::util::bake_artifacts_dir(root_path).join("bake.db"),
+        )
+        .unwrap();
         assert!(
             bake.files
                 .iter()
@@ -1025,6 +1027,47 @@ function bulkDeleteWorkflowFixture() {
                 .map(|a| a.is_empty())
                 .unwrap_or(true),
             "dist/bundle.rs should be excluded via .gitignore"
+        );
+    }
+
+    #[test]
+    fn e2e_bake_uses_dot_bakes_and_git_excludes_it_by_default() {
+        let dir = TempDir::new().unwrap();
+        let root_path = dir.path();
+
+        fs::create_dir_all(root_path.join(".git/info")).unwrap();
+        fs::write(root_path.join("main.rs"), "fn hello() {}\n").unwrap();
+
+        let artifact_dir = root_path.join(".bakes/latest");
+        fs::create_dir_all(&artifact_dir).unwrap();
+        fs::write(
+            artifact_dir.join("ignored.rs"),
+            "fn should_not_index() {}\n",
+        )
+        .unwrap();
+
+        crate::engine::bake(Some(root_path.to_string_lossy().into_owned())).unwrap();
+
+        let exclude = fs::read_to_string(root_path.join(".git/info/exclude")).unwrap();
+        assert!(exclude.contains(".bakes/"));
+        assert!(artifact_dir.join("bake.db").exists());
+
+        let out = crate::engine::symbol(
+            Some(root_path.to_string_lossy().into_owned()),
+            "should_not_index".to_string(),
+            false,
+            None,
+            Some(20),
+            false,
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(
+            v["matches"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true),
+            ".bakes artifacts must not be indexed"
         );
     }
 
@@ -2071,7 +2114,7 @@ fn get_registry() -> &'static Vec<ToolEntry> {
         // Write a fake embeddings.db so vector_search path is attempted.
         // It will return empty results (no rows), fall through to TF-IDF,
         // but what matters is the note is NOT set when the file exists.
-        let embed_path = dir.path().join("bakes/latest/embeddings.db");
+        let embed_path = crate::engine::util::bake_artifacts_dir(dir.path()).join("embeddings.db");
         // Create an empty-but-valid SQLite DB with the embeddings table.
         {
             let conn = rusqlite::Connection::open(&embed_path).unwrap();
@@ -2097,7 +2140,9 @@ fn get_registry() -> &'static Vec<ToolEntry> {
     fn e2e_semantic_search_note_present_when_embeddings_absent() {
         let dir = setup();
         // Ensure embeddings.db does not exist (bake spawns rebuild in background, may or may not exist)
-        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+        let _ = std::fs::remove_file(
+            crate::engine::util::bake_artifacts_dir(dir.path()).join("embeddings.db"),
+        );
 
         let out =
             crate::engine::semantic_search(root(&dir), "compute sum".into(), None, None, None)
@@ -2121,7 +2166,9 @@ fn get_registry() -> &'static Vec<ToolEntry> {
     #[test]
     fn e2e_semantic_search_tfidf_returns_ranked_results() {
         let dir = setup();
-        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+        let _ = std::fs::remove_file(
+            crate::engine::util::bake_artifacts_dir(dir.path()).join("embeddings.db"),
+        );
 
         let out =
             crate::engine::semantic_search(root(&dir), "add".into(), Some(5), None, None).unwrap();

@@ -9,7 +9,7 @@ use super::types::{
     JudgeOwnershipLayer, JudgeRejectedAlternative,
 };
 use super::util::{
-    backend_scope_boost, bake_scope_dependencies, bake_scopes, effective_scope,
+    backend_scope_boost, bake_artifacts_dir, bake_scope_dependencies, bake_scopes, effective_scope,
     matches_scope_filter, require_bake_index, resolve_project_root, scope_hints,
 };
 
@@ -271,7 +271,7 @@ fn semantic_candidates<'a>(
     scope_filter: Option<&str>,
     limit: usize,
 ) -> Vec<(f32, &'a crate::lang::IndexedFunction)> {
-    let bake_dir = root.join("bakes").join("latest");
+    let bake_dir = bake_artifacts_dir(&root);
     if let Ok(Some(matches)) =
         crate::engine::embed::vector_search(&bake_dir, query, limit, file_filter)
     {

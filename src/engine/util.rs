@@ -20,6 +20,9 @@ pub(crate) struct ScopeProfile {
     pub(crate) tags: BTreeSet<String>,
 }
 
+const BAKE_DIRNAME: &str = ".bakes";
+const LEGACY_BAKE_DIRNAME: &str = "bakes";
+
 fn requested_root(path: Option<String>) -> Result<PathBuf> {
     if let Some(p) = path {
         let pb = PathBuf::from(p);
@@ -35,14 +38,118 @@ fn requested_root(path: Option<String>) -> Result<PathBuf> {
     Ok(cwd)
 }
 
+pub(crate) fn bake_artifacts_dir(root: &Path) -> PathBuf {
+    root.join(BAKE_DIRNAME).join("latest")
+}
+
+fn legacy_bake_artifacts_dir(root: &Path) -> PathBuf {
+    root.join(LEGACY_BAKE_DIRNAME).join("latest")
+}
+
 fn bake_index_path(root: &Path) -> PathBuf {
-    root.join("bakes").join("latest").join("bake.db")
+    bake_artifacts_dir(root).join("bake.db")
+}
+
+fn legacy_bake_index_path(root: &Path) -> PathBuf {
+    legacy_bake_artifacts_dir(root).join("bake.db")
+}
+
+fn existing_bake_index_path(root: &Path) -> Option<PathBuf> {
+    let bake_path = bake_index_path(root);
+    if bake_path.exists() {
+        return Some(bake_path);
+    }
+
+    let legacy_path = legacy_bake_index_path(root);
+    legacy_path.exists().then_some(legacy_path)
+}
+
+fn is_bake_artifact_dir_name(name: &str) -> bool {
+    matches!(name, BAKE_DIRNAME | LEGACY_BAKE_DIRNAME)
+}
+
+fn git_dir(root: &Path) -> Result<Option<PathBuf>> {
+    let git_path = root.join(".git");
+    let Ok(meta) = fs::metadata(&git_path) else {
+        return Ok(None);
+    };
+
+    if meta.is_dir() {
+        return Ok(Some(git_path));
+    }
+
+    if meta.is_file() {
+        let content = fs::read_to_string(&git_path)
+            .with_context(|| format!("Failed to read {}", git_path.display()))?;
+        let Some(raw) = content.strip_prefix("gitdir:") else {
+            return Ok(None);
+        };
+        let git_dir = PathBuf::from(raw.trim());
+        let resolved = if git_dir.is_absolute() {
+            git_dir
+        } else {
+            root.join(git_dir)
+        };
+        return Ok(Some(resolved));
+    }
+
+    Ok(None)
+}
+
+pub(crate) fn ensure_bake_gitignored(root: &Path) -> Result<()> {
+    let Some(git_dir) = git_dir(root)? else {
+        return Ok(());
+    };
+
+    let info_dir = git_dir.join("info");
+    fs::create_dir_all(&info_dir)
+        .with_context(|| format!("Failed to create {}", info_dir.display()))?;
+    let exclude_path = info_dir.join("exclude");
+    let mut exclude = if exclude_path.exists() {
+        fs::read_to_string(&exclude_path)
+            .with_context(|| format!("Failed to read {}", exclude_path.display()))?
+    } else {
+        String::new()
+    };
+
+    if exclude.lines().any(|line| line.trim() == ".bakes/") {
+        return Ok(());
+    }
+
+    if !exclude.is_empty() && !exclude.ends_with('\n') {
+        exclude.push('\n');
+    }
+    exclude.push_str(".bakes/\n");
+    fs::write(&exclude_path, exclude)
+        .with_context(|| format!("Failed to write {}", exclude_path.display()))?;
+    Ok(())
+}
+
+pub(crate) fn prepare_bake_artifacts_dir(root: &Path) -> Result<PathBuf> {
+    let legacy_root = root.join(LEGACY_BAKE_DIRNAME);
+    let current_root = root.join(BAKE_DIRNAME);
+    if legacy_root.exists() && !current_root.exists() {
+        fs::rename(&legacy_root, &current_root).with_context(|| {
+            format!(
+                "Failed to move legacy bake dir from {} to {}",
+                legacy_root.display(),
+                current_root.display()
+            )
+        })?;
+    }
+
+    ensure_bake_gitignored(root)?;
+
+    let bake_dir = bake_artifacts_dir(root);
+    fs::create_dir_all(&bake_dir)
+        .with_context(|| format!("Failed to create {}", bake_dir.display()))?;
+    Ok(bake_dir)
 }
 
 fn find_bake_root(start: &Path) -> Option<PathBuf> {
     start
         .ancestors()
-        .find(|ancestor| bake_index_path(ancestor).exists())
+        .find(|ancestor| existing_bake_index_path(ancestor).is_some())
         .map(Path::to_path_buf)
 }
 
@@ -66,14 +173,14 @@ fn find_project_root_hint(start: &Path) -> Option<PathBuf> {
 fn missing_bake_error(root: &Path) -> anyhow::Error {
     if let Some(project_root) = find_project_root_hint(root) {
         return anyhow!(
-            "No bake index found under {}. Did you mean to pass the project root {}? Run `bake` there first to build bakes/latest/bake.db.",
+            "No bake index found under {}. Did you mean to pass the project root {}? Run `bake` there first to build .bakes/latest/bake.db.",
             root.display(),
             project_root.display()
         );
     }
 
     anyhow!(
-        "No bake index found under {}. Run `bake` first to build bakes/latest/bake.db.",
+        "No bake index found under {}. Run `bake` first to build .bakes/latest/bake.db.",
         root.display()
     )
 }
@@ -408,7 +515,7 @@ fn refresh_scoped_paths(
     bake: &BakeIndex,
     touched_files: &[String],
 ) -> Result<BakeIndex> {
-    let bake_path = bake_index_path(root);
+    let bake_path = existing_bake_index_path(root).unwrap_or_else(|| bake_index_path(root));
     let affected = expand_to_scope_files(bake, touched_files);
     let mut fingerprints = fingerprints_from_bake(bake);
     for path in &affected {
@@ -490,6 +597,9 @@ pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
             if path.is_dir() {
                 // Skip common heavy/irrelevant directories for a quick snapshot.
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if is_bake_artifact_dir_name(name) {
+                        continue;
+                    }
                     if matches!(
                         name,
                         ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__"
@@ -515,6 +625,9 @@ pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
             let path = entry.path();
             if path.is_dir() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if is_bake_artifact_dir_name(name) {
+                        continue;
+                    }
                     if matches!(
                         name,
                         ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__"
@@ -556,10 +669,9 @@ pub(crate) fn project_snapshot(root: &PathBuf) -> Result<Snapshot> {
 }
 
 pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
-    let bake_path = bake_index_path(root);
-    if !bake_path.exists() {
+    let Some(bake_path) = existing_bake_index_path(root) else {
         return Ok(None);
-    }
+    };
 
     let bake = super::db::read_bake_from_db(&bake_path)
         .with_context(|| format!("Failed to read bake index from {}", bake_path.display()))?;
@@ -586,12 +698,12 @@ pub(crate) fn load_bake_index(root: &PathBuf) -> Result<Option<BakeIndex>> {
 
     if version_stale {
         let (fresh, _, _) = build_bake_index(root, &std::collections::HashMap::new())?;
-        let bakes_dir = root.join("bakes").join("latest");
-        fs::create_dir_all(&bakes_dir)?;
-        super::db::write_bake_to_db(&fresh, &bake_path).with_context(|| {
+        prepare_bake_artifacts_dir(root)?;
+        let fresh_path = bake_index_path(root);
+        super::db::write_bake_to_db(&fresh, &fresh_path).with_context(|| {
             format!(
                 "Failed to write refreshed bake index to {}",
-                bake_path.display()
+                fresh_path.display()
             )
         })?;
         return Ok(Some(fresh));
@@ -723,7 +835,11 @@ pub(crate) fn build_bake_index(
         .hidden(false) // don't skip hidden files — .gitignore handles exclusions
         .git_ignore(true) // respect .gitignore (nested, global, .git/info/exclude)
         .require_git(false) // apply .gitignore rules even outside a git repo
-        .filter_entry(|e| e.file_name() != ".git") // never descend into .git/
+        .filter_entry(|e| {
+            e.file_name() != ".git"
+                && e.file_name() != BAKE_DIRNAME
+                && e.file_name() != LEGACY_BAKE_DIRNAME
+        }) // never descend into repo metadata or bake artifacts
         .build()
     {
         let entry = match result {
@@ -918,7 +1034,7 @@ mod tests {
     use crate::engine::types::BakeIndex;
 
     fn write_bake(root: &TempDir) {
-        let bakes_dir = root.path().join("bakes/latest");
+        let bakes_dir = bake_artifacts_dir(root.path());
         fs::create_dir_all(&bakes_dir).unwrap();
         let bake = BakeIndex {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -933,6 +1049,39 @@ mod tests {
             impls: vec![],
         };
         crate::engine::db::write_bake_to_db(&bake, &bakes_dir.join("bake.db")).unwrap();
+    }
+
+    #[test]
+    fn ensure_bake_gitignored_writes_info_exclude() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join(".git/info")).unwrap();
+
+        ensure_bake_gitignored(dir.path()).unwrap();
+        let exclude = fs::read_to_string(dir.path().join(".git/info/exclude")).unwrap();
+        assert!(exclude.contains(".bakes/"));
+
+        ensure_bake_gitignored(dir.path()).unwrap();
+        let exclude = fs::read_to_string(dir.path().join(".git/info/exclude")).unwrap();
+        assert_eq!(
+            exclude
+                .lines()
+                .filter(|line| line.trim() == ".bakes/")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn ensure_bake_gitignored_supports_gitdir_file() {
+        let dir = TempDir::new().unwrap();
+        let git_dir = dir.path().join(".git-worktree");
+        fs::create_dir_all(git_dir.join("info")).unwrap();
+        fs::write(dir.path().join(".git"), "gitdir: .git-worktree\n").unwrap();
+
+        ensure_bake_gitignored(dir.path()).unwrap();
+
+        let exclude = fs::read_to_string(git_dir.join("info/exclude")).unwrap();
+        assert!(exclude.contains(".bakes/"));
     }
 
     #[test]
