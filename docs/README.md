@@ -67,7 +67,7 @@ change  → route write intent                  → write file + reindex
 
 **Read tools run in parallel. Write tools run sequentially.** After every write, the index resyncs automatically so the next read is always fresh.
 
-The index is a SQLite database (`bakes/latest/bake.db`) in your project root. No server, no daemon.
+The index is a SQLite database (`.bakes/latest/bake.db`) in your project root. No server, no daemon.
 
 ---
 
@@ -80,6 +80,7 @@ The important write-side concepts are now:
 - **`guard_failure`** — failed guarded writes return machine-readable failure payloads, not just prose, so the next tool call can reason about `operation`, `phase`, `retryable`, `files_restored`, and the implicated files.
 - **`retry_plan`** — yoyo can turn that failure into a bounded recovery workflow with a targeted `inspect` window and explicit stop conditions.
 - **Least-privilege runtime bootstrap** — if `.yoyo/runtime.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages. The file is intentionally restrictive: file-targeted commands, no inline eval, and `allow_unsandboxed: false` until the user edits it.
+- **Managed bake cache** — `.bakes/` is yoyo-managed cache, not user config. In git repos, yoyo adds `.bakes/` to the repo exclude file automatically. The user-editable file remains `.yoyo/runtime.json`.
 
 Concrete example:
 

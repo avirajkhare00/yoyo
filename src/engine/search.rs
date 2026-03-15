@@ -8,7 +8,7 @@ use super::types::{
     TypeMethodSummary,
 };
 use super::util::{
-    backend_scope_boost, bake_scope_dependencies, bake_scopes, effective_scope,
+    backend_scope_boost, bake_artifacts_dir, bake_scope_dependencies, bake_scopes, effective_scope,
     matches_scope_filter, require_bake_index, resolve_project_root, scope_hints,
 };
 
@@ -1248,7 +1248,7 @@ mod semantic_note_tests {
     use crate::engine::types::BakeIndex;
 
     fn write_minimal_bake(dir: &TempDir) {
-        let bakes_dir = dir.path().join("bakes/latest");
+        let bakes_dir = crate::engine::util::bake_artifacts_dir(dir.path());
         std::fs::create_dir_all(&bakes_dir).unwrap();
         let bake = BakeIndex {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1307,7 +1307,9 @@ mod semantic_note_tests {
         // Write a real bake so there are functions to TF-IDF over.
         crate::engine::bake(Some(dir.path().to_string_lossy().into_owned())).unwrap();
         // Delete embeddings.db if it exists (bake spawns it in background).
-        let _ = std::fs::remove_file(dir.path().join("bakes/latest/embeddings.db"));
+        let _ = std::fs::remove_file(
+            crate::engine::util::bake_artifacts_dir(dir.path()).join("embeddings.db"),
+        );
 
         let out = crate::engine::semantic_search(
             Some(dir.path().to_string_lossy().into_owned()),
@@ -1667,7 +1669,7 @@ mod semantic_note_tests {
 }
 
 /// Public entrypoint for the `semantic_search` tool.
-/// Uses embedding-backed cosine similarity when `bakes/latest/embeddings.db` exists
+/// Uses embedding-backed cosine similarity when `.bakes/latest/embeddings.db` exists
 /// (built by `bake` via fastembed + SQLite). Falls back to TF-IDF otherwise.
 pub fn semantic_search(
     path: Option<String>,
@@ -1679,7 +1681,7 @@ pub fn semantic_search(
     let root = resolve_project_root(path)?;
     let limit = limit.unwrap_or(10).min(50);
     let file_filter = file.as_deref().map(str::to_lowercase);
-    let bake_dir = root.join("bakes").join("latest");
+    let bake_dir = bake_artifacts_dir(&root);
     let bake = require_bake_index(&root)?;
     let scope_used = effective_scope(
         &bake.files,

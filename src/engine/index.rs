@@ -1,5 +1,3 @@
-use std::fs;
-
 use anyhow::Result;
 
 use super::types::{
@@ -8,7 +6,10 @@ use super::types::{
     Metapattern, MetapatternStep, ResponseView, ShakePayload, ToolDescription, Workflow,
     WorkflowQueryMatch, WorkflowStep, DEFAULT_COMPACT_LIMIT,
 };
-use super::util::{build_bake_index, load_bake_index, project_snapshot, resolve_project_root};
+use super::util::{
+    build_bake_index, load_bake_index, prepare_bake_artifacts_dir, project_snapshot,
+    resolve_project_root,
+};
 
 /// Public entrypoint for the `llm_instructions` CLI/MCP tool.
 pub fn llm_instructions(path: Option<String>) -> Result<String> {
@@ -1109,7 +1110,7 @@ pub fn shake(path: Option<String>) -> Result<String> {
             project_root: root,
             languages: bake.languages.into_iter().collect(),
             files_indexed: bake.files.len(),
-            notes: "Shake is using the bake index: languages, files, top complex functions, and Express endpoints are derived from bakes/latest/bake.db.".to_string(),
+            notes: "Shake is using the bake index: languages, files, top complex functions, and Express endpoints are derived from .bakes/latest/bake.db.".to_string(),
             top_functions: Some(top_functions),
             express_endpoints: Some(express_endpoints),
         };
@@ -1139,10 +1140,10 @@ pub fn shake(path: Option<String>) -> Result<String> {
 /// Public entrypoint for the `bake` tool: build and persist a basic project index.
 ///
 /// This first version records files, languages, and sizes, and writes
-/// `bakes/latest/bake.db` under the project root.
+/// `.bakes/latest/bake.db` under the project root.
 pub fn bake(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
-    let bakes_dir = root.join("bakes").join("latest");
+    let bakes_dir = prepare_bake_artifacts_dir(&root)?;
     let bake_path = bakes_dir.join("bake.db");
 
     // Load fingerprints from existing DB for incremental mode.
@@ -1155,10 +1156,6 @@ pub fn bake(path: Option<String>) -> Result<String> {
     let is_incremental = !fingerprints.is_empty();
 
     let (bake, removed, skipped) = build_bake_index(&root, &fingerprints)?;
-
-    fs::create_dir_all(&bakes_dir).map_err(|e| {
-        anyhow::anyhow!("Failed to create bakes dir: {}: {}", bakes_dir.display(), e)
-    })?;
 
     let (total_files, all_languages) = if is_incremental {
         crate::engine::db::write_bake_incremental(&bake, &removed, &bake_path).map_err(|e| {
