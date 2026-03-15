@@ -2959,6 +2959,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-clojure"
 version = "0.1.0"
+source = "git+https://github.com/avirajkhare00/tree-sitter-clojure-yoyo.git?rev=88266e3b72d33deb893ece7b94226252b7ea367b#88266e3b72d33deb893ece7b94226252b7ea367b"
 dependencies = [
  "cc",
  "tree-sitter",

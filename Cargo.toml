@@ -16,7 +16,8 @@ ast-grep-core = "0.41.0"
 ast-grep-language = "0.41.0"
 fastembed = "5.12.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
-tree-sitter-clojure = { path = "vendor/tree-sitter-clojure" }
+# Minimal fork that keeps yoyo on tree-sitter 0.26.x without carrying a local vendor copy.
+tree-sitter-clojure = { git = "https://github.com/avirajkhare00/tree-sitter-clojure-yoyo.git", rev = "88266e3b72d33deb893ece7b94226252b7ea367b" }
 tree-sitter-zig = "1.1.2"
 rhai = { version = "1", features = ["serde"] }
 
