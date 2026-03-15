@@ -31,6 +31,9 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         "scopes": snapshot.scopes,
         "scope_dependencies": snapshot.scope_dependencies,
         "scoping_hints": snapshot.scoping_hints,
+        "runtime_access": runtime_access_hint(),
+        "user_config_files": user_config_files(),
+        "managed_paths": managed_paths(),
         "tools": groups,
         "capabilities": capability_catalog(),
         "common_tasks": common_task_catalog(),
@@ -126,6 +129,52 @@ fn common_task_catalog() -> Vec<serde_json::Value> {
             "use": ["impact", "change"],
         }),
     ]
+}
+
+fn user_config_files() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![json!({
+        "path": ".yoyo/runtime.json",
+        "kind": "runtime_policy",
+        "editable": true,
+        "created_on_demand": true,
+        "description": "Runtime execution policy for guarded writes. Edit this file to widen sandbox_prefix or allow_unsandboxed.",
+    })]
+}
+
+fn runtime_access_hint() -> serde_json::Value {
+    serde_json::json!({
+        "config_path": ".yoyo/runtime.json",
+        "summary": "Edit .yoyo/runtime.json to widen runtime execution for guarded writes.",
+        "default": "least_privilege",
+        "enable_unsandboxed_example": {
+            "runtime_checks": [
+                {
+                    "language": "python",
+                    "command": ["python3", "{{file}}"],
+                    "allow_unsandboxed": true,
+                    "kind": "python-runtime",
+                    "timeout_ms": 1000
+                }
+            ]
+        },
+        "limits": [
+            "Commands must target the changed file with {{file}} or {{abs_file}}.",
+            "Inline eval forms like python -c, node -e, and clojure -e are rejected."
+        ]
+    })
+}
+
+fn managed_paths() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![json!({
+        "path": ".bakes/",
+        "kind": "cache",
+        "editable": false,
+        "description": "Managed bake cache. Do not edit this path manually.",
+    })]
 }
 
 /// Public entrypoint for the `llm_workflows` CLI/MCP tool.
@@ -1273,6 +1322,46 @@ mod tests {
                         .any(|tool| tool == "judge_change")
             }),
             "boot should route change-triage questions to judge_change"
+        );
+
+        let user_config_files = payload["user_config_files"].as_array().unwrap();
+        assert!(
+            user_config_files.iter().any(|entry| {
+                entry["path"] == ".yoyo/runtime.json"
+                    && entry["editable"] == true
+                    && entry["description"]
+                        .as_str()
+                        .unwrap()
+                        .contains("Edit this file")
+            }),
+            "boot should surface the user-editable runtime config"
+        );
+
+        let runtime_access = &payload["runtime_access"];
+        assert_eq!(runtime_access["config_path"], ".yoyo/runtime.json");
+        assert!(
+            runtime_access["summary"]
+                .as_str()
+                .unwrap()
+                .contains("Edit .yoyo/runtime.json"),
+            "boot should explain how to widen runtime access"
+        );
+        assert_eq!(
+            runtime_access["enable_unsandboxed_example"]["runtime_checks"][0]["allow_unsandboxed"],
+            true
+        );
+
+        let managed_paths = payload["managed_paths"].as_array().unwrap();
+        assert!(
+            managed_paths.iter().any(|entry| {
+                entry["path"] == ".bakes/"
+                    && entry["editable"] == false
+                    && entry["description"]
+                        .as_str()
+                        .unwrap()
+                        .contains("Do not edit")
+            }),
+            "boot should distinguish managed cache paths from user-edited config"
         );
     }
 

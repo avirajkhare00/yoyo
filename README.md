@@ -71,7 +71,7 @@ The point is not to make toy tasks look slightly faster. The point is to make an
 - **`retry_plan`**: failed guarded writes come back as machine-readable `guard_failure` payloads, then narrow into a bounded inspect-fix-retry workflow instead of vague stderr.
 - **Least-privilege bootstrap**: if `.yoyo/runtime.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages, but keeps runtime execution restricted until the user explicitly widens access.
 
-`.bakes/` is managed cache and is ignored by default in git repos. The file users should actually inspect and edit when widening runtime behavior is `.yoyo/runtime.json`.
+`boot` now surfaces user-editable config, managed paths, and a concrete runtime-access example. `.bakes/` is managed cache and is ignored by default in git repos. The file users should actually inspect and edit when widening runtime behavior is `.yoyo/runtime.json`.
 
 Small example: if an edit changes Python `return "hello"` into `return missing_name`, a plain editor saves a broken file. A guarded write rejects it, restores the original file, and returns enough structure for the next repair attempt to target the right lines.
 

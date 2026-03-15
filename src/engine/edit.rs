@@ -659,9 +659,11 @@ struct RuntimeCommandOutput {
     timed_out: bool,
 }
 
+const RUNTIME_CONFIG_RELATIVE_PATH: &str = ".yoyo/runtime.json";
+
 fn runtime_config_path(root: &PathBuf) -> Option<PathBuf> {
     root.ancestors()
-        .map(|ancestor| ancestor.join(".yoyo").join("runtime.json"))
+        .map(|ancestor| ancestor.join(RUNTIME_CONFIG_RELATIVE_PATH))
         .find(|path| path.exists())
 }
 
@@ -722,7 +724,7 @@ fn bootstrap_runtime_feedback_config(
         return Ok(None);
     }
 
-    let path = root.join(".yoyo").join("runtime.json");
+    let path = root.join(RUNTIME_CONFIG_RELATIVE_PATH);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -735,8 +737,8 @@ fn bootstrap_runtime_feedback_config(
         "runtime_checks": checks,
         "notes": [
             "Created by yoyo with least-privilege defaults.",
-            "Runtime checks stay disabled until you add sandbox_prefix or set allow_unsandboxed to true.",
-            "Edit this file manually if you want more access."
+            "Runtime checks stay disabled until you edit .yoyo/runtime.json and add sandbox_prefix or set allow_unsandboxed to true.",
+            "Edit .yoyo/runtime.json if you want more access."
         ]
     });
     let bytes = serde_json::to_vec_pretty(&payload)?;
@@ -744,7 +746,7 @@ fn bootstrap_runtime_feedback_config(
         .with_context(|| format!("Failed to write runtime config {}", path.display()))?;
 
     Ok(Some(format!(
-        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit it and add sandbox_prefix or set allow_unsandboxed to true. Edit this file manually if you want more access.",
+        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit .yoyo/runtime.json and add sandbox_prefix or set allow_unsandboxed to true. Edit .yoyo/runtime.json if you want more access.",
         path.strip_prefix(root)
             .unwrap_or(path.as_path())
             .display(),
@@ -896,14 +898,18 @@ fn prepare_runtime_checks(
 
             if check.command.is_empty() {
                 return Err(anyhow!(
-                    "runtime feedback config rejected {} runtime check: command must not be empty",
-                    check.language
+                    "runtime feedback config rejected {} runtime check in {}: command must not be empty. Edit {} to fix it.",
+                    check.language,
+                    RUNTIME_CONFIG_RELATIVE_PATH,
+                    RUNTIME_CONFIG_RELATIVE_PATH
                 ));
             }
             if !command_targets_changed_file(&check.command) {
                 return Err(anyhow!(
-                    "runtime feedback config rejected {} runtime check: command must target the changed file with {{file}} or {{abs_file}}",
-                    check.language
+                    "runtime feedback config rejected {} runtime check in {}: command must target the changed file with {{file}} or {{abs_file}}. Edit {} to fix it.",
+                    check.language,
+                    RUNTIME_CONFIG_RELATIVE_PATH,
+                    RUNTIME_CONFIG_RELATIVE_PATH
                 ));
             }
 
@@ -912,7 +918,14 @@ fn prepare_runtime_checks(
                 .iter()
                 .map(|part| replace_runtime_placeholders(part, root, write))
                 .collect();
-            validate_runtime_command_parts(&command, "runtime")?;
+            validate_runtime_command_parts(&command, "runtime").map_err(|err| {
+                anyhow!(
+                    "{} Edit {} to fix the {} runtime command.",
+                    err,
+                    RUNTIME_CONFIG_RELATIVE_PATH,
+                    check.language
+                )
+            })?;
 
             let sandbox_prefix: Vec<String> = check
                 .sandbox_prefix
@@ -920,7 +933,16 @@ fn prepare_runtime_checks(
                 .map(|part| replace_runtime_placeholders(part, root, write))
                 .collect();
             if !sandbox_prefix.is_empty() {
-                validate_runtime_command_parts(&sandbox_prefix, "sandbox prefix")?;
+                validate_runtime_command_parts(&sandbox_prefix, "sandbox prefix").map_err(
+                    |err| {
+                        anyhow!(
+                            "{} Edit {} to fix the {} sandbox prefix.",
+                            err,
+                            RUNTIME_CONFIG_RELATIVE_PATH,
+                            check.language
+                        )
+                    },
+                )?;
             } else if !check.allow_unsandboxed {
                 continue;
             }
@@ -3349,6 +3371,7 @@ mod tests {
                 warning.contains(".yoyo/runtime.json")
                     && warning.contains("least-privilege defaults")
                     && warning.contains("allow_unsandboxed to true")
+                    && warning.contains("Edit .yoyo/runtime.json")
             }),
             "warnings: {:?}",
             outcome.warnings
@@ -3390,8 +3413,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("unsafe")
-                || err.to_string().contains("inline interpreter code"),
+            (err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"))
+                && err.to_string().contains(".yoyo/runtime.json"),
             "got: {}",
             err
         );
@@ -3433,9 +3457,10 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("must target the changed file")
+            (err.to_string().contains("must target the changed file")
                 || err.to_string().contains("{{file}}")
-                || err.to_string().contains("{{abs_file}}"),
+                || err.to_string().contains("{{abs_file}}"))
+                && err.to_string().contains(".yoyo/runtime.json"),
             "got: {}",
             err
         );
@@ -3477,8 +3502,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("unsafe")
-                || err.to_string().contains("inline interpreter code"),
+            (err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"))
+                && err.to_string().contains(".yoyo/runtime.json"),
             "got: {}",
             err
         );
@@ -3569,7 +3595,7 @@ mod tests {
             warnings[0]
                 .as_str()
                 .unwrap()
-                .contains("Edit this file manually")
+                .contains("Edit .yoyo/runtime.json")
                 || warnings[0]
                     .as_str()
                     .unwrap()

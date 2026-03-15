@@ -99,7 +99,7 @@ For the longer release story behind these concepts, read [the `v1.10.0` → `v1.
 
 Each agent session follows this sequence:
 
-1. **Bootstrap** — the agent calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, and concurrency rules. `index` builds the AST index.
+1. **Bootstrap** — the agent calls `boot` and `index` in parallel on first contact. `boot` returns tool names grouped by category, task-shaped capability families, common-task recommendations, concurrency rules, the user-editable config file (`.yoyo/runtime.json`), a concrete example for widening runtime access, and managed paths like `.bakes/`. `index` builds the AST index.
 2. **Read** — `inspect`, `search`, `ask` replace grep and ad hoc file reads. Structured data from the AST index, not line matches.
 3. **Judge** — `judge_change` answers the high-level pre-edit question: where should this fix live, what must stay true, and what is the likely blast radius?
 4. **Understand** — `impact`, `health`, `routes` answer structural questions no text tool can: what touches this? what route lands here? is this dead?
