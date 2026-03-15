@@ -69,9 +69,9 @@ The point is not to make toy tasks look slightly faster. The point is to make an
 - **Guarded write**: yoyo writes the candidate edit, runs the relevant checks, and restores the original file if the edit fails those checks.
 - **Runtime guard**: syntax is not enough for Python, JavaScript, Ruby, PHP, or Clojure. yoyo can also catch "parses fine, crashes on run" failures like missing imports, missing names, and load-time exceptions.
 - **`retry_plan`**: failed guarded writes come back as machine-readable `guard_failure` payloads, then narrow into a bounded inspect-fix-retry workflow instead of vague stderr.
-- **Least-privilege bootstrap**: if `.yoyo/runtime.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages, but keeps runtime execution restricted until the user explicitly widens access.
+- **Least-privilege bootstrap**: if `yoyo.json` is missing, yoyo now creates a starter config automatically for supported interpreted languages, but keeps runtime execution restricted until an agent explicitly widens access.
 
-`.bakes/` is managed cache and is ignored by default in git repos. The file users should actually inspect and edit when widening runtime behavior is `.yoyo/runtime.json`.
+`boot` now surfaces agent-managed config, managed paths, a concrete runtime-access example, and project conventions loaded from `yoyo.json`. That same file is where agents can store repo styling, frameworks, and common commands so the context does not need to be re-prompted. `.bakes/` is managed cache and is ignored by default in git repos.
 
 Small example: if an edit changes Python `return "hello"` into `return missing_name`, a plain editor saves a broken file. A guarded write rejects it, restores the original file, and returns enough structure for the next repair attempt to target the right lines.
 

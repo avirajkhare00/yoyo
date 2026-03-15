@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::config::{load_yoyo_project_config, ProjectConventions};
 use super::types::{
     build_compact_section, parse_section_cursor, BakeSummary, DecisionEntry, EndpointSummary,
     FunctionSummary, LlmWorkflowsCompactPayload, LlmWorkflowsPayload, LlmWorkflowsQueryPayload,
@@ -15,6 +16,7 @@ use super::util::{
 pub fn llm_instructions(path: Option<String>) -> Result<String> {
     let root = resolve_project_root(path)?;
     let snapshot = project_snapshot(&root)?;
+    let config = load_yoyo_project_config(&root)?;
 
     let catalog = tool_catalog();
     let mut groups: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
@@ -31,6 +33,10 @@ pub fn llm_instructions(path: Option<String>) -> Result<String> {
         "scopes": snapshot.scopes,
         "scope_dependencies": snapshot.scope_dependencies,
         "scoping_hints": snapshot.scoping_hints,
+        "project_conventions": project_conventions_payload(config.as_ref().map(|cfg| &cfg.conventions)),
+        "runtime_access": runtime_access_hint(),
+        "user_config_files": user_config_files(),
+        "managed_paths": managed_paths(),
         "tools": groups,
         "capabilities": capability_catalog(),
         "common_tasks": common_task_catalog(),
@@ -126,6 +132,84 @@ fn common_task_catalog() -> Vec<serde_json::Value> {
             "use": ["impact", "change"],
         }),
     ]
+}
+
+fn project_conventions_payload(conventions: Option<&ProjectConventions>) -> serde_json::Value {
+    match conventions {
+        Some(conventions) if !conventions.is_empty() => serde_json::json!({
+            "configured": true,
+            "source": "yoyo.json",
+            "languages": conventions.languages,
+            "frameworks": conventions.frameworks,
+            "style_rules": conventions.style_rules,
+            "commands": conventions.commands,
+        }),
+        _ => serde_json::json!({
+            "configured": false,
+            "source": "yoyo.json",
+            "languages": [],
+            "frameworks": [],
+            "style_rules": [],
+            "commands": {},
+        }),
+    }
+}
+
+fn user_config_files() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![json!({
+        "path": "yoyo.json",
+        "kind": "runtime_policy",
+        "editable": true,
+        "created_on_demand": true,
+        "git_trackable": true,
+        "agent_managed": true,
+        "description": "Repo-root runtime execution policy for guarded writes. Agents can update this file to widen sandbox_prefix or allow_unsandboxed.",
+    })]
+}
+
+fn runtime_access_hint() -> serde_json::Value {
+    serde_json::json!({
+        "config_path": "yoyo.json",
+        "summary": "Agents can update yoyo.json to widen runtime execution for guarded writes.",
+        "default": "least_privilege",
+        "git_trackable": true,
+        "agent_managed": true,
+        "recommended_action": {
+            "tool": "change",
+            "action": "edit",
+            "file": "yoyo.json"
+        },
+        "enable_unsandboxed_example": {
+            "runtime": {
+                "checks": [
+                    {
+                        "language": "python",
+                        "command": ["python3", "{{file}}"],
+                        "allow_unsandboxed": true,
+                        "kind": "python-runtime",
+                        "timeout_ms": 1000
+                    }
+                ]
+            }
+        },
+        "limits": [
+            "Commands must target the changed file with {{file}} or {{abs_file}}.",
+            "Inline eval forms like python -c, node -e, and clojure -e are rejected."
+        ]
+    })
+}
+
+fn managed_paths() -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    vec![json!({
+        "path": ".bakes/",
+        "kind": "cache",
+        "editable": false,
+        "description": "Managed bake cache. Do not edit this path manually.",
+    })]
 }
 
 /// Public entrypoint for the `llm_workflows` CLI/MCP tool.
@@ -1274,6 +1358,93 @@ mod tests {
             }),
             "boot should route change-triage questions to judge_change"
         );
+
+        let user_config_files = payload["user_config_files"].as_array().unwrap();
+        assert!(
+            user_config_files.iter().any(|entry| {
+                entry["path"] == "yoyo.json"
+                    && entry["editable"] == true
+                    && entry["git_trackable"] == true
+                    && entry["agent_managed"] == true
+                    && entry["description"]
+                        .as_str()
+                        .unwrap()
+                        .contains("Agents can update")
+            }),
+            "boot should surface the agent-managed runtime config"
+        );
+
+        let runtime_access = &payload["runtime_access"];
+        assert_eq!(runtime_access["config_path"], "yoyo.json");
+        assert!(
+            runtime_access["summary"]
+                .as_str()
+                .unwrap()
+                .contains("update yoyo.json"),
+            "boot should explain how to widen runtime access"
+        );
+        assert_eq!(runtime_access["git_trackable"], true);
+        assert_eq!(runtime_access["agent_managed"], true);
+        assert_eq!(runtime_access["recommended_action"]["tool"], "change");
+        assert_eq!(runtime_access["recommended_action"]["action"], "edit");
+        assert_eq!(runtime_access["recommended_action"]["file"], "yoyo.json");
+        assert_eq!(
+            runtime_access["enable_unsandboxed_example"]["runtime"]["checks"][0]
+                ["allow_unsandboxed"],
+            true
+        );
+
+        let project_conventions = &payload["project_conventions"];
+        assert_eq!(project_conventions["configured"], false);
+        assert_eq!(project_conventions["source"], "yoyo.json");
+
+        let managed_paths = payload["managed_paths"].as_array().unwrap();
+        assert!(
+            managed_paths.iter().any(|entry| {
+                entry["path"] == ".bakes/"
+                    && entry["editable"] == false
+                    && entry["description"]
+                        .as_str()
+                        .unwrap()
+                        .contains("Do not edit")
+            }),
+            "boot should distinguish managed cache paths from user-edited config"
+        );
+    }
+
+    #[test]
+    fn boot_surfaces_project_conventions_from_yoyo_json() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+        fs::write(
+            dir.path().join("yoyo.json"),
+            r#"{
+  "conventions": {
+    "languages": ["rust"],
+    "frameworks": ["axum"],
+    "style_rules": ["prefer engine fixes over presentation workarounds"],
+    "commands": {
+      "test": ["cargo", "test"]
+    }
+  }
+}"#,
+        )
+        .unwrap();
+
+        let json = llm_instructions(Some(dir.path().to_string_lossy().into_owned())).unwrap();
+        let payload: Value = serde_json::from_str(&json).unwrap();
+        let conventions = &payload["project_conventions"];
+
+        assert_eq!(conventions["configured"], true);
+        assert_eq!(conventions["source"], "yoyo.json");
+        assert_eq!(conventions["languages"][0], "rust");
+        assert_eq!(conventions["frameworks"][0], "axum");
+        assert_eq!(
+            conventions["style_rules"][0],
+            "prefer engine fixes over presentation workarounds"
+        );
+        assert_eq!(conventions["commands"]["test"][0], "cargo");
+        assert_eq!(conventions["commands"]["test"][1], "test");
     }
 
     #[test]

@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
 
+use super::config::{
+    existing_config_path, load_yoyo_project_config, write_yoyo_project_config, RuntimePolicy,
+    RuntimeSmokeCheck, YoyoProjectConfig, YOYO_CONFIG_FILE,
+};
 use super::types::{MultiPatchPayload, PatchBytesPayload, PatchPayload, SlicePayload, SyntaxError};
 use super::util::{detect_language, reindex_files, require_bake_index, resolve_project_root};
 
@@ -615,24 +619,6 @@ pub(super) struct PendingWrite<'a> {
     pub(super) bytes: &'a [u8],
 }
 
-#[derive(Debug, Default, serde::Deserialize)]
-struct RuntimeFeedbackConfig {
-    #[serde(default)]
-    runtime_checks: Vec<RuntimeSmokeCheck>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct RuntimeSmokeCheck {
-    language: String,
-    command: Vec<String>,
-    #[serde(default)]
-    sandbox_prefix: Vec<String>,
-    #[serde(default)]
-    allow_unsandboxed: bool,
-    kind: Option<String>,
-    timeout_ms: Option<u64>,
-}
-
 #[derive(Debug, Clone)]
 struct PreparedRuntimeCheck {
     target_key: String,
@@ -660,20 +646,11 @@ struct RuntimeCommandOutput {
 }
 
 fn runtime_config_path(root: &PathBuf) -> Option<PathBuf> {
-    root.ancestors()
-        .map(|ancestor| ancestor.join(".yoyo").join("runtime.json"))
-        .find(|path| path.exists())
+    existing_config_path(root)
 }
 
-fn load_runtime_feedback_config(root: &PathBuf) -> Result<Option<RuntimeFeedbackConfig>> {
-    let Some(path) = runtime_config_path(root) else {
-        return Ok(None);
-    };
-    let bytes = fs::read(&path)
-        .with_context(|| format!("Failed to read runtime config {}", path.display()))?;
-    let config = serde_json::from_slice::<RuntimeFeedbackConfig>(&bytes)
-        .with_context(|| format!("Failed to parse runtime config {}", path.display()))?;
-    Ok(Some(config))
+fn load_runtime_feedback_config(root: &PathBuf) -> Result<Option<YoyoProjectConfig>> {
+    load_yoyo_project_config(root)
 }
 
 fn default_runtime_check_for_language(language: &str) -> Option<RuntimeSmokeCheck> {
@@ -722,29 +699,19 @@ fn bootstrap_runtime_feedback_config(
         return Ok(None);
     }
 
-    let path = root.join(".yoyo").join("runtime.json");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create runtime config directory {}",
-                parent.display()
-            )
-        })?;
-    }
-    let payload = serde_json::json!({
-        "runtime_checks": checks,
-        "notes": [
-            "Created by yoyo with least-privilege defaults.",
-            "Runtime checks stay disabled until you add sandbox_prefix or set allow_unsandboxed to true.",
-            "Edit this file manually if you want more access."
-        ]
-    });
-    let bytes = serde_json::to_vec_pretty(&payload)?;
-    fs::write(&path, bytes)
-        .with_context(|| format!("Failed to write runtime config {}", path.display()))?;
+    let payload = YoyoProjectConfig {
+        notes: vec![
+            "Created by yoyo with least-privilege defaults.".to_string(),
+            "Runtime checks stay disabled until an agent updates yoyo.json and adds sandbox_prefix or sets allow_unsandboxed to true.".to_string(),
+            "Agents can update yoyo.json if more access is needed.".to_string(),
+        ],
+        conventions: Default::default(),
+        runtime: RuntimePolicy { checks },
+    };
+    let path = write_yoyo_project_config(root, &payload)?;
 
     Ok(Some(format!(
-        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit it and add sandbox_prefix or set allow_unsandboxed to true. Edit this file manually if you want more access.",
+        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until an agent updates yoyo.json and adds sandbox_prefix or sets allow_unsandboxed to true. Agents can update yoyo.json if more access is needed.",
         path.strip_prefix(root)
             .unwrap_or(path.as_path())
             .display(),
@@ -889,21 +856,25 @@ fn prepare_runtime_checks(
     let mut prepared = Vec::new();
     for write in writes {
         let language = detect_language(write.full_path);
-        for check in &config.runtime_checks {
+        for check in &config.runtime.checks {
             if check.language != language {
                 continue;
             }
 
             if check.command.is_empty() {
                 return Err(anyhow!(
-                    "runtime feedback config rejected {} runtime check: command must not be empty",
-                    check.language
+                    "runtime feedback config rejected {} runtime check in {}: command must not be empty. Edit {} to fix it.",
+                    check.language,
+                    YOYO_CONFIG_FILE,
+                    YOYO_CONFIG_FILE
                 ));
             }
             if !command_targets_changed_file(&check.command) {
                 return Err(anyhow!(
-                    "runtime feedback config rejected {} runtime check: command must target the changed file with {{file}} or {{abs_file}}",
-                    check.language
+                    "runtime feedback config rejected {} runtime check in {}: command must target the changed file with {{file}} or {{abs_file}}. Edit {} to fix it.",
+                    check.language,
+                    YOYO_CONFIG_FILE,
+                    YOYO_CONFIG_FILE
                 ));
             }
 
@@ -912,7 +883,14 @@ fn prepare_runtime_checks(
                 .iter()
                 .map(|part| replace_runtime_placeholders(part, root, write))
                 .collect();
-            validate_runtime_command_parts(&command, "runtime")?;
+            validate_runtime_command_parts(&command, "runtime").map_err(|err| {
+                anyhow!(
+                    "{} Edit {} to fix the {} runtime command.",
+                    err,
+                    YOYO_CONFIG_FILE,
+                    check.language
+                )
+            })?;
 
             let sandbox_prefix: Vec<String> = check
                 .sandbox_prefix
@@ -920,7 +898,16 @@ fn prepare_runtime_checks(
                 .map(|part| replace_runtime_placeholders(part, root, write))
                 .collect();
             if !sandbox_prefix.is_empty() {
-                validate_runtime_command_parts(&sandbox_prefix, "sandbox prefix")?;
+                validate_runtime_command_parts(&sandbox_prefix, "sandbox prefix").map_err(
+                    |err| {
+                        anyhow!(
+                            "{} Edit {} to fix the {} sandbox prefix.",
+                            err,
+                            YOYO_CONFIG_FILE,
+                            check.language
+                        )
+                    },
+                )?;
             } else if !check.allow_unsandboxed {
                 continue;
             }
@@ -2516,7 +2503,19 @@ mod tests {
     }
 
     fn write_runtime_config(dir: &TempDir, content: &str) {
-        write_file(dir, ".yoyo/runtime.json", content);
+        let mut value: serde_json::Value = serde_json::from_str(content).unwrap();
+        if let Some(runtime_checks) = value.get("runtime_checks").cloned() {
+            value = serde_json::json!({
+                "runtime": {
+                    "checks": runtime_checks
+                }
+            });
+        }
+        write_file(
+            dir,
+            "yoyo.json",
+            &serde_json::to_string_pretty(&value).unwrap(),
+        );
     }
 
     fn write_executable_file(dir: &TempDir, rel: &str, content: &str) {
@@ -3336,19 +3335,24 @@ mod tests {
         )
         .unwrap();
 
-        let config_path = dir.path().join(".yoyo").join("runtime.json");
+        let config_path = dir.path().join("yoyo.json");
         assert!(config_path.exists());
         let config: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(config_path).unwrap()).unwrap();
-        assert_eq!(config["runtime_checks"][0]["language"], "python");
-        assert_eq!(config["runtime_checks"][0]["command"][0], "python3");
-        assert_eq!(config["runtime_checks"][0]["command"][1], "{{file}}");
-        assert_eq!(config["runtime_checks"][0]["allow_unsandboxed"], false);
+        assert_eq!(config["runtime"]["checks"][0]["language"], "python");
+        assert_eq!(config["runtime"]["checks"][0]["command"][0], "python3");
+        assert_eq!(config["runtime"]["checks"][0]["command"][1], "{{file}}");
+        assert_eq!(config["runtime"]["checks"][0]["allow_unsandboxed"], false);
+        assert!(config["conventions"]["languages"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         assert!(
             outcome.warnings.iter().any(|warning| {
-                warning.contains(".yoyo/runtime.json")
+                warning.contains("yoyo.json")
                     && warning.contains("least-privilege defaults")
                     && warning.contains("allow_unsandboxed to true")
+                    && warning.contains("Agents can update yoyo.json")
             }),
             "warnings: {:?}",
             outcome.warnings
@@ -3390,8 +3394,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("unsafe")
-                || err.to_string().contains("inline interpreter code"),
+            (err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"))
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3433,9 +3438,10 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("must target the changed file")
+            (err.to_string().contains("must target the changed file")
                 || err.to_string().contains("{{file}}")
-                || err.to_string().contains("{{abs_file}}"),
+                || err.to_string().contains("{{abs_file}}"))
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3477,8 +3483,9 @@ mod tests {
         .unwrap_err();
 
         assert!(
-            err.to_string().contains("unsafe")
-                || err.to_string().contains("inline interpreter code"),
+            (err.to_string().contains("unsafe")
+                || err.to_string().contains("inline interpreter code"))
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3569,7 +3576,7 @@ mod tests {
             warnings[0]
                 .as_str()
                 .unwrap()
-                .contains("Edit this file manually")
+                .contains("Agents can update yoyo.json")
                 || warnings[0]
                     .as_str()
                     .unwrap()
@@ -3577,7 +3584,8 @@ mod tests {
             "warning: {:?}",
             warnings
         );
-        assert!(dir.path().join(".yoyo").join("runtime.json").exists());
+        assert!(dir.path().join("yoyo.json").exists());
+        assert!(!dir.path().join(".yoyo").exists());
     }
 
     #[test]
