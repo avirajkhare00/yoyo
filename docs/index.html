@@ -418,10 +418,10 @@
         <aside class="note">
           <strong>Least-privilege by default</strong>
           <p class="muted">
-            If <code>.yoyo/runtime.json</code> is missing, yoyo now creates a starter config automatically for
+            If <code>yoyo.json</code> is missing, yoyo now creates a starter config automatically for
             supported interpreted languages. The file is still restrictive: file-targeted commands only,
             no inline eval, and runtime execution remains disabled until the user widens access explicitly. The
-            <code>boot</code> payload also points to <code>.yoyo/runtime.json</code> as the user-editable config,
+            <code>boot</code> payload also points to <code>yoyo.json</code> as the user-editable, git-trackable config,
             shows a concrete example for enabling unsandboxed file-targeted runtime checks, and keeps
             <code>.bakes/</code> separate as managed cache.
           </p>

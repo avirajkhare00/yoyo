@@ -135,19 +135,21 @@ fn user_config_files() -> Vec<serde_json::Value> {
     use serde_json::json;
 
     vec![json!({
-        "path": ".yoyo/runtime.json",
+        "path": "yoyo.json",
         "kind": "runtime_policy",
         "editable": true,
         "created_on_demand": true,
-        "description": "Runtime execution policy for guarded writes. Edit this file to widen sandbox_prefix or allow_unsandboxed.",
+        "git_trackable": true,
+        "description": "Repo-root runtime execution policy for guarded writes. Edit this file to widen sandbox_prefix or allow_unsandboxed.",
     })]
 }
 
 fn runtime_access_hint() -> serde_json::Value {
     serde_json::json!({
-        "config_path": ".yoyo/runtime.json",
-        "summary": "Edit .yoyo/runtime.json to widen runtime execution for guarded writes.",
+        "config_path": "yoyo.json",
+        "summary": "Edit yoyo.json to widen runtime execution for guarded writes.",
         "default": "least_privilege",
+        "git_trackable": true,
         "enable_unsandboxed_example": {
             "runtime_checks": [
                 {
@@ -1327,25 +1329,24 @@ mod tests {
         let user_config_files = payload["user_config_files"].as_array().unwrap();
         assert!(
             user_config_files.iter().any(|entry| {
-                entry["path"] == ".yoyo/runtime.json"
+                entry["path"] == "yoyo.json"
                     && entry["editable"] == true
-                    && entry["description"]
-                        .as_str()
-                        .unwrap()
-                        .contains("Edit this file")
+                    && entry["git_trackable"] == true
+                    && entry["description"].as_str().unwrap().contains("Repo-root")
             }),
             "boot should surface the user-editable runtime config"
         );
 
         let runtime_access = &payload["runtime_access"];
-        assert_eq!(runtime_access["config_path"], ".yoyo/runtime.json");
+        assert_eq!(runtime_access["config_path"], "yoyo.json");
         assert!(
             runtime_access["summary"]
                 .as_str()
                 .unwrap()
-                .contains("Edit .yoyo/runtime.json"),
+                .contains("Edit yoyo.json"),
             "boot should explain how to widen runtime access"
         );
+        assert_eq!(runtime_access["git_trackable"], true);
         assert_eq!(
             runtime_access["enable_unsandboxed_example"]["runtime_checks"][0]["allow_unsandboxed"],
             true

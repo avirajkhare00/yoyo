@@ -8,7 +8,7 @@
 
 - Bake artifacts now live under `.bakes/latest/` instead of `bakes/latest/`.
 - `bake` now adds `.bakes/` to the git exclude file automatically for git repos, including worktree-style `gitdir:` checkouts.
-- yoyo now treats `.bakes/` as managed cache and skips both `.bakes/` and legacy `bakes/` artifact directories during indexing and project snapshots; the user-editable runtime file remains `.yoyo/runtime.json`.
+- yoyo now treats `.bakes/` as managed cache and skips both `.bakes/` and legacy `bakes/` artifact directories during indexing and project snapshots; the user-editable runtime file is `yoyo.json`.
 
 ## [1.13.0] - 2026-03-15
 
@@ -32,12 +32,12 @@
 
 ### Added
 
-- yoyo now bootstraps `.yoyo/runtime.json` automatically for supported interpreted languages when a guarded write needs runtime config and the file is missing.
+- yoyo now bootstraps `yoyo.json` automatically for supported interpreted languages when a guarded write needs runtime config and the file is missing.
 
 ### Changed
 
 - Auto-generated runtime config now starts from least-privilege defaults: file-targeted commands are scaffolded, `allow_unsandboxed` stays `false`, and runtime checks remain disabled until the user edits the file explicitly.
-- Guarded write payloads now surface a warning when yoyo creates `.yoyo/runtime.json`, including a direct message that users can edit the file manually if they want broader access.
+- Guarded write payloads now surface a warning when yoyo creates `yoyo.json`, including a direct message that users can edit the file if they want broader access.
 
 ## [1.11.0] - 2026-03-14
 

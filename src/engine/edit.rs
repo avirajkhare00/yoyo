@@ -659,7 +659,7 @@ struct RuntimeCommandOutput {
     timed_out: bool,
 }
 
-const RUNTIME_CONFIG_RELATIVE_PATH: &str = ".yoyo/runtime.json";
+const RUNTIME_CONFIG_RELATIVE_PATH: &str = "yoyo.json";
 
 fn runtime_config_path(root: &PathBuf) -> Option<PathBuf> {
     root.ancestors()
@@ -725,20 +725,12 @@ fn bootstrap_runtime_feedback_config(
     }
 
     let path = root.join(RUNTIME_CONFIG_RELATIVE_PATH);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create runtime config directory {}",
-                parent.display()
-            )
-        })?;
-    }
     let payload = serde_json::json!({
         "runtime_checks": checks,
         "notes": [
             "Created by yoyo with least-privilege defaults.",
-            "Runtime checks stay disabled until you edit .yoyo/runtime.json and add sandbox_prefix or set allow_unsandboxed to true.",
-            "Edit .yoyo/runtime.json if you want more access."
+            "Runtime checks stay disabled until you edit yoyo.json and add sandbox_prefix or set allow_unsandboxed to true.",
+            "Edit yoyo.json if you want more access."
         ]
     });
     let bytes = serde_json::to_vec_pretty(&payload)?;
@@ -746,7 +738,7 @@ fn bootstrap_runtime_feedback_config(
         .with_context(|| format!("Failed to write runtime config {}", path.display()))?;
 
     Ok(Some(format!(
-        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit .yoyo/runtime.json and add sandbox_prefix or set allow_unsandboxed to true. Edit .yoyo/runtime.json if you want more access.",
+        "Created {} with least-privilege defaults for {}. Runtime checks stay disabled until you edit yoyo.json and add sandbox_prefix or set allow_unsandboxed to true. Edit yoyo.json if you want more access.",
         path.strip_prefix(root)
             .unwrap_or(path.as_path())
             .display(),
@@ -2538,7 +2530,7 @@ mod tests {
     }
 
     fn write_runtime_config(dir: &TempDir, content: &str) {
-        write_file(dir, ".yoyo/runtime.json", content);
+        write_file(dir, "yoyo.json", content);
     }
 
     fn write_executable_file(dir: &TempDir, rel: &str, content: &str) {
@@ -3358,7 +3350,7 @@ mod tests {
         )
         .unwrap();
 
-        let config_path = dir.path().join(".yoyo").join("runtime.json");
+        let config_path = dir.path().join("yoyo.json");
         assert!(config_path.exists());
         let config: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(config_path).unwrap()).unwrap();
@@ -3368,10 +3360,10 @@ mod tests {
         assert_eq!(config["runtime_checks"][0]["allow_unsandboxed"], false);
         assert!(
             outcome.warnings.iter().any(|warning| {
-                warning.contains(".yoyo/runtime.json")
+                warning.contains("yoyo.json")
                     && warning.contains("least-privilege defaults")
                     && warning.contains("allow_unsandboxed to true")
-                    && warning.contains("Edit .yoyo/runtime.json")
+                    && warning.contains("Edit yoyo.json")
             }),
             "warnings: {:?}",
             outcome.warnings
@@ -3415,7 +3407,7 @@ mod tests {
         assert!(
             (err.to_string().contains("unsafe")
                 || err.to_string().contains("inline interpreter code"))
-                && err.to_string().contains(".yoyo/runtime.json"),
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3460,7 +3452,7 @@ mod tests {
             (err.to_string().contains("must target the changed file")
                 || err.to_string().contains("{{file}}")
                 || err.to_string().contains("{{abs_file}}"))
-                && err.to_string().contains(".yoyo/runtime.json"),
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3504,7 +3496,7 @@ mod tests {
         assert!(
             (err.to_string().contains("unsafe")
                 || err.to_string().contains("inline interpreter code"))
-                && err.to_string().contains(".yoyo/runtime.json"),
+                && err.to_string().contains("yoyo.json"),
             "got: {}",
             err
         );
@@ -3592,10 +3584,7 @@ mod tests {
         let warnings = v["warnings"].as_array().unwrap();
         assert_eq!(warnings.len(), 1);
         assert!(
-            warnings[0]
-                .as_str()
-                .unwrap()
-                .contains("Edit .yoyo/runtime.json")
+            warnings[0].as_str().unwrap().contains("Edit yoyo.json")
                 || warnings[0]
                     .as_str()
                     .unwrap()
@@ -3603,7 +3592,8 @@ mod tests {
             "warning: {:?}",
             warnings
         );
-        assert!(dir.path().join(".yoyo").join("runtime.json").exists());
+        assert!(dir.path().join("yoyo.json").exists());
+        assert!(!dir.path().join(".yoyo").exists());
     }
 
     #[test]
