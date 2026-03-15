@@ -1,0 +1,34 @@
+{
+  "notes": [
+    "Agent-managed repo contract for yoyo itself.",
+    "Use this file to persist recurring repo context instead of re-prompting style, framework, and command choices."
+  ],
+  "conventions": {
+    "languages": ["rust", "go", "zig"],
+    "frameworks": [],
+    "style_rules": [
+      "Prefer engine fixes over presentation-layer workarounds.",
+      "Use a dedicated git worktree for repo write tasks.",
+      "If src changes, cargo test must pass before commit.",
+      "Dogfood yoyo when yoyo tools fit the task.",
+      "Rust for core product code, Go for tooling and automation, Zig for low-level fit.",
+      "Do not add Python to this project."
+    ],
+    "commands": {
+      "format": ["cargo", "fmt"],
+      "test": ["cargo", "test"],
+      "build_release": ["cargo", "build", "--release"],
+      "sign_binary": [
+        "codesign",
+        "--force",
+        "--deep",
+        "--sign",
+        "-",
+        "target/release/yoyo"
+      ]
+    }
+  },
+  "runtime": {
+    "checks": []
+  }
+}
