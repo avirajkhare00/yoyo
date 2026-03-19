@@ -28,7 +28,7 @@ The core product is not generic search. It is a smaller and more reliable interf
 
 Essays:
 
-- [Why Recursive Language Models point in the same direction as yoyo](./docs/rlm-and-yoyo.html)
+- [What yoyo shares with Recursive Language Models, and what it does not](./docs/rlm-and-yoyo.html)
 - [How we designed the yoyo eval harness](./docs/harness-design.html)
 - [From compiler-shaped guards to dynamic-language repair loops (`v1.10.0` → `v1.12.0`)](./docs/blog-v1.10.0-to-v1.12.0.md)
 

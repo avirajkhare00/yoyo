@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Why Recursive Language Models point in the same direction as yoyo</title>
+  <title>What yoyo shares with Recursive Language Models, and what it does not</title>
   <style>
     :root {
       --bg: #f4f1ea;
@@ -194,12 +194,12 @@
 
     <header>
       <div class="eyebrow">Essay</div>
-      <h1>Why Recursive Language Models point in the same direction as yoyo</h1>
+      <h1>What yoyo shares with Recursive Language Models, and what it does not</h1>
       <p class="deck">
         The strongest idea in the RLM paper is not “give the model more tokens.” It is “stop treating the prompt as the place where all work must happen.” That is also the right direction for <code>yoyo</code>.
       </p>
       <p class="deck">
-        And at this point, that alignment is no longer just philosophical. Parts of the recursive inspect-fail-repair loop now exist directly inside <code>yoyo</code> through guarded writes, runtime guards, <code>guard_failure</code>, and <code>retry_plan</code>.
+        But that does not make <code>yoyo</code> RLM-compatible. <code>yoyo</code> has grounded repo tools and bounded repair loops, but it does not yet implement the paper’s defining move: model-chosen recursive self-calls on smaller subquestions and sub-contexts.
       </p>
       <p class="meta">
         Based on <em>Recursive Language Models</em> by Omar Khattab, Tim Kraska, and Alex L. Zhang.
@@ -215,6 +215,10 @@
         <p>
           That is the important shift. The gain is not just “more context.” The gain is moving from prompt stuffing to environment interaction.
         </p>
+        <div class="note">
+          <strong>Important distinction</strong>
+          The environment idea is only part of the paper. The stronger mechanism is recursive control: <code>RLM(q, context) → RLM(sub_q, sub_context)</code> when the model decides a smaller subproblem deserves its own working set.
+        </div>
       </section>
 
       <section>
@@ -241,17 +245,17 @@
       <section>
         <h2>What is now actually inside yoyo</h2>
         <p>
-          The essay used to describe the connection as mostly conceptual. That is now too weak. <code>yoyo</code> already contains an RLM-shaped loop, just specialized for repository work and constrained execution.
+          The essay used to overstate the connection. <code>yoyo</code> does not already contain an RLM in the paper’s sense. What it does contain is a more grounded repo workflow with bounded inspect-fail-repair steps.
         </p>
         <p>
           The clearest example is the new guarded write path. A write no longer means “edit the file and hope.” <code>yoyo</code> writes the candidate change, runs the relevant checks, and restores the original file if the new version fails. When that happens, the failure is returned as machine-readable <code>guard_failure</code> data, and <code>retry_plan</code> turns that failure into a bounded inspect-fix-retry workflow.
         </p>
         <div class="note">
-          <strong>That is the product form of the same idea</strong>
-          The model does not have to hold the whole repository or the whole failure state in prompt memory. The repository is the environment, the failure is structured state, and the next step is a constrained interaction over that state.
+          <strong>That is a related product move, not the same mechanism</strong>
+          The model does not have to hold the whole repository or the whole failure state in prompt memory. The repository is the environment, the failure is structured state, and the next step is a constrained interaction over that state. But the control loop is still flatter than the paper’s recursive self-decomposition.
         </div>
         <p>
-          This matters even more for interpreted languages. Python, JavaScript, Ruby, PHP, and Clojure often fail after parsing, not before. So <code>yoyo</code> now uses runtime guards to catch “this file parses but breaks when it actually runs” cases, then routes those failures back into the same repair loop. That is much closer to the paper’s recursive inspect-and-act model than the old “search a lot and dump source into context” approach.
+          This matters even more for interpreted languages. Python, JavaScript, Ruby, PHP, and Clojure often fail after parsing, not before. So <code>yoyo</code> now uses runtime guards to catch “this file parses but breaks when it actually runs” cases, then routes those failures back into the same repair loop. That is closer to environment-mediated repair than the old “search a lot and dump source into context” approach, but it is still not the paper’s recursive inspect-and-act mechanism.
         </p>
       </section>
 
@@ -287,14 +291,17 @@
           That is also what our recent directed evals are showing. The read side matters because the write should happen only after the correct ownership layer and invariants are grounded.
         </p>
         <p>
-          What changed recently is that the write side is now becoming recursive too. The loop is no longer just “read carefully, then write once.” It is increasingly “read carefully, write through a guard, inspect the resulting failure state if needed, then retry on a smaller and better-grounded surface.”
+          What changed recently is that the write side now has a bounded repair loop too. But that loop is still mostly flat: read carefully, write through a guard, inspect the resulting failure state if needed, then retry. The paper’s stronger move is that the model itself decides when to recurse on a smaller subquestion with a transformed sub-context. <code>yoyo</code> is not doing that yet.
         </p>
       </section>
 
       <section>
-        <h2>Where yoyo should differ from an RLM</h2>
+        <h2>Where yoyo differs from an RLM today</h2>
         <p>
           The paper uses a very flexible REPL. For general long-context reasoning, that makes sense. For software engineering, a more structured surface is often better.
+        </p>
+        <p>
+          It is also worth being precise about the current gap. The paper is not just about tool use or keeping context outside the prompt. It is about recursive control. The model can choose to turn <code>q</code> into <code>sub_q</code>, transform the accessible context, and call itself again. <code>yoyo</code> currently offers curated repo tools and bounded retry workflows, not recursive sub-agenting of that form.
         </p>
         <p>
           A coding system needs:
@@ -331,13 +338,13 @@
       <section>
         <h2>Bottom line</h2>
         <p>
-          The RLM paper is a strong validation of the direction <code>yoyo</code> is already moving toward. The future is not a bigger prompt. The future is a smaller, more truthful interface to an external environment.
+          The RLM paper is a strong validation of one direction <code>yoyo</code> is already moving toward. The future is not a bigger prompt. The future is a smaller, more truthful interface to an external environment.
         </p>
         <p>
           For long documents, that environment might be a REPL over text. For codebases, it should be grounded repository tools. That is why the paper feels aligned with <code>yoyo</code>: both are trying to move work out of token memory and into structured interaction with what is actually there.
         </p>
         <p>
-          The newer twist is that <code>yoyo</code> is no longer only doing that on the read side. With guarded writes, runtime checks, <code>guard_failure</code>, and <code>retry_plan</code>, parts of the recursive repair loop are now in the product itself.
+          The newer twist is that <code>yoyo</code> is no longer only doing that on the read side. With guarded writes, runtime checks, <code>guard_failure</code>, and <code>retry_plan</code>, parts of a bounded repair loop are now in the product itself. That is useful progress, but it is not yet RLM-style recursive subproblem delegation.
         </p>
       </section>
 

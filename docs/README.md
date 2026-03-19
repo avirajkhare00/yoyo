@@ -4,7 +4,7 @@ yoyo parses your codebase and gives Claude Code, Cursor, Codex CLI, Gemini CLI, 
 
 Essays:
 
-- [Why Recursive Language Models point in the same direction as yoyo](./rlm-and-yoyo.html)
+- [What yoyo shares with Recursive Language Models, and what it does not](./rlm-and-yoyo.html)
 - [How we designed the yoyo eval harness](./harness-design.html)
 - [From compiler-shaped guards to dynamic-language repair loops (`v1.10.0` → `v1.12.0`)](./blog-v1.10.0-to-v1.12.0.md)
 
