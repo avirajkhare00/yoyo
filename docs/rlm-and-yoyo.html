@@ -296,6 +296,51 @@
       </section>
 
       <section>
+        <h2>A concrete Clojure MCP example</h2>
+        <p>
+          The clean way to mimic the paper on a Clojure repo today is to keep the recursive decision-making outside <code>yoyo</code> and use <code>yoyo</code> as the grounded environment.
+        </p>
+        <p>
+          In a tiny Clojure repo with a <code>greet</code> function, the MCP loop can look like this:
+        </p>
+        <pre><code>boot + index
+→ inspect(name="greet")
+→ ask("format a full name into a greeting")
+→ judge_change(...)
+→ change(...)
+→ guard_failure
+→ retry_plan
+→ inspect(targeted lines)
+→ change(...)</code></pre>
+        <p>
+          In the demo, <code>inspect</code> found <code>my.app/greet</code>, <code>ask</code> ranked the same function first for the intent query, and <code>judge_change</code> narrowed ownership to <code>src/my/app/core.clj</code>. Then a bad write added a missing namespace import. <code>yoyo</code> rejected the write, restored the file, and returned structured failure state instead of leaving broken Clojure on disk.
+        </p>
+        <pre><code>guard_failure: {
+  "phase": "post_write_guard",
+  "retryable": true,
+  "files_restored": true,
+  "files": [
+    {
+      "file": "src/my/app/core.clj",
+      "errors": [
+        {
+          "kind": "clojure-runtime",
+          "text": "Could not locate missing/ns__init.class"
+        }
+      ]
+    }
+  ]
+}</code></pre>
+        <p>
+          After that, <code>retry_plan</code> narrowed the next read surface to the namespace form at the top of the file and produced a bounded retry workflow. A corrected <code>change</code> then landed a valid multi-arity <code>greet</code> implementation.
+        </p>
+        <div class="note">
+          <strong>What this proves, and what it does not</strong>
+          This is the closest current <code>yoyo</code> behavior gets to an RLM on Clojure: the repo stays outside prompt memory, failures become structured state, and the next step gets smaller. But the outer model is still the part deciding whether to recurse or spawn a subtask. <code>yoyo</code> is the environment, not the recursive controller.
+        </div>
+      </section>
+
+      <section>
         <h2>Where yoyo differs from an RLM today</h2>
         <p>
           The paper uses a very flexible REPL. For general long-context reasoning, that makes sense. For software engineering, a more structured surface is often better.
