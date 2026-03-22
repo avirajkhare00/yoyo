@@ -7,7 +7,10 @@ class Yoyo < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/avirajkhare00/yoyo/releases/download/v#{version}/yoyo-aarch64-apple-darwin.tar.gz"
-      sha256 "__SHA_MACOS__"
+      sha256 "__SHA_MACOS_ARM__"
+    elsif Hardware::CPU.intel?
+      url "https://github.com/avirajkhare00/yoyo/releases/download/v#{version}/yoyo-x86_64-apple-darwin.tar.gz"
+      sha256 "__SHA_MACOS_INTEL__"
     end
   end
 
