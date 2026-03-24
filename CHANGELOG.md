@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Intel macOS release automation now consumes a reusable ONNX Runtime asset declared in `packaging/onnxruntime/assets.json`, with a dedicated workflow to rotate that asset when the runtime version changes.
+
 ## [1.14.2] - 2026-03-24
 
 ### Fixed

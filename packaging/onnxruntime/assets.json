@@ -1,0 +1,10 @@
+{
+  "x86_64-apple-darwin": {
+    "onnxruntime_version": "1.23.2",
+    "asset_release_tag": "vendor-onnxruntime-v1.23.2",
+    "asset_name": "onnxruntime-x86_64-apple-darwin-static-release.tar.gz",
+    "archive_root": "onnxruntime-x86_64-apple-darwin-static-release",
+    "lib_dir": "runtime",
+    "lib_profile": "Release"
+  }
+}

@@ -55,8 +55,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock', 'packaging/onnxruntime/assets.json') }}
           restore-keys: ${{ runner.os }}-homebrew-install-
+
+      - name: Prepare reusable ONNX Runtime libs
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/use-onnxruntime-asset.sh x86_64-apple-darwin
 
       - name: Build native release archive
         shell: bash
@@ -200,8 +207,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock', 'packaging/onnxruntime/assets.json') }}
           restore-keys: ${{ runner.os }}-homebrew-install-
+
+      - name: Prepare reusable ONNX Runtime libs
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/use-onnxruntime-asset.sh x86_64-apple-darwin
 
       - name: Build native release archive
         shell: bash
