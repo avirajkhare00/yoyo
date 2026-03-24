@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-03-24
+
 ### Changed
 
 - Intel macOS release automation now consumes a reusable ONNX Runtime asset declared in `packaging/onnxruntime/assets.json`, with a dedicated workflow to rotate that asset when the runtime version changes.
+
+### Fixed
+
+- Homebrew install checks now create their temporary local tap without Git metadata, so Linux formula validation no longer fails on missing Git author identity.
 
 ## [1.14.2] - 2026-03-24
 
