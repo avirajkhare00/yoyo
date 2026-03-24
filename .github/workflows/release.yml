@@ -65,6 +65,9 @@ jobs:
 
       - name: Prepare reusable ONNX Runtime libs
         if: matrix.target == 'x86_64-apple-darwin'
+        env:
+          ORT_ASSET_WAIT_ATTEMPTS: "40"
+          ORT_ASSET_WAIT_SECONDS: "30"
         shell: bash
         run: |
           set -euo pipefail

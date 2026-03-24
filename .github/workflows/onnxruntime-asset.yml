@@ -8,6 +8,10 @@ on:
       - packaging/onnxruntime/**
   workflow_dispatch:
 
+concurrency:
+  group: onnxruntime-asset-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-intel-macos-asset:
     name: Build ONNX Runtime asset (x86_64-apple-darwin)

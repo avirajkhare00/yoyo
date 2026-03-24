@@ -4,6 +4,8 @@ set -euo pipefail
 target="${1:?usage: use-onnxruntime-asset.sh <target> [destination] [manifest]}"
 destination="${2:-${RUNNER_TEMP:-/tmp}/onnxruntime/${target}}"
 manifest="${3:-packaging/onnxruntime/assets.json}"
+wait_attempts="${ORT_ASSET_WAIT_ATTEMPTS:-1}"
+wait_seconds="${ORT_ASSET_WAIT_SECONDS:-30}"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to read ${manifest}" >&2
@@ -37,7 +39,21 @@ emit_var() {
 mkdir -p "$destination"
 
 if [[ ! -d "$runtime_root" ]]; then
-  curl -fL --retry 3 --retry-all-errors "$asset_url" -o "$archive_path"
+  attempt=1
+
+  until curl -fL --retry 3 --retry-all-errors "$asset_url" -o "$archive_path"; do
+    rm -f "$archive_path"
+
+    if (( attempt >= wait_attempts )); then
+      echo "Failed to download ${asset_url} after ${attempt} attempt(s)." >&2
+      exit 1
+    fi
+
+    echo "Asset not available yet at ${asset_url} (attempt ${attempt}/${wait_attempts}); waiting ${wait_seconds}s before retry." >&2
+    sleep "$wait_seconds"
+    attempt=$((attempt + 1))
+  done
+
   tar -xzf "$archive_path" -C "$destination"
 fi
 
