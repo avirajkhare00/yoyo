@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-03-24
+
+### Fixed
+
+- Release automation and Homebrew install checks now target a supported GitHub-hosted Intel macOS runner label, so Intel macOS validation can actually execute instead of being rejected at workflow scheduling time.
+
 ## [1.14.1] - 2026-03-24
 
 ### Fixed
