@@ -13,6 +13,7 @@ env:
   HOMEBREW_NO_ANALYTICS: "1"
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_INSTALL_FROM_API: "1"
 
 jobs:
   template-install:
@@ -154,10 +155,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew uninstall --force yoyo || true
-          brew install --formula dist/yoyo.rb
-          "$(brew --prefix)/bin/yoyo" --version
-          brew test yoyo
+          bash .github/scripts/install-homebrew-formula.sh dist/yoyo.rb
 
   tap-install:
     if: |
@@ -306,7 +304,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew uninstall --force yoyo || true
-          brew install --formula dist/yoyo.rb
-          "$(brew --prefix)/bin/yoyo" --version
-          brew test yoyo
+          bash .github/scripts/install-homebrew-formula.sh dist/yoyo.rb

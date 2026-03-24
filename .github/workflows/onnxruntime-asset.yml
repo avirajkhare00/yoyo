@@ -1,6 +1,11 @@
 name: Build ONNX Runtime Asset
 
 on:
+  push:
+    paths:
+      - .github/workflows/onnxruntime-asset.yml
+      - .github/scripts/use-onnxruntime-asset.sh
+      - packaging/onnxruntime/**
   workflow_dispatch:
 
 jobs:
