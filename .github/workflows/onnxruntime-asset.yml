@@ -1,0 +1,147 @@
+name: Build ONNX Runtime Asset
+
+on:
+  push:
+    paths:
+      - .github/workflows/onnxruntime-asset.yml
+      - .github/scripts/use-onnxruntime-asset.sh
+      - packaging/onnxruntime/**
+  workflow_dispatch:
+
+concurrency:
+  group: onnxruntime-asset-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-intel-macos-asset:
+    name: Build ONNX Runtime asset (x86_64-apple-darwin)
+    runs-on: macos-15-intel
+    permissions:
+      contents: write
+    env:
+      TARGET: x86_64-apple-darwin
+      MANIFEST: packaging/onnxruntime/assets.json
+
+    steps:
+      - name: Checkout yoyo
+        uses: actions/checkout@v4
+
+      - name: Read asset manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          json="$(jq -e --arg target "$TARGET" '.[$target]' "$MANIFEST")"
+
+          echo "ORT_VERSION=$(jq -r '.onnxruntime_version' <<<"$json")" >> "$GITHUB_ENV"
+          echo "ASSET_RELEASE_TAG=$(jq -r '.asset_release_tag' <<<"$json")" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=$(jq -r '.asset_name' <<<"$json")" >> "$GITHUB_ENV"
+          echo "ARCHIVE_ROOT=$(jq -r '.archive_root' <<<"$json")" >> "$GITHUB_ENV"
+          echo "LIB_DIR=$(jq -r '.lib_dir' <<<"$json")" >> "$GITHUB_ENV"
+          echo "LIB_PROFILE=$(jq -r '.lib_profile' <<<"$json")" >> "$GITHUB_ENV"
+
+      - name: Checkout ONNX Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/onnxruntime
+          ref: v${{ env.ORT_VERSION }}
+          submodules: recursive
+          path: onnxruntime
+
+      - name: Show build tool versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          cmake --version
+          clang --version
+          xcodebuild -version
+
+      - name: Build static ONNX Runtime
+        working-directory: onnxruntime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./build.sh \
+            --config "$LIB_PROFILE" \
+            --build_dir build \
+            --parallel \
+            --skip_tests \
+            --compile_no_warning_as_error \
+            --skip_submodule_sync \
+            --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+
+      - name: Package reusable runtime asset
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          lib_file="$(find onnxruntime/build -type f -path '*/Release/libonnxruntime_common.a' | head -n 1)"
+          if [[ -z "$lib_file" ]]; then
+            echo "Could not locate libonnxruntime_common.a under the ONNX Runtime build tree." >&2
+            exit 1
+          fi
+
+          profile_dir="$(dirname "$lib_file")"
+          discovered_profile="$(basename "$profile_dir")"
+          lib_root="$(dirname "$profile_dir")"
+
+          if [[ "$discovered_profile" != "$LIB_PROFILE" ]]; then
+            echo "Expected profile $LIB_PROFILE but found $discovered_profile" >&2
+            exit 1
+          fi
+
+          staging="$RUNNER_TEMP/$ARCHIVE_ROOT"
+          mkdir -p "$staging"
+
+          cp -R "$lib_root" "$staging/$LIB_DIR"
+          cp onnxruntime/LICENSE "$staging/LICENSE-ONNXRUNTIME"
+
+          cat > "$staging/BUILD_INFO.txt" <<EOF
+          onnxruntime_version=$ORT_VERSION
+          target=$TARGET
+          lib_profile=$LIB_PROFILE
+          source_ref=v$ORT_VERSION
+          built_from=$GITHUB_REPOSITORY@$GITHUB_SHA
+          EOF
+
+          tar -C "$RUNNER_TEMP" -czf "$ASSET_NAME" "$ARCHIVE_ROOT"
+          sha256="$(shasum -a 256 "$ASSET_NAME" | awk '{print $1}')"
+
+          echo "asset_sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Create vendor release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$ASSET_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$ASSET_RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$ASSET_RELEASE_TAG" \
+              --notes "Reusable ONNX Runtime build asset for yoyo CI and release packaging."
+          fi
+
+      - name: Upload runtime asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$ASSET_RELEASE_TAG" "$ASSET_NAME" --clobber
+
+      - name: Write job summary
+        shell: bash
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          Built reusable ONNX Runtime asset for \`$TARGET\`.
+
+          - ONNX Runtime version: \`$ORT_VERSION\`
+          - Release tag: \`$ASSET_RELEASE_TAG\`
+          - Asset name: \`$ASSET_NAME\`
+          - SHA256: \`${{ steps.package.outputs.asset_sha256 }}\`
+          EOF

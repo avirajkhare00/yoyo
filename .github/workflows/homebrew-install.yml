@@ -13,6 +13,7 @@ env:
   HOMEBREW_NO_ANALYTICS: "1"
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_CLEANUP: "1"
+  HOMEBREW_NO_INSTALL_FROM_API: "1"
 
 jobs:
   template-install:
@@ -55,8 +56,18 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock', 'packaging/onnxruntime/assets.json') }}
           restore-keys: ${{ runner.os }}-homebrew-install-
+
+      - name: Prepare reusable ONNX Runtime libs
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        env:
+          ORT_ASSET_WAIT_ATTEMPTS: "40"
+          ORT_ASSET_WAIT_SECONDS: "30"
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/use-onnxruntime-asset.sh x86_64-apple-darwin
 
       - name: Build native release archive
         shell: bash
@@ -147,10 +158,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew uninstall --force yoyo || true
-          brew install --formula dist/yoyo.rb
-          "$(brew --prefix)/bin/yoyo" --version
-          brew test yoyo
+          bash .github/scripts/install-homebrew-formula.sh dist/yoyo.rb
 
   tap-install:
     if: |
@@ -200,8 +208,18 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock', 'packaging/onnxruntime/assets.json') }}
           restore-keys: ${{ runner.os }}-homebrew-install-
+
+      - name: Prepare reusable ONNX Runtime libs
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        env:
+          ORT_ASSET_WAIT_ATTEMPTS: "40"
+          ORT_ASSET_WAIT_SECONDS: "30"
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/use-onnxruntime-asset.sh x86_64-apple-darwin
 
       - name: Build native release archive
         shell: bash
@@ -292,7 +310,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew uninstall --force yoyo || true
-          brew install --formula dist/yoyo.rb
-          "$(brew --prefix)/bin/yoyo" --version
-          brew test yoyo
+          bash .github/scripts/install-homebrew-formula.sh dist/yoyo.rb
