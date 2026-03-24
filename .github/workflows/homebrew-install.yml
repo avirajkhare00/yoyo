@@ -1,0 +1,182 @@
+name: Homebrew Install Check
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release yoyo binary"]
+    types: [completed]
+
+env:
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  install:
+    if: |
+      (matrix.formula_source == 'template' && github.event_name != 'workflow_run') ||
+      (matrix.formula_source == 'tap' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      ))
+    name: Homebrew install (${{ matrix.formula_source }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            formula_source: template
+            formula_path: packaging/homebrew/yoyo.rb.template
+          - os: macos-14
+            formula_source: template
+            formula_path: packaging/homebrew/yoyo.rb.template
+          - os: macos-13
+            formula_source: template
+            formula_path: packaging/homebrew/yoyo.rb.template
+          - os: ubuntu-latest
+            formula_source: tap
+            formula_path: homebrew-yoyo/Formula/yoyo.rb
+          - os: macos-14
+            formula_source: tap
+            formula_path: homebrew-yoyo/Formula/yoyo.rb
+          - os: macos-13
+            formula_source: tap
+            formula_path: homebrew-yoyo/Formula/yoyo.rb
+
+    steps:
+      - name: Checkout yoyo
+        uses: actions/checkout@v4
+
+      - name: Checkout homebrew-yoyo
+        if: matrix.formula_source == 'tap'
+        uses: actions/checkout@v4
+        with:
+          repository: avirajkhare00/homebrew-yoyo
+          path: homebrew-yoyo
+
+      - name: Install Homebrew (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if ! command -v brew >/dev/null 2>&1; then
+            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+          echo "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
+
+      - name: Show Homebrew version
+        shell: bash
+        run: brew --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-homebrew-install-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-homebrew-install-
+
+      - name: Build native release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${RUNNER_OS}/${RUNNER_ARCH}" in
+            Linux/X64)
+              target="x86_64-unknown-linux-gnu"
+              ;;
+            macOS/ARM64)
+              target="aarch64-apple-darwin"
+              ;;
+            macOS/X64)
+              target="x86_64-apple-darwin"
+              ;;
+            *)
+              echo "Unsupported runner ${RUNNER_OS}/${RUNNER_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "target=$target" >> "$GITHUB_ENV"
+
+          cargo build --release --target "$target"
+
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            codesign --force --deep --sign - "target/$target/release/yoyo"
+          fi
+
+          mkdir -p dist
+          cp "target/$target/release/yoyo" "dist/yoyo-$target"
+          tar -C dist -czf "dist/yoyo-$target.tar.gz" "yoyo-$target"
+
+      - name: Render formula under test
+        shell: bash
+        env:
+          FORMULA_PATH: ${{ matrix.formula_path }}
+        run: |
+          set -euo pipefail
+
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          archive_path="$(pwd)/dist/yoyo-${target}.tar.gz"
+          archive_url="file://${archive_path}"
+          sha="$(shasum -a 256 "${archive_path}" | awk '{print $1}')"
+
+          case "$target" in
+            aarch64-apple-darwin)
+              target_url='https://github.com/avirajkhare00/yoyo/releases/download/v#{version}/yoyo-aarch64-apple-darwin.tar.gz'
+              ;;
+            x86_64-apple-darwin)
+              target_url='https://github.com/avirajkhare00/yoyo/releases/download/v#{version}/yoyo-x86_64-apple-darwin.tar.gz'
+              ;;
+            x86_64-unknown-linux-gnu)
+              target_url='https://github.com/avirajkhare00/yoyo/releases/download/v#{version}/yoyo-x86_64-unknown-linux-gnu.tar.gz'
+              ;;
+            *)
+              echo "Unsupported target ${target}" >&2
+              exit 1
+              ;;
+          esac
+
+          dummy_sha="$(printf '0%.0s' {1..64})"
+          cp "${FORMULA_PATH}" dist/yoyo.rb
+
+          VERSION="$version" \
+          TARGET_URL="$target_url" \
+          ARCHIVE_URL="$archive_url" \
+          SHA="$sha" \
+          DUMMY_SHA="$dummy_sha" \
+          perl -0pi -e '
+            s/__VERSION__/$ENV{VERSION}/g;
+            s/__SHA_MACOS__/$ENV{DUMMY_SHA}/g;
+            s/__SHA_MACOS_ARM__/$ENV{DUMMY_SHA}/g;
+            s/__SHA_MACOS_INTEL__/$ENV{DUMMY_SHA}/g;
+            s/__SHA_LINUX__/$ENV{DUMMY_SHA}/g;
+            s/^(\s*version\s+)".*"$/\1"$ENV{VERSION}"/m;
+            s/sha256\s+"[^"]+"/sha256 "$ENV{DUMMY_SHA}"/g;
+            my $target_url = quotemeta($ENV{TARGET_URL});
+            my $archive_url = $ENV{ARCHIVE_URL};
+            s/url "$target_url"/url "$archive_url"/g;
+            my $archive_re = quotemeta($ENV{ARCHIVE_URL});
+            s/(url "$archive_re"\n(\s*)sha256 ")[^"]+(")/$1.$ENV{SHA}.$3/ge;
+          ' dist/yoyo.rb
+
+          grep -Fq "$archive_url" dist/yoyo.rb
+          grep -Fq "$sha" dist/yoyo.rb
+
+      - name: Install formula with Homebrew
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew uninstall --force yoyo || true
+          brew install --formula dist/yoyo.rb
+          "$(brew --prefix)/bin/yoyo" --version
+          brew test yoyo

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-03-24
+
+### Fixed
+
+- Homebrew installs now support Intel Macs by publishing a dedicated `x86_64-apple-darwin` release archive and wiring the formula template to choose the correct macOS artifact for both Apple Silicon and Intel CPUs.
+
+### Changed
+
+- Release automation now computes separate Homebrew SHA256 values for Apple Silicon macOS, Intel macOS, and Linux tarballs before updating the tap formula.
+- GitHub Actions now verifies Homebrew installs from both the repo template and the tap formula on Linux, Apple Silicon macOS, and Intel macOS.
+
 ## [1.14.0] - 2026-03-15
 
 ### Added

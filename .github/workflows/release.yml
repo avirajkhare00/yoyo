@@ -44,10 +44,14 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary: yoyo
             archive: yoyo-x86_64-unknown-linux-gnu.tar.gz
-          - os: macos-latest
+          - os: macos-14
             target: aarch64-apple-darwin
             binary: yoyo
             archive: yoyo-aarch64-apple-darwin.tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary: yoyo
+            archive: yoyo-x86_64-apple-darwin.tar.gz
 
     steps:
       - name: Checkout repository
@@ -93,16 +97,25 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-      - name: Compute SHA256 for macOS tarball
-        id: sha_macos
+      - name: Compute SHA256 for macOS ARM tarball
+        id: sha_macos_arm
         run: |
-          sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-aarch64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
+          set -o pipefail
+          sha=$(curl -fSL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-aarch64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+
+      - name: Compute SHA256 for macOS Intel tarball
+        id: sha_macos_intel
+        run: |
+          set -o pipefail
+          sha=$(curl -fSL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-x86_64-apple-darwin.tar.gz | shasum -a 256 | awk '{print $1}')
           echo "sha=$sha" >> $GITHUB_OUTPUT
 
       - name: Compute SHA256 for Linux tarball
         id: sha_linux
         run: |
-          sha=$(curl -sL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-x86_64-unknown-linux-gnu.tar.gz | shasum -a 256 | awk '{print $1}')
+          set -o pipefail
+          sha=$(curl -fSL https://github.com/avirajkhare00/yoyo/releases/download/${{ github.ref_name }}/yoyo-x86_64-unknown-linux-gnu.tar.gz | shasum -a 256 | awk '{print $1}')
           echo "sha=$sha" >> $GITHUB_OUTPUT
 
       - name: Checkout homebrew-yoyo
@@ -115,9 +128,10 @@ jobs:
       - name: Update formula
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          SHA_MACOS="${{ steps.sha_macos.outputs.sha }}"
+          SHA_MACOS_ARM="${{ steps.sha_macos_arm.outputs.sha }}"
+          SHA_MACOS_INTEL="${{ steps.sha_macos_intel.outputs.sha }}"
           SHA_LINUX="${{ steps.sha_linux.outputs.sha }}"
-          export VERSION SHA_MACOS SHA_LINUX
+          export VERSION SHA_MACOS_ARM SHA_MACOS_INTEL SHA_LINUX
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -125,7 +139,8 @@ jobs:
           template = Path("source/packaging/homebrew/yoyo.rb.template").read_text()
           rendered = (
               template.replace("__VERSION__", os.environ["VERSION"])
-              .replace("__SHA_MACOS__", os.environ["SHA_MACOS"])
+              .replace("__SHA_MACOS_ARM__", os.environ["SHA_MACOS_ARM"])
+              .replace("__SHA_MACOS_INTEL__", os.environ["SHA_MACOS_INTEL"])
               .replace("__SHA_LINUX__", os.environ["SHA_LINUX"])
           )
           Path("homebrew-yoyo/Formula/yoyo.rb").write_text(rendered)
